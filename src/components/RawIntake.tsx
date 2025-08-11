@@ -139,7 +139,14 @@ export default function RawIntake() {
 
         if (cardToUse) {
           const target = norm(cardToUse);
-          built = built.filter((s: any) => norm(s.card_number) === target);
+          const targetHasSlash = /\//.test(cardToUse);
+          built = built.filter((s: any) => {
+            const sNorm = norm(s.card_number);
+            if (!sNorm) return false;
+            if (targetHasSlash) return sNorm === target;
+            const sNum = sNorm.split("/")[0];
+            return sNorm === target || sNum === target || sNorm.startsWith(target + "/");
+          });
         }
 
         built = built.slice(0, 5);
