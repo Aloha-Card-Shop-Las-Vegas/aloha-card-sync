@@ -21,7 +21,7 @@ type CardItem = {
   brandTitle?: string;
   subject?: string;
   category?: string;
-  varietyPedigree?: string;
+  variant?: string;
   cardNumber?: string;
 };
 
@@ -39,7 +39,7 @@ const [item, setItem] = useState<CardItem>({
   brandTitle: "",
   subject: "",
   category: "",
-  varietyPedigree: "",
+  variant: "",
   cardNumber: "",
 });
   const [batch, setBatch] = useState<CardItem[]>([]);
@@ -67,7 +67,7 @@ const clearForm = () => setItem({
   brandTitle: "",
   subject: "",
   category: "",
-  varietyPedigree: "",
+  variant: "",
   cardNumber: "",
 });
 
@@ -94,7 +94,7 @@ const clearForm = () => setItem({
         brandTitle: d.brandTitle || prev.brandTitle,
         subject: d.subject || prev.subject,
         category: d.category || d.game || prev.category,
-        varietyPedigree: d.varietyPedigree || prev.varietyPedigree,
+        variant: d.variant || d.varietyPedigree || prev.variant,
         cardNumber: d.cardNumber || prev.cardNumber,
       }));
       toast.success("PSA details fetched");
@@ -137,7 +137,7 @@ const clearForm = () => setItem({
                   <Input id="set" value={item.set} onChange={(e) => setItem({ ...item, set: e.target.value })} placeholder="e.g., Base Set" />
                 </div>
                 <div>
-                  <Label htmlFor="brandTitle">Brand / Title</Label>
+                  <Label htmlFor="brandTitle">Brand / Title / Game</Label>
                   <Input id="brandTitle" value={item.brandTitle || ""} onChange={(e) => setItem({ ...item, brandTitle: e.target.value })} placeholder="e.g., POKEMON JAPANESE SWORD & SHIELD..." />
                 </div>
                 <div>
@@ -149,8 +149,8 @@ const clearForm = () => setItem({
                   <Input id="category" value={item.category || ""} onChange={(e) => setItem({ ...item, category: e.target.value })} placeholder="e.g., TCG Cards" />
                 </div>
                 <div>
-                  <Label htmlFor="varietyPedigree">Variety / Pedigree</Label>
-                  <Input id="varietyPedigree" value={item.varietyPedigree || ""} onChange={(e) => setItem({ ...item, varietyPedigree: e.target.value })} placeholder="e.g., GENGAR VMAX HIGH-CLS.DK." />
+                  <Label htmlFor="variant">Variant</Label>
+                  <Input id="variant" value={item.variant || ""} onChange={(e) => setItem({ ...item, variant: e.target.value })} placeholder="e.g., GENGAR VMAX HIGH-CLS.DK." />
                 </div>
                 <div>
                   <Label htmlFor="cardNumber">Card Number</Label>
