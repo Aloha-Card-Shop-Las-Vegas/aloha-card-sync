@@ -84,7 +84,9 @@ export type Database = {
           id: string
           lot_number: string
           price: number | null
+          printed_at: string | null
           psa_cert: string | null
+          pushed_at: string | null
           sku: string | null
           subject: string | null
           updated_at: string
@@ -101,7 +103,9 @@ export type Database = {
           id?: string
           lot_number?: string
           price?: number | null
+          printed_at?: string | null
           psa_cert?: string | null
+          pushed_at?: string | null
           sku?: string | null
           subject?: string | null
           updated_at?: string
@@ -118,7 +122,9 @@ export type Database = {
           id?: string
           lot_number?: string
           price?: number | null
+          printed_at?: string | null
           psa_cert?: string | null
+          pushed_at?: string | null
           sku?: string | null
           subject?: string | null
           updated_at?: string

@@ -27,6 +27,9 @@ type CardItem = {
   variant?: string;
   labelType?: string;
   cardNumber?: string;
+  id?: string;
+  printedAt?: string | null;
+  pushedAt?: string | null;
 };
 
 const Index = () => {
@@ -51,6 +54,11 @@ const Index = () => {
   const [batch, setBatch] = useState<CardItem[]>([]);
   const [lookupCert, setLookupCert] = useState("");
   const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
+
+  // New UI state for bulk actions
+  const [printingAll, setPrintingAll] = useState(false);
+  const [pushingAll, setPushingAll] = useState(false);
+  const [pushPrintAllRunning, setPushPrintAllRunning] = useState(false);
 
   // Build a display title similar to PSA fetch formatting
   const buildTitleFromParts = (
@@ -103,9 +111,13 @@ const Index = () => {
           category: row.category || "",
           variant: row.variant || "",
           cardNumber: row.card_number || "",
+          id: row.id,
+          printedAt: row.printed_at || null,
+          pushedAt: row.pushed_at || null,
         })) || [];
 
-      setBatch(mapped);
+      // Only show items that have not been pushed yet in the queue
+      setBatch(mapped.filter((m) => !m.pushedAt));
     };
 
     loadBatch();
@@ -164,6 +176,9 @@ const Index = () => {
         variant: data?.variant || "",
         labelType: item.labelType || "",
         cardNumber: data?.card_number || "",
+        id: data?.id,
+        printedAt: data?.printed_at || null,
+        pushedAt: data?.pushed_at || null,
       };
 
       setBatch((b) => [next, ...b]);
@@ -225,6 +240,122 @@ const Index = () => {
     } catch (e) {
       console.error(e);
       toast.error("Failed to fetch PSA details");
+    }
+  };
+
+  // Helpers to mark items printed/pushed in DB and update UI
+  const markPrinted = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    console.log("Marking printed for ids:", ids);
+    const { data, error } = await supabase
+      .from("intake_items")
+      .update({ printed_at: new Date().toISOString() })
+      .in("id", ids)
+      .select("id, printed_at");
+
+    if (error) {
+      console.error("Failed to mark printed:", error);
+      throw error;
+    }
+
+    const printedIds = new Set((data || []).map((d: any) => d.id));
+    setBatch((prev) =>
+      prev.map((b) => (b.id && printedIds.has(b.id) ? { ...b, printedAt: new Date().toISOString() } : b))
+    );
+  };
+
+  const markPushed = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    console.log("Marking pushed for ids:", ids);
+    const { data, error } = await supabase
+      .from("intake_items")
+      .update({ pushed_at: new Date().toISOString() })
+      .in("id", ids)
+      .select("id, pushed_at");
+
+    if (error) {
+      console.error("Failed to mark pushed:", error);
+      throw error;
+    }
+
+    const pushedIds = new Set((data || []).map((d: any) => d.id));
+    setBatch((prev) => prev.filter((b) => !(b.id && pushedIds.has(b.id))));
+  };
+
+  // Row actions
+  const handlePrintRow = async (b: CardItem) => {
+    if (!b.id) return;
+    try {
+      await markPrinted([b.id]);
+      window.print();
+      toast.success(`Printed label for Lot ${b.lot || ""}`);
+    } catch {
+      toast.error("Failed to print");
+    }
+  };
+
+  const handlePushRow = async (b: CardItem) => {
+    if (!b.id) return;
+    try {
+      await markPushed([b.id]);
+      toast.success(`Pushed Lot ${b.lot || ""} to Shopify`);
+    } catch {
+      toast.error("Failed to push");
+    }
+  };
+
+  // Bulk actions
+  const handlePrintAll = async () => {
+    const ids = batch.map((b) => b.id!).filter(Boolean);
+    if (ids.length === 0) {
+      toast.info("Nothing to print");
+      return;
+    }
+    setPrintingAll(true);
+    try {
+      await markPrinted(ids);
+      window.print();
+      toast.success("Printed all labels");
+    } catch {
+      toast.error("Failed to print all");
+    } finally {
+      setPrintingAll(false);
+    }
+  };
+
+  const handlePushAll = async () => {
+    const ids = batch.map((b) => b.id!).filter(Boolean);
+    if (ids.length === 0) {
+      toast.info("Nothing to push");
+      return;
+    }
+    setPushingAll(true);
+    try {
+      await markPushed(ids);
+      toast.success("Pushed all to Shopify");
+    } catch {
+      toast.error("Failed to push all");
+    } finally {
+      setPushingAll(false);
+    }
+  };
+
+  const handlePushAndPrintAll = async () => {
+    const ids = batch.map((b) => b.id!).filter(Boolean);
+    if (ids.length === 0) {
+      toast.info("Nothing to process");
+      return;
+    }
+    setPushPrintAllRunning(true);
+    try {
+      await markPushed(ids); // Remove from queue only after push succeeds
+      await markPrinted(ids); // Mark printed for those items as well
+      window.print();
+      toast.success("Pushed and printed all");
+    } catch {
+      toast.error("Failed to push and print all");
+    } finally {
+      setPushPrintAllRunning(false);
     }
   };
 
@@ -347,7 +478,20 @@ const Index = () => {
         <section className="mt-10">
           <Card className="shadow-aloha">
             <CardHeader>
-              <CardTitle>Batch Queue ({batch.length})</CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>Batch Queue ({batch.length})</CardTitle>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={handlePrintAll} disabled={printingAll || batch.length === 0}>
+                    {printingAll ? "Printing…" : "Print All"}
+                  </Button>
+                  <Button variant="outline" onClick={handlePushAll} disabled={pushingAll || batch.length === 0}>
+                    {pushingAll ? "Pushing…" : "Push All"}
+                  </Button>
+                  <Button onClick={handlePushAndPrintAll} disabled={pushPrintAllRunning || batch.length === 0}>
+                    {pushPrintAllRunning ? "Processing…" : "Push & Print All"}
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {batch.length === 0 ? (
@@ -370,7 +514,7 @@ const Index = () => {
                     </TableHeader>
                     <TableBody>
                       {batch.map((b, i) => (
-                        <TableRow key={i}>
+                        <TableRow key={b.id || i}>
                           <TableCell>{b.title}</TableCell>
                           <TableCell>{b.set}</TableCell>
                           <TableCell>{b.grade}</TableCell>
@@ -381,8 +525,20 @@ const Index = () => {
                           <TableCell>{b.sku}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button size="sm" variant="secondary" onClick={() => window.print()}>Print</Button>
-                              <Button size="sm" onClick={() => toast.info("Will push to Shopify after setup")}>Push</Button>
+                              <Button
+                                size="sm"
+                                variant={b.printedAt ? "secondary" : "default"}
+                                onClick={() => handlePrintRow(b)}
+                                disabled={!!b.printedAt}
+                              >
+                                {b.printedAt ? "Printed" : "Print"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handlePushRow(b)}
+                              >
+                                Push
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
