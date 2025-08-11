@@ -54,16 +54,37 @@ export default function RawIntake() {
   const [loading, setLoading] = useState(false);
 
   const autoSku = useMemo(() => {
+    const condMap: Record<string, string> = {
+      "Near Mint": "NM",
+      "Lightly Played": "LP",
+      "Moderately Played": "MP",
+      "Heavily Played": "HP",
+      "Damaged": "DMG",
+    };
+    const printMap: Record<string, string> = {
+      "Unlimited": "UNL",
+      "1st Edition": "1ED",
+      "Shadowless": "SHDW",
+      "Holo": "HOLO",
+      "Reverse Holo": "RH",
+      "Non-Holo": "NH",
+    };
+
+    const cond = condMap[form.condition || ""] || (form.condition || "").toUpperCase().replace(/\s+/g, "");
+    const print = printMap[form.printing || ""] || (form.printing || "").toUpperCase().replace(/\s+/g, "");
+
+    if (form.product_id) {
+      return `P${form.product_id}-${cond || "UNK"}-${print || "UNK"}`;
+    }
+
     const ab = gameAbbr(form.game);
     const setc = (form.set_code || "GEN").toUpperCase();
     const no = (form.card_number || "NA").toUpperCase();
-    return `${ab}-${setc}-${no}`;
-  }, [form.game, form.set_code, form.card_number]);
+    return `${ab}-${setc}-${no}-${cond || "UNK"}-${print || "UNK"}`;
+  }, [form.product_id, form.condition, form.printing, form.game, form.set_code, form.card_number]);
 
   useEffect(() => {
-    if (!form.sku) {
-      setForm((f) => ({ ...f, sku: autoSku }));
-    }
+    setForm((f) => ({ ...f, sku: autoSku }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoSku]);
 
@@ -263,6 +284,10 @@ export default function RawIntake() {
         <div>
           <Label htmlFor="card_number">Card #</Label>
           <Input id="card_number" value={form.card_number} onChange={(e) => setForm({ ...form, card_number: e.target.value })} placeholder="e.g., 4/102" />
+        </div>
+        <div>
+          <Label htmlFor="product_id">Product ID</Label>
+          <Input id="product_id" value={form.product_id ? String(form.product_id) : ""} placeholder="Select a suggestion to set Product ID" disabled />
         </div>
         <div>
           <Label htmlFor="condition">Condition</Label>
