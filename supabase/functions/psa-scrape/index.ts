@@ -124,16 +124,32 @@ serve(async (req) => {
 
     // Fallbacks: regex scan of the HTML/Markdown
     const text = source;
+
+    // Core fields
     grade = grade || extract(text, />\s*Grade\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i) || extract(text, /PSA\s*([0-9]+(?:\.[0-9])?)/i);
     year = year || extract(text, />\s*Year\s*<[^>]*>[\s\S]*?<[^>]*>\s*(\d{4})\s*</i) || extract(text, /\b(19|20)\d{2}\b/);
     setName = setName || extract(text, />\s*Set\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i);
-    // PSA sometimes uses "Player" or "Card Name"
-    player = player || extract(text, />\s*(Player|Card\s*Name)\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i);
+
+    // Name fields
+    const cardName: string | undefined =
+      extract(text, />\s*Card\s*Name\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i) ||
+      extract(text, />\s*Player\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i) ||
+      player;
+
+    // Game/Sport
+    const game: string | undefined =
+      extract(text, />\s*(?:Sport|Game|Category)\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,80})\s*</i) ||
+      extract(text, /(?:Sport|Game|Category):\s*([A-Za-z][A-Za-z0-9\s\-\/&]+)/i);
+
+    // Card number
+    const cardNumber: string | undefined =
+      extract(text, />\s*(?:Card\s*(?:#|No\.?|Number))\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i) ||
+      extract(text, /(?:Card\s*(?:#|No\.?|Number))[:\s]*([A-Za-z0-9\-\.]{1,20})/i);
 
     // Title: try HTML title tag or build from parts
     title = title || extract(text, /<title>\s*([^<]+?)\s*<\/title>/i);
     if (!title) {
-      const parts = [year, player, setName].filter(Boolean).join(" ");
+      const parts = [year, cardName, setName].filter(Boolean).join(" ");
       title = parts || `PSA Cert ${cert}`;
     }
 
@@ -141,11 +157,16 @@ serve(async (req) => {
       ok: true,
       url,
       cert: String(cert),
+      certNumber: String(cert),
       title,
-      player: player || undefined,
-      set: setName || undefined,
+      cardName: cardName || undefined,
       year: year || undefined,
+      game: game || undefined,
+      cardNumber: cardNumber || undefined,
       grade: grade || undefined,
+      // Back-compat fields
+      player: player || cardName || undefined,
+      set: setName || undefined,
     };
 
     return new Response(JSON.stringify(result), {
