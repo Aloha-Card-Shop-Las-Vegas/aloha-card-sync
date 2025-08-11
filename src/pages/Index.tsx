@@ -189,7 +189,6 @@ const clearForm = () => setItem({
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button onClick={addToBatch}>Add to Batch</Button>
                 <Button variant="secondary" onClick={clearForm}>Clear</Button>
-                <Button variant="outline" onClick={() => fetchPsa()}>Fetch PSA Details</Button>
               </div>
             </CardContent>
           </Card>
