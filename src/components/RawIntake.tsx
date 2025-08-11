@@ -45,7 +45,7 @@ export default function RawIntake() {
     price_each: "",
     sku: "",
   });
-  const [search, setSearch] = useState("");
+  
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -65,42 +65,111 @@ export default function RawIntake() {
 
   useEffect(() => {
     let active = true;
-    const run = async () => {
+    const t = setTimeout(async () => {
+      const rawName = (form.name || "").trim();
+      const inputCard = (form.card_number || "").trim();
+
+      if (rawName.length < 2) {
+        if (active) setSuggestions([]);
+        return;
+      }
+
+      setLoading(true);
+
+      // Parse trailing number token from name (e.g., "Charizard 4/102")
+      const trailingTokenMatch = rawName.match(/(?:^|\s)(\d{1,3}(?:\s*\/\s*\d{1,3})?)$/);
+      const trailingCard = trailingTokenMatch ? trailingTokenMatch[1].replace(/\s*/g, "") : "";
+      const baseName = trailingCard ? rawName.slice(0, rawName.length - trailingTokenMatch[0].length).trim() : rawName;
+      const cardToUse = inputCard || trailingCard;
+
       try {
-        setLoading(true);
-        const q = (search || "").trim();
-        let query: any;
-        if (!q || q.length < 2) {
-          // Show the 5 most recent trade-ins when query is empty/short
-          query = (supabase as any)
-            .from("trade_ins")
-            .select("name,set,set_code,card_number,price_each,sku,condition,language,created_at")
-            .order("created_at", { ascending: false })
-            .limit(5);
-        } else {
-          // Multi-field search across name, set, set_code, card_number, and sku
-          query = (supabase as any)
-            .from("trade_ins")
-            .select("name,set,set_code,card_number,price_each,sku,condition,language,created_at")
-            .or(`name.ilike.%${q}%,set.ilike.%${q}%,set_code.ilike.%${q}%,card_number.ilike.%${q}%,sku.ilike.%${q}%`)
-            .order("created_at", { ascending: false })
-            .limit(5);
-        }
-        const { data, error } = await query;
+        const { data: products, error } = await (supabase as any)
+          .from("products")
+          .select("id,name,group_id,tcgcsv_data")
+          .ilike("name", `%${baseName || rawName}%`)
+          .limit(15);
         if (error) throw error;
-        if (!active) return;
-        setSuggestions(data || []);
+
+        const groupIds = Array.from(new Set((products || []).map((p: any) => p.group_id).filter(Boolean)));
+        let groupsMap: Record<string, string> = {};
+        if (groupIds.length) {
+          const { data: groups, error: gerr } = await (supabase as any)
+            .from("groups")
+            .select("id,name")
+            .in("id", groupIds);
+          if (!gerr && groups) {
+            groupsMap = Object.fromEntries(groups.map((g: any) => [String(g.id), g.name]));
+          }
+        }
+
+        const norm = (v: string) => {
+          if (!v) return "";
+          const s = String(v).trim().toUpperCase().replace(/\s+/g, "");
+          const parts = s.split("/");
+          return parts.map((p) => p.replace(/^0+/, "") || "0").join(parts.length > 1 ? "/" : "");
+        };
+
+        const getExt = (tcg: any, key: string) => {
+          try {
+            if (tcg?.extendedData && Array.isArray(tcg.extendedData)) {
+              const found = tcg.extendedData.find((e: any) => String(e.name || "").toLowerCase() === key.toLowerCase());
+              if (found?.value != null) return String(found.value);
+            }
+            if (tcg && typeof tcg === "object") {
+              for (const k of Object.keys(tcg)) {
+                if (k.toLowerCase() === key.toLowerCase()) return String((tcg as any)[k]);
+              }
+            }
+          } catch {}
+          return "";
+        };
+
+        let built = (products || []).map((p: any) => {
+          const cn = getExt(p.tcgcsv_data, "Number");
+          const rarity = getExt(p.tcgcsv_data, "Rarity");
+          return {
+            source: "product",
+            product_id: p.id,
+            name: p.name,
+            set: groupsMap[String(p.group_id)] || "",
+            card_number: cn,
+            rarity,
+          };
+        });
+
+        if (cardToUse) {
+          const target = norm(cardToUse);
+          built = built.filter((s: any) => norm(s.card_number) === target);
+        }
+
+        built = built.slice(0, 5);
+
+        if (active) setSuggestions(built);
       } catch (e) {
         console.error(e);
+        if (active) setSuggestions([]);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
-    };
-    run();
+    }, 300);
+
     return () => {
       active = false;
+      clearTimeout(t);
     };
-  }, [search]);
+  }, [form.name, form.card_number]);
+
+  // Auto-fill card number from trailing token in name if empty
+  useEffect(() => {
+    const rawName = (form.name || "").trim();
+    if (!rawName || form.card_number) return;
+    const m = rawName.match(/(?:^|\s)(\d{1,3}(?:\s*\/\s*\d{1,3})?)$/);
+    if (m) {
+      const value = m[1].replace(/\s*/g, "");
+      setForm((f) => ({ ...f, card_number: value }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.name]);
 
   const applySuggestion = (s: any) => {
     setForm((f) => ({
@@ -168,7 +237,7 @@ export default function RawIntake() {
 
         <div>
           <Label htmlFor="name">Name</Label>
-          <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g., Charizard" />
+          <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Type to search products (e.g., Charizard or Charizard 4/102)" />
         </div>
         <div>
           <Label htmlFor="set">Set</Label>
@@ -205,24 +274,23 @@ export default function RawIntake() {
       </div>
 
       <div className="mt-4">
-        <Label>Search existing (top 5)</Label>
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, set, set code, #, or SKU" />
+        <Label>Suggestions</Label>
         {loading ? (
           <div className="text-sm text-muted-foreground mt-2">Searching…</div>
         ) : suggestions.length > 0 ? (
           <ul className="mt-2 space-y-2">
             {suggestions.map((s, i) => (
-              <li key={`${s.sku || s.name}-${i}`} className="flex items-center justify-between gap-3 border rounded-md p-2">
+              <li key={`${s.product_id || s.name}-${i}`} className="flex items-center justify-between gap-3 border rounded-md p-2">
                 <div className="text-sm">
                   <div className="font-medium">{s.name}</div>
-                  <div className="text-muted-foreground">{[s.set_code, s.card_number, s.condition].filter(Boolean).join(" • ")}</div>
+                  <div className="text-muted-foreground">{[s.set, s.card_number, s.rarity].filter(Boolean).join(" • ")}</div>
                 </div>
                 <Button size="sm" variant="secondary" onClick={() => applySuggestion(s)}>Use</Button>
               </li>
             ))}
           </ul>
         ) : (
-          <div className="text-sm text-muted-foreground mt-2">No suggestions</div>
+          <div className="text-sm text-muted-foreground mt-2">Type at least 2 characters in Name to search products</div>
         )}
       </div>
 
