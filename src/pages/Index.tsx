@@ -18,10 +18,30 @@ type CardItem = {
   price?: string;
   lot?: string;
   sku?: string;
+  brandTitle?: string;
+  subject?: string;
+  category?: string;
+  varietyPedigree?: string;
+  cardNumber?: string;
 };
 
 const Index = () => {
-  const [item, setItem] = useState<CardItem>({ title: "", set: "", player: "", year: "", grade: "", psaCert: "", price: "", lot: "", sku: "" });
+const [item, setItem] = useState<CardItem>({
+  title: "",
+  set: "",
+  player: "",
+  year: "",
+  grade: "",
+  psaCert: "",
+  price: "",
+  lot: "",
+  sku: "",
+  brandTitle: "",
+  subject: "",
+  category: "",
+  varietyPedigree: "",
+  cardNumber: "",
+});
   const [batch, setBatch] = useState<CardItem[]>([]);
 
   const addToBatch = () => {
@@ -34,7 +54,22 @@ const Index = () => {
     toast.success("Added to batch");
   };
 
-  const clearForm = () => setItem({ title: "", set: "", player: "", year: "", grade: "", psaCert: "", price: "", lot: "", sku: "" });
+const clearForm = () => setItem({
+  title: "",
+  set: "",
+  player: "",
+  year: "",
+  grade: "",
+  psaCert: "",
+  price: "",
+  lot: "",
+  sku: "",
+  brandTitle: "",
+  subject: "",
+  category: "",
+  varietyPedigree: "",
+  cardNumber: "",
+});
 
   const fetchPsa = async () => {
     const cert = (item.sku || item.psaCert || "").trim();
@@ -49,13 +84,18 @@ const Index = () => {
       if (!d?.ok) throw new Error(d?.error || "Unknown PSA error");
       setItem((prev) => ({
         ...prev,
-        title: d.title || prev.title,
+        title: d.title || d.cardName || prev.title,
         set: d.set || prev.set,
         player: d.player || prev.player,
         year: d.year || prev.year,
         grade: d.grade || prev.grade,
-        psaCert: d.cert || prev.psaCert,
-        sku: prev.sku || d.cert || prev.psaCert,
+        psaCert: d.cert || d.certNumber || prev.psaCert,
+        sku: prev.sku || d.cert || d.certNumber || prev.psaCert,
+        brandTitle: d.brandTitle || prev.brandTitle,
+        subject: d.subject || prev.subject,
+        category: d.category || d.game || prev.category,
+        varietyPedigree: d.varietyPedigree || prev.varietyPedigree,
+        cardNumber: d.cardNumber || prev.cardNumber,
       }));
       toast.success("PSA details fetched");
     } catch (e) {
@@ -97,6 +137,26 @@ const Index = () => {
                   <Input id="set" value={item.set} onChange={(e) => setItem({ ...item, set: e.target.value })} placeholder="e.g., Base Set" />
                 </div>
                 <div>
+                  <Label htmlFor="brandTitle">Brand / Title</Label>
+                  <Input id="brandTitle" value={item.brandTitle || ""} onChange={(e) => setItem({ ...item, brandTitle: e.target.value })} placeholder="e.g., POKEMON JAPANESE SWORD & SHIELD..." />
+                </div>
+                <div>
+                  <Label htmlFor="subject">Subject</Label>
+                  <Input id="subject" value={item.subject || ""} onChange={(e) => setItem({ ...item, subject: e.target.value })} placeholder="e.g., FA/GENGAR VMAX" />
+                </div>
+                <div>
+                  <Label htmlFor="category">Category</Label>
+                  <Input id="category" value={item.category || ""} onChange={(e) => setItem({ ...item, category: e.target.value })} placeholder="e.g., TCG Cards" />
+                </div>
+                <div>
+                  <Label htmlFor="varietyPedigree">Variety / Pedigree</Label>
+                  <Input id="varietyPedigree" value={item.varietyPedigree || ""} onChange={(e) => setItem({ ...item, varietyPedigree: e.target.value })} placeholder="e.g., GENGAR VMAX HIGH-CLS.DK." />
+                </div>
+                <div>
+                  <Label htmlFor="cardNumber">Card Number</Label>
+                  <Input id="cardNumber" value={item.cardNumber || ""} onChange={(e) => setItem({ ...item, cardNumber: e.target.value })} placeholder="e.g., 020" />
+                </div>
+                <div>
                   <Label htmlFor="player">Player</Label>
                   <Input id="player" value={item.player} onChange={(e) => setItem({ ...item, player: e.target.value })} placeholder="Optional" />
                 </div>
@@ -106,7 +166,7 @@ const Index = () => {
                 </div>
                 <div>
                   <Label htmlFor="grade">Condition / Grade</Label>
-                  <Input id="grade" value={item.grade} onChange={(e) => setItem({ ...item, grade: e.target.value })} placeholder="e.g., PSA 9" />
+                  <Input id="grade" value={item.grade} onChange={(e) => setItem({ ...item, grade: e.target.value })} placeholder="e.g., GEM MT 10" />
                 </div>
                 <div>
                   <Label htmlFor="psa">PSA Cert Number</Label>
