@@ -84,17 +84,17 @@ const clearForm = () => setItem({
       if (!d?.ok) throw new Error(d?.error || "Unknown PSA error");
       setItem((prev) => ({
         ...prev,
-        title: d.title || d.cardName || prev.title,
+        title: [d.year || prev.year, (d.brandTitle || prev.brandTitle || "").replace(/&amp;/g, "&"), (d.cardNumber || prev.cardNumber) ? `#${String(d.cardNumber || prev.cardNumber).replace(/^#/, "")}` : undefined, (d.subject || prev.subject || "").replace(/&amp;/g, "&"), (d.variant || d.varietyPedigree || prev.variant || "").replace(/&amp;/g, "&")].filter(Boolean).join(" ").trim(),
         set: d.set || prev.set,
         player: d.player || prev.player,
         year: d.year || prev.year,
         grade: d.grade || prev.grade,
         psaCert: d.cert || d.certNumber || prev.psaCert,
         sku: prev.sku || d.cert || d.certNumber || prev.psaCert,
-        brandTitle: d.brandTitle || prev.brandTitle,
-        subject: d.subject || prev.subject,
-        category: d.category || d.game || prev.category,
-        variant: d.variant || d.varietyPedigree || prev.variant,
+        brandTitle: (d.brandTitle || prev.brandTitle || "").replace(/&amp;/g, "&"),
+        subject: (d.subject || prev.subject || "").replace(/&amp;/g, "&"),
+        category: (d.category || d.game || prev.category || "").replace(/&amp;/g, "&"),
+        variant: (d.variant || d.varietyPedigree || prev.variant || "").replace(/&amp;/g, "&"),
         cardNumber: d.cardNumber || prev.cardNumber,
       }));
       toast.success("PSA details fetched");
@@ -129,8 +129,22 @@ const clearForm = () => setItem({
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="title">Title / Card Name</Label>
-                  <Input id="title" value={item.title} onChange={(e) => setItem({ ...item, title: e.target.value })} placeholder="e.g., 1999 Charizard" />
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="title">Title / Card Name</Label>
+                    <Button variant="ghost" size="sm" type="button" onClick={() => setItem((prev) => ({
+                      ...prev,
+                      title: [
+                        prev.year,
+                        (prev.brandTitle || "").replace(/&amp;/g, "&"),
+                        prev.cardNumber ? `#${String(prev.cardNumber).replace(/^#/, "")}` : undefined,
+                        (prev.subject || "").replace(/&amp;/g, "&"),
+                        (prev.variant || "").replace(/&amp;/g, "&"),
+                      ].filter(Boolean).join(" ").trim(),
+                    }))}>
+                      Build from fields
+                    </Button>
+                  </div>
+                  <Input id="title" value={item.title} onChange={(e) => setItem({ ...item, title: e.target.value })} placeholder="2021 POKEMON JAPANESE SWORD & SHIELD GENGAR VMAX HIGH-CLASS DECK #020 FA/GENGAR VMAX GENGAR VMAX HIGH-CLS.DK." />
                 </div>
                 <div>
                   <Label htmlFor="set">Card Set</Label>
