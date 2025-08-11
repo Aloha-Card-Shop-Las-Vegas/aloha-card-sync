@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
-import BarcodeLabel from "@/components/BarcodeLabel";
+
 import { supabase } from "@/integrations/supabase/client";
 
 type CardItem = {
@@ -22,6 +22,7 @@ type CardItem = {
   subject?: string;
   category?: string;
   variant?: string;
+  labelType?: string;
   cardNumber?: string;
 };
 
@@ -40,16 +41,17 @@ const [item, setItem] = useState<CardItem>({
   subject: "",
   category: "",
   variant: "",
+  labelType: "",
   cardNumber: "",
 });
   const [batch, setBatch] = useState<CardItem[]>([]);
 
   const addToBatch = () => {
-    if (!item.title || !item.set) {
-      toast.error("Please fill Title and Set");
+    if (!item.psaCert) {
+      toast.error("Please fill Cert Number");
       return;
     }
-    const next = { ...item, sku: item.sku || item.psaCert || `${Date.now()}` };
+    const next = { ...item, sku: item.psaCert || `${Date.now()}` };
     setBatch((b) => [next, ...b]);
     toast.success("Added to batch");
   };
@@ -68,11 +70,12 @@ const clearForm = () => setItem({
   subject: "",
   category: "",
   variant: "",
+  labelType: "",
   cardNumber: "",
 });
 
   const fetchPsa = async () => {
-    const cert = (item.sku || item.psaCert || "").trim();
+    const cert = (item.psaCert || item.sku || "").trim();
     if (!cert) {
       toast.error("Enter PSA number in SKU or PSA Cert");
       return;
@@ -95,6 +98,7 @@ const clearForm = () => setItem({
         subject: (d.subject || prev.subject || "").replace(/&amp;/g, "&"),
         category: (d.category || d.game || prev.category || "").replace(/&amp;/g, "&"),
         variant: (d.variant || d.varietyPedigree || prev.variant || "").replace(/&amp;/g, "&"),
+        labelType: d.labelType || prev.labelType,
         cardNumber: d.cardNumber || prev.cardNumber,
       }));
       toast.success("PSA details fetched");
@@ -129,28 +133,6 @@ const clearForm = () => setItem({
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="title">Title / Card Name</Label>
-                    <Button variant="ghost" size="sm" type="button" onClick={() => setItem((prev) => ({
-                      ...prev,
-                      title: [
-                        prev.year,
-                        (prev.brandTitle || "").replace(/&amp;/g, "&"),
-                        prev.cardNumber ? `#${String(prev.cardNumber).replace(/^#/, "")}` : undefined,
-                        (prev.subject || "").replace(/&amp;/g, "&"),
-                        (prev.variant || "").replace(/&amp;/g, "&"),
-                      ].filter(Boolean).join(" ").trim(),
-                    }))}>
-                      Build from fields
-                    </Button>
-                  </div>
-                  <Input id="title" value={item.title} onChange={(e) => setItem({ ...item, title: e.target.value })} placeholder="2021 POKEMON JAPANESE SWORD & SHIELD GENGAR VMAX HIGH-CLASS DECK #020 FA/GENGAR VMAX GENGAR VMAX HIGH-CLS.DK." />
-                </div>
-                <div>
-                  <Label htmlFor="set">Card Set</Label>
-                  <Input id="set" value={item.set} onChange={(e) => setItem({ ...item, set: e.target.value })} placeholder="e.g., Base Set" />
-                </div>
-                <div>
                   <Label htmlFor="brandTitle">Brand / Title / Game</Label>
                   <Input id="brandTitle" value={item.brandTitle || ""} onChange={(e) => setItem({ ...item, brandTitle: e.target.value })} placeholder="e.g., POKEMON JAPANESE SWORD & SHIELD..." />
                 </div>
@@ -171,19 +153,19 @@ const clearForm = () => setItem({
                   <Input id="cardNumber" value={item.cardNumber || ""} onChange={(e) => setItem({ ...item, cardNumber: e.target.value })} placeholder="e.g., 020" />
                 </div>
                 <div>
-                  <Label htmlFor="player">Player</Label>
-                  <Input id="player" value={item.player} onChange={(e) => setItem({ ...item, player: e.target.value })} placeholder="Optional" />
-                </div>
-                <div>
                   <Label htmlFor="year">Year</Label>
                   <Input id="year" value={item.year} onChange={(e) => setItem({ ...item, year: e.target.value })} placeholder="e.g., 1999" />
                 </div>
                 <div>
-                  <Label htmlFor="grade">Condition / Grade</Label>
+                  <Label htmlFor="grade">Item Grade</Label>
                   <Input id="grade" value={item.grade} onChange={(e) => setItem({ ...item, grade: e.target.value })} placeholder="e.g., GEM MT 10" />
                 </div>
                 <div>
-                  <Label htmlFor="psa">PSA Cert Number</Label>
+                  <Label htmlFor="labelType">Label Type</Label>
+                  <Input id="labelType" value={item.labelType || ""} onChange={(e) => setItem({ ...item, labelType: e.target.value })} placeholder="e.g., Lighthouse" />
+                </div>
+                <div>
+                  <Label htmlFor="psa">Cert Number</Label>
                   <Input id="psa" value={item.psaCert} onChange={(e) => setItem({ ...item, psaCert: e.target.value })} placeholder="e.g., 12345678" />
                 </div>
                 <div>
@@ -194,21 +176,11 @@ const clearForm = () => setItem({
                   <Label htmlFor="lot">Lot Number</Label>
                   <Input id="lot" value={item.lot} onChange={(e) => setItem({ ...item, lot: e.target.value })} placeholder="e.g., LOT-2025-01" />
                 </div>
-                <div className="sm:col-span-2">
-                  <Label htmlFor="sku">SKU (defaults to PSA)</Label>
-                  <Input id="sku" value={item.sku} onChange={(e) => setItem({ ...item, sku: e.target.value })} placeholder="Unique identifier used for barcode" />
-                </div>
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button onClick={addToBatch}>Add to Batch</Button>
                 <Button variant="secondary" onClick={clearForm}>Clear</Button>
                 <Button variant="outline" onClick={fetchPsa}>Fetch PSA Details</Button>
-              </div>
-              <div className="mt-6">
-                <p className="text-sm text-muted-foreground mb-2">Barcode Preview</p>
-                <div className="rounded-md border p-4">
-                  <BarcodeLabel value={item.sku || item.psaCert || "SAMPLE-12345"} label={item.title || "Sample Card"} />
-                </div>
               </div>
             </CardContent>
           </Card>
