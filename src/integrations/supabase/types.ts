@@ -78,6 +78,7 @@ export type Database = {
           brand_title: string | null
           card_number: string | null
           category: string | null
+          cost: number | null
           created_at: string
           grade: string | null
           id: string
@@ -94,6 +95,7 @@ export type Database = {
           brand_title?: string | null
           card_number?: string | null
           category?: string | null
+          cost?: number | null
           created_at?: string
           grade?: string | null
           id?: string
@@ -110,6 +112,7 @@ export type Database = {
           brand_title?: string | null
           card_number?: string | null
           category?: string | null
+          cost?: number | null
           created_at?: string
           grade?: string | null
           id?: string
@@ -209,6 +212,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trade_ins: {
+        Row: {
+          card_number: string | null
+          condition: string | null
+          created_at: string
+          id: string
+          language: string | null
+          name: string | null
+          price_each: number | null
+          printing: string | null
+          product_id: number | null
+          quantity: number | null
+          rarity: string | null
+          set: string | null
+          set_code: string | null
+          sku: string | null
+          total_price: number | null
+          updated_at: string
+        }
+        Insert: {
+          card_number?: string | null
+          condition?: string | null
+          created_at?: string
+          id?: string
+          language?: string | null
+          name?: string | null
+          price_each?: number | null
+          printing?: string | null
+          product_id?: number | null
+          quantity?: number | null
+          rarity?: string | null
+          set?: string | null
+          set_code?: string | null
+          sku?: string | null
+          total_price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          card_number?: string | null
+          condition?: string | null
+          created_at?: string
+          id?: string
+          language?: string | null
+          name?: string | null
+          price_each?: number | null
+          printing?: string | null
+          product_id?: number | null
+          quantity?: number | null
+          rarity?: string | null
+          set?: string | null
+          set_code?: string | null
+          sku?: string | null
+          total_price?: number | null
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

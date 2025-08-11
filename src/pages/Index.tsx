@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +18,7 @@ type CardItem = {
   grade?: string;
   psaCert?: string;
   price?: string;
+  cost?: string;
   lot?: string;
   sku?: string;
   brandTitle?: string;
@@ -38,6 +38,7 @@ const Index = () => {
     grade: "",
     psaCert: "",
     price: "",
+    cost: "",
     lot: "",
     sku: "",
     brandTitle: "",
@@ -48,8 +49,8 @@ const Index = () => {
     cardNumber: "",
   });
   const [batch, setBatch] = useState<CardItem[]>([]);
-const [lookupCert, setLookupCert] = useState("");
-const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
+  const [lookupCert, setLookupCert] = useState("");
+  const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
 
   // Build a display title similar to PSA fetch formatting
   const buildTitleFromParts = (
@@ -89,11 +90,12 @@ const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
       const mapped: CardItem[] =
         (data || []).map((row: any) => ({
           title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
-          set: "", // not stored in DB
+          set: "",
           year: row.year || "",
           grade: row.grade || "",
           psaCert: row.psa_cert || "",
           price: row?.price != null ? String(row.price) : "",
+          cost: row?.cost != null ? String(row.cost) : "",
           lot: row.lot_number || "",
           sku: row.sku || "",
           brandTitle: row.brand_title || "",
@@ -125,6 +127,7 @@ const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
       grade: item.grade || null,
       psa_cert: item.psaCert || null,
       price: item.price ? Number(item.price) : null,
+      cost: item.cost ? Number(item.cost) : null,
       sku: item.sku || item.psaCert || null,
     };
 
@@ -152,6 +155,7 @@ const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
         grade: data?.grade || "",
         psaCert: data?.psa_cert || "",
         price: data?.price != null ? String(data.price) : "",
+        cost: data?.cost != null ? String(data.cost) : "",
         lot: data?.lot_number || "",
         sku: data?.sku || "",
         brandTitle: data?.brand_title || "",
@@ -179,6 +183,7 @@ const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
       grade: "",
       psaCert: "",
       price: "",
+      cost: "",
       lot: "",
       sku: "",
       brandTitle: "",
@@ -242,83 +247,86 @@ const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
       <main className="container mx-auto px-6 pb-24">
         <section className="grid md:grid-cols-2 gap-6 -mt-8">
           <Card className="shadow-aloha">
-<CardHeader>
-  <div className="flex items-center justify-between gap-3">
-    <CardTitle>Quick Intake</CardTitle>
-    <ToggleGroup
-      type="single"
-      value={intakeMode}
-      onValueChange={(v) => v && setIntakeMode(v as 'graded' | 'raw')}
-      aria-label="Select intake mode"
-    >
-      <ToggleGroupItem value="graded" aria-label="Graded">Graded</ToggleGroupItem>
-      <ToggleGroupItem value="raw" aria-label="Raw">Raw</ToggleGroupItem>
-    </ToggleGroup>
-  </div>
-</CardHeader>
-<CardContent>
-  {intakeMode === 'graded' ? (
-    <>
-      <div className="flex flex-col sm:flex-row items-stretch gap-2 mb-4">
-        <Input
-          id="psa-lookup"
-          value={lookupCert}
-          onChange={(e) => setLookupCert(e.target.value)}
-          placeholder="Enter PSA Cert # to fetch details"
-        />
-        <Button variant="outline" onClick={() => fetchPsa(lookupCert)}>Fetch PSA</Button>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="brandTitle">Brand / Title / Game</Label>
-          <Input id="brandTitle" value={item.brandTitle || ""} onChange={(e) => setItem({ ...item, brandTitle: e.target.value })} placeholder="e.g., POKEMON JAPANESE SWORD & SHIELD..." />
-        </div>
-        <div>
-          <Label htmlFor="subject">Subject</Label>
-          <Input id="subject" value={item.subject || ""} onChange={(e) => setItem({ ...item, subject: e.target.value })} placeholder="e.g., FA/GENGAR VMAX" />
-        </div>
-        <div>
-          <Label htmlFor="category">Category</Label>
-          <Input id="category" value={item.category || ""} onChange={(e) => setItem({ ...item, category: e.target.value })} placeholder="e.g., TCG Cards" />
-        </div>
-        <div>
-          <Label htmlFor="variant">Variant</Label>
-          <Input id="variant" value={item.variant || ""} onChange={(e) => setItem({ ...item, variant: e.target.value })} placeholder="e.g., GENGAR VMAX HIGH-CLS.DK." />
-        </div>
-        <div>
-          <Label htmlFor="cardNumber">Card Number</Label>
-          <Input id="cardNumber" value={item.cardNumber || ""} onChange={(e) => setItem({ ...item, cardNumber: e.target.value })} placeholder="e.g., 020" />
-        </div>
-        <div>
-          <Label htmlFor="year">Year</Label>
-          <Input id="year" value={item.year} onChange={(e) => setItem({ ...item, year: e.target.value })} placeholder="e.g., 1999" />
-        </div>
-        <div>
-          <Label htmlFor="grade">Item Grade</Label>
-          <Input id="grade" value={item.grade} onChange={(e) => setItem({ ...item, grade: e.target.value })} placeholder="e.g., GEM MT 10" />
-        </div>
-        <div>
-          <Label htmlFor="psa">Cert Number</Label>
-          <Input id="psa" value={item.psaCert} onChange={(e) => setItem({ ...item, psaCert: e.target.value })} placeholder="e.g., 12345678" />
-        </div>
-        <div>
-          <Label htmlFor="price">Price</Label>
-          <Input id="price" value={item.price} onChange={(e) => setItem({ ...item, price: e.target.value })} placeholder="$" />
-        </div>
-        {/* Removed manual Lot Number input – lot is assigned automatically on save */}
-      </div>
-      <div className="mt-2 text-xs text-muted-foreground">
-        Lot number is assigned automatically when you add to batch.
-      </div>
-      <div className="mt-5 flex flex-wrap gap-3">
-        <Button onClick={addToBatch}>Add to Batch</Button>
-        <Button variant="secondary" onClick={clearForm}>Clear</Button>
-      </div>
-    </>
-  ) : (
-    <RawIntake />
-  )}
-</CardContent>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>Quick Intake</CardTitle>
+                <ToggleGroup
+                  type="single"
+                  value={intakeMode}
+                  onValueChange={(v) => v && setIntakeMode(v as 'graded' | 'raw')}
+                  aria-label="Select intake mode"
+                >
+                  <ToggleGroupItem value="graded" aria-label="Graded">Graded</ToggleGroupItem>
+                  <ToggleGroupItem value="raw" aria-label="Raw">Raw</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {intakeMode === 'graded' ? (
+                <>
+                  <div className="flex flex-col sm:flex-row items-stretch gap-2 mb-4">
+                    <Input
+                      id="psa-lookup"
+                      value={lookupCert}
+                      onChange={(e) => setLookupCert(e.target.value)}
+                      placeholder="Enter PSA Cert # to fetch details"
+                    />
+                    <Button variant="outline" onClick={() => fetchPsa(lookupCert)}>Fetch PSA</Button>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="brandTitle">Brand / Title / Game</Label>
+                      <Input id="brandTitle" value={item.brandTitle || ""} onChange={(e) => setItem({ ...item, brandTitle: e.target.value })} placeholder="e.g., POKEMON JAPANESE SWORD & SHIELD..." />
+                    </div>
+                    <div>
+                      <Label htmlFor="subject">Subject</Label>
+                      <Input id="subject" value={item.subject || ""} onChange={(e) => setItem({ ...item, subject: e.target.value })} placeholder="e.g., FA/GENGAR VMAX" />
+                    </div>
+                    <div>
+                      <Label htmlFor="category">Category</Label>
+                      <Input id="category" value={item.category || ""} onChange={(e) => setItem({ ...item, category: e.target.value })} placeholder="e.g., TCG Cards" />
+                    </div>
+                    <div>
+                      <Label htmlFor="variant">Variant</Label>
+                      <Input id="variant" value={item.variant || ""} onChange={(e) => setItem({ ...item, variant: e.target.value })} placeholder="e.g., GENGAR VMAX HIGH-CLS.DK." />
+                    </div>
+                    <div>
+                      <Label htmlFor="cardNumber">Card Number</Label>
+                      <Input id="cardNumber" value={item.cardNumber || ""} onChange={(e) => setItem({ ...item, cardNumber: e.target.value })} placeholder="e.g., 020" />
+                    </div>
+                    <div>
+                      <Label htmlFor="year">Year</Label>
+                      <Input id="year" value={item.year} onChange={(e) => setItem({ ...item, year: e.target.value })} placeholder="e.g., 1999" />
+                    </div>
+                    <div>
+                      <Label htmlFor="grade">Item Grade</Label>
+                      <Input id="grade" value={item.grade} onChange={(e) => setItem({ ...item, grade: e.target.value })} placeholder="e.g., GEM MT 10" />
+                    </div>
+                    <div>
+                      <Label htmlFor="psa">Cert Number</Label>
+                      <Input id="psa" value={item.psaCert} onChange={(e) => setItem({ ...item, psaCert: e.target.value })} placeholder="e.g., 12345678" />
+                    </div>
+                    <div>
+                      <Label htmlFor="cost">Cost</Label>
+                      <Input id="cost" value={item.cost} onChange={(e) => setItem({ ...item, cost: e.target.value })} placeholder="$" />
+                    </div>
+                    <div>
+                      <Label htmlFor="price">Price</Label>
+                      <Input id="price" value={item.price} onChange={(e) => setItem({ ...item, price: e.target.value })} placeholder="$" />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Lot number is assigned automatically when you add to batch.
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Button onClick={addToBatch}>Add to Batch</Button>
+                    <Button variant="secondary" onClick={clearForm}>Clear</Button>
+                  </div>
+                </>
+              ) : (
+                <RawIntake />
+              )}
+            </CardContent>
           </Card>
 
           <Card className="shadow-aloha">
@@ -354,6 +362,7 @@ const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
                         <TableHead>Grade</TableHead>
                         <TableHead>PSA</TableHead>
                         <TableHead>Lot</TableHead>
+                        <TableHead>Cost</TableHead>
                         <TableHead>Price</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
@@ -367,6 +376,7 @@ const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
                           <TableCell>{b.grade}</TableCell>
                           <TableCell>{b.psaCert}</TableCell>
                           <TableCell>{b.lot}</TableCell>
+                          <TableCell>{b.cost}</TableCell>
                           <TableCell>{b.price}</TableCell>
                           <TableCell>{b.sku}</TableCell>
                           <TableCell className="text-right">
