@@ -30,24 +30,30 @@ serve(async (req) => {
     const { cert } = await req.json();
     if (!cert) {
       return new Response(JSON.stringify({ ok: false, error: "Missing cert" }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     const url = `https://www.psacard.com/cert/${encodeURIComponent(cert)}/psa`;
+    console.log("psa-scrape request", { cert, url });
     const resp = await fetch(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.psacard.com/",
       },
     });
+    console.log("psa-scrape status", resp.status);
 
     if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      const bodySnippet = body.slice(0, 400);
       return new Response(
-        JSON.stringify({ ok: false, error: `PSA request failed (${resp.status})` }),
-        { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ ok: false, error: `PSA request failed (${resp.status})`, status: resp.status, bodySnippet }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
@@ -102,8 +108,8 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("psa-scrape error", error);
-    return new Response(JSON.stringify({ ok: false, error: (error as Error).message } ), {
-      status: 500,
+    return new Response(JSON.stringify({ ok: false, error: (error as Error).message }), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
