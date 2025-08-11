@@ -170,10 +170,6 @@ const clearForm = () => setItem({
                   <Input id="grade" value={item.grade} onChange={(e) => setItem({ ...item, grade: e.target.value })} placeholder="e.g., GEM MT 10" />
                 </div>
                 <div>
-                  <Label htmlFor="labelType">Label Type</Label>
-                  <Input id="labelType" value={item.labelType || ""} onChange={(e) => setItem({ ...item, labelType: e.target.value })} placeholder="e.g., Lighthouse" />
-                </div>
-                <div>
                   <Label htmlFor="psa">Cert Number</Label>
                   <Input id="psa" value={item.psaCert} onChange={(e) => setItem({ ...item, psaCert: e.target.value })} placeholder="e.g., 12345678" />
                 </div>
