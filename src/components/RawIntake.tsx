@@ -260,7 +260,18 @@ export default function RawIntake() {
         </div>
         <div>
           <Label htmlFor="condition">Condition</Label>
-          <Input id="condition" value={form.condition} onChange={(e) => setForm({ ...form, condition: e.target.value })} placeholder="e.g., Near Mint" />
+          <Select value={form.condition} onValueChange={(v) => setForm({ ...form, condition: v })}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select condition" />
+            </SelectTrigger>
+            <SelectContent className="z-50">
+              <SelectItem value="Near Mint">Near Mint (NM)</SelectItem>
+              <SelectItem value="Lightly Played">Lightly Played (LP)</SelectItem>
+              <SelectItem value="Moderately Played">Moderately Played (MP)</SelectItem>
+              <SelectItem value="Heavily Played">Heavily Played (HP)</SelectItem>
+              <SelectItem value="Damaged">Damaged</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <Label htmlFor="language">Language</Label>
