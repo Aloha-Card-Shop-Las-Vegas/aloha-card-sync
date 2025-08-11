@@ -18,7 +18,9 @@ interface RawTradeInForm {
   rarity?: string;
   quantity: number;
   price_each?: string; // keep as string for input; convert on save
+  cost_each?: string; // keep as string for input; convert on save
   sku?: string;
+  product_id?: number;
 }
 
 const gameAbbr = (g: string) => {
@@ -43,7 +45,9 @@ export default function RawIntake() {
     rarity: "",
     quantity: 1,
     price_each: "",
+    cost_each: "",
     sku: "",
+    product_id: undefined,
   });
   
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -189,6 +193,7 @@ export default function RawIntake() {
       language: s.language || f.language,
       price_each: s.price_each != null ? String(s.price_each) : f.price_each,
       sku: s.sku || f.sku,
+      product_id: s.product_id ?? f.product_id,
     }));
   };
 
@@ -208,8 +213,9 @@ export default function RawIntake() {
       rarity: form.rarity || null,
       quantity: form.quantity || 1,
       price_each: form.price_each ? Number(form.price_each) : null,
+      cost_each: form.cost_each ? Number(form.cost_each) : null,
       sku: form.sku || autoSku,
-      // product_id left null for now
+      product_id: form.product_id || null,
     } as const;
 
     try {
@@ -274,6 +280,22 @@ export default function RawIntake() {
           </Select>
         </div>
         <div>
+          <Label htmlFor="printing">Printing</Label>
+          <Select value={form.printing} onValueChange={(v) => setForm({ ...form, printing: v })}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select print" />
+            </SelectTrigger>
+            <SelectContent className="z-50">
+              <SelectItem value="Unlimited">Unlimited</SelectItem>
+              <SelectItem value="1st Edition">1st Edition</SelectItem>
+              <SelectItem value="Shadowless">Shadowless</SelectItem>
+              <SelectItem value="Holo">Holo</SelectItem>
+              <SelectItem value="Reverse Holo">Reverse Holo</SelectItem>
+              <SelectItem value="Non-Holo">Non-Holo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
           <Label htmlFor="language">Language</Label>
           <Input id="language" value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })} placeholder="e.g., English" />
         </div>
@@ -284,6 +306,10 @@ export default function RawIntake() {
         <div>
           <Label htmlFor="price_each">Price Each</Label>
           <Input id="price_each" value={form.price_each} onChange={(e) => setForm({ ...form, price_each: e.target.value })} placeholder="$" />
+        </div>
+        <div>
+          <Label htmlFor="cost_each">Cost Each</Label>
+          <Input id="cost_each" value={form.cost_each} onChange={(e) => setForm({ ...form, cost_each: e.target.value })} placeholder="$" />
         </div>
         <div>
           <Label htmlFor="sku">SKU</Label>
@@ -316,7 +342,7 @@ export default function RawIntake() {
 
       <div className="mt-5 flex flex-wrap gap-3">
         <Button onClick={save}>Save</Button>
-        <Button variant="secondary" onClick={() => setForm((f) => ({ ...f, name: "", price_each: "", quantity: 1, sku: autoSku }))}>Clear</Button>
+        <Button variant="secondary" onClick={() => setForm((f) => ({ ...f, name: "", price_each: "", cost_each: "", quantity: 1, sku: autoSku, product_id: undefined }))}>Clear</Button>
       </div>
     </div>
   );
