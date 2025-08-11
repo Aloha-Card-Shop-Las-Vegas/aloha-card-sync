@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -22,6 +23,7 @@ function safeJsonLd(html: string): any | null {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -36,31 +38,72 @@ serve(async (req) => {
     }
 
     const url = `https://www.psacard.com/cert/${encodeURIComponent(cert)}/psa`;
-    console.log("psa-scrape request", { cert, url });
-    const resp = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.psacard.com/",
-      },
-    });
-    console.log("psa-scrape status", resp.status);
+    const apiKey = Deno.env.get("FIRECRAWL_API_KEY");
 
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      const bodySnippet = body.slice(0, 400);
+    if (!apiKey) {
       return new Response(
-        JSON.stringify({ ok: false, error: `PSA request failed (${resp.status})`, status: resp.status, bodySnippet }),
+        JSON.stringify({
+          ok: false,
+          error: "FIRECRAWL_API_KEY is not configured in Supabase Edge Function secrets",
+        }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const html = await resp.text();
+    console.log("psa-scrape (firecrawl) request", { cert, url });
 
-    // Try JSON-LD first
-    const ld = safeJsonLd(html);
+    // Use Firecrawl Scrape API to fetch the page HTML
+    const fcResp = await fetch("https://api.firecrawl.dev/v1/scrape", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url,
+        formats: ["html", "markdown"],
+        pageOptions: {
+          includeTags: ["script[type='application/ld+json']", "title", "table", "div", "span"],
+        },
+      }),
+    });
+
+    console.log("psa-scrape (firecrawl) status", fcResp.status);
+
+    if (!fcResp.ok) {
+      const body = await fcResp.text().catch(() => "");
+      const bodySnippet = body.slice(0, 500);
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: `Firecrawl request failed (${fcResp.status})`,
+          status: fcResp.status,
+          bodySnippet,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const fcJson = await fcResp.json().catch(() => null) as any;
+    // Firecrawl typically returns: { success: boolean, data: { html?: string, markdown?: string, ... } }
+    const data = fcJson?.data || {};
+    const html: string = data.html || data.content || "";
+    const markdown: string = data.markdown || "";
+
+    if (!html && !markdown) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "No content returned from Firecrawl",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const source = html || markdown;
+
+    // Attempt JSON-LD extraction first
+    const ld = html ? safeJsonLd(html) : null;
     let title: string | undefined;
     let player: string | undefined;
     let setName: string | undefined;
@@ -68,7 +111,6 @@ serve(async (req) => {
     let grade: string | undefined;
 
     if (ld) {
-      // Heuristics — PSA pages sometimes include a name/description
       title = ld.name || ld.headline || ld.title;
       const desc: string | undefined = ld.description;
       if (desc) {
@@ -79,14 +121,16 @@ serve(async (req) => {
       }
     }
 
-    // Fallbacks: scrape common table labels on the Cert page
-    grade = grade || extract(html, />\s*Grade\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i) || extract(html, /PSA\s*([0-9]+(?:\.[0-9])?)/i);
-    year = year || extract(html, />\s*Year\s*<[^>]*>[\s\S]*?<[^>]*>\s*(\d{4})\s*</i) || extract(html, /(19|20)\d{2}/);
-    setName = setName || extract(html, />\s*Set\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i);
-    player = player || extract(html, />\s*(Player|Card\s*Name)\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i);
+    // Fallbacks: regex scan of the HTML/Markdown
+    const text = source;
+    grade = grade || extract(text, />\s*Grade\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i) || extract(text, /PSA\s*([0-9]+(?:\.[0-9])?)/i);
+    year = year || extract(text, />\s*Year\s*<[^>]*>[\s\S]*?<[^>]*>\s*(\d{4})\s*</i) || extract(text, /\b(19|20)\d{2}\b/);
+    setName = setName || extract(text, />\s*Set\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i);
+    // PSA sometimes uses "Player" or "Card Name"
+    player = player || extract(text, />\s*(Player|Card\s*Name)\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i);
 
-    // Title: prefer explicit title, else build a sensible default
-    title = title || extract(html, /<title>\s*([^<]+?)\s*<\/title>/i);
+    // Title: try HTML title tag or build from parts
+    title = title || extract(text, /<title>\s*([^<]+?)\s*<\/title>/i);
     if (!title) {
       const parts = [year, player, setName].filter(Boolean).join(" ");
       title = parts || `PSA Cert ${cert}`;
@@ -104,10 +148,11 @@ serve(async (req) => {
     };
 
     return new Response(JSON.stringify(result), {
+      status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("psa-scrape error", error);
+    console.error("psa-scrape (firecrawl) error", error);
     return new Response(JSON.stringify({ ok: false, error: (error as Error).message }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
