@@ -223,6 +223,7 @@ export type Database = {
         Row: {
           card_number: string | null
           condition: string | null
+          cost_each: number | null
           created_at: string
           id: string
           language: string | null
@@ -241,6 +242,7 @@ export type Database = {
         Insert: {
           card_number?: string | null
           condition?: string | null
+          cost_each?: number | null
           created_at?: string
           id?: string
           language?: string | null
@@ -259,6 +261,7 @@ export type Database = {
         Update: {
           card_number?: string | null
           condition?: string | null
+          cost_each?: number | null
           created_at?: string
           id?: string
           language?: string | null
