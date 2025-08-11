@@ -74,7 +74,7 @@ export default function RawIntake() {
     const print = printMap[form.printing || ""] || (form.printing || "").toUpperCase().replace(/\s+/g, "");
 
     if (form.product_id) {
-      return `P${form.product_id}-${cond || "UNK"}-${print || "UNK"}`;
+      return `${form.product_id}-${cond || "UNK"}-${print || "UNK"}`;
     }
 
     const ab = gameAbbr(form.game);
