@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -61,7 +60,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url,
-        formats: ["html", "markdown"]
+        formats: ["html", "markdown"],
       }),
     });
 
@@ -85,7 +84,7 @@ serve(async (req) => {
       );
     }
 
-    const fcJson = await fcResp.json().catch(() => null) as any;
+    const fcJson = (await fcResp.json().catch(() => null)) as any;
     // Firecrawl typically returns: { success: boolean, data: { html?: string, markdown?: string, ... } }
     const data = fcJson?.data || {};
     const html: string = data.html || data.content || "";
@@ -126,8 +125,14 @@ serve(async (req) => {
     const text = source;
 
     // Core fields
-    grade = grade || extract(text, />\s*Grade\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i) || extract(text, /PSA\s*([0-9]+(?:\.[0-9])?)/i);
-    year = year || extract(text, />\s*Year\s*<[^>]*>[\s\S]*?<[^>]*>\s*(\d{4})\s*</i) || extract(text, /\b(19|20)\d{2}\b/);
+    grade =
+      grade ||
+      extract(text, />\s*Grade\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i) ||
+      extract(text, /PSA\s*([0-9]+(?:\.[0-9])?)/i);
+    year =
+      year ||
+      extract(text, />\s*Year\s*<[^>]*>[\s\S]*?<[^>]*>\s*(\d{4})\s*</i) ||
+      extract(text, /\b(19|20)\d{2}\b/);
     setName = setName || extract(text, />\s*Set\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,120})\s*</i);
 
     // Name fields
@@ -138,13 +143,38 @@ serve(async (req) => {
 
     // Game/Sport
     const game: string | undefined =
-      extract(text, />\s*(?:Sport|Game|Category)\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,80})\s*</i) ||
-      extract(text, /(?:Sport|Game|Category):\s*([A-Za-z][A-Za-z0-9\s\-\/&]+)/i);
+      extract(
+        text,
+        />\s*(?:Sport|Game|Category)\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,80})\s*</i
+      ) || extract(text, /(?:Sport|Game|Category):\s*([A-Za-z][A-Za-z0-9\s\-\/&]+)/i);
 
     // Card number
     const cardNumber: string | undefined =
-      extract(text, />\s*(?:Card\s*(?:#|No\.?|Number))\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i) ||
-      extract(text, /(?:Card\s*(?:#|No\.?|Number))[:\s]*([A-Za-z0-9\-\.]{1,20})/i);
+      extract(
+        text,
+        />\s*(?:Card\s*(?:#|No\.?|Number))\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,40})\s*</i
+      ) || extract(text, /(?:Card\s*(?:#|No\.?|Number))[:\s]*([A-Za-z0-9\-\.]{1,20})/i);
+
+    // Additional PSA fields
+    const brandTitle: string | undefined =
+      extract(
+        text,
+        />\s*Brand\/?\s*Title\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,160})\s*</i
+      ) || extract(text, /(?:Brand\/?\s*Title)[:\s]*([^\n<]{1,160})/i);
+
+    const subject: string | undefined =
+      extract(text, />\s*Subject\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,160})\s*</i) ||
+      extract(text, /Subject[:\s]*([^\n<]{1,160})/i);
+
+    const category: string | undefined =
+      extract(text, />\s*Category\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,80})\s*</i) ||
+      extract(text, /Category[:\s]*([A-Za-z][A-Za-z0-9\s\-\/&]+)/i);
+
+    const varietyPedigree: string | undefined =
+      extract(
+        text,
+        />\s*Variety\/?\s*Pedigree\s*<[^>]*>[\s\S]*?<[^>]*>\s*([^<]{1,160})\s*</i
+      ) || extract(text, /Variety\/?\s*Pedigree[:\s]*([^\n<]{1,160})/i);
 
     // Title: try HTML title tag or build from parts
     title = title || extract(text, /<title>\s*([^<]+?)\s*<\/title>/i);
@@ -164,6 +194,10 @@ serve(async (req) => {
       game: game || undefined,
       cardNumber: cardNumber || undefined,
       grade: grade || undefined,
+      category: category || undefined,
+      brandTitle: brandTitle || undefined,
+      subject: subject || undefined,
+      varietyPedigree: varietyPedigree || undefined,
       // Back-compat fields
       player: player || cardName || undefined,
       set: setName || undefined,
@@ -175,9 +209,12 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error("psa-scrape (firecrawl) error", error);
-    return new Response(JSON.stringify({ ok: false, error: (error as Error).message }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: (error as Error).message }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
   }
 });
