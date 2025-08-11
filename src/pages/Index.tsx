@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import BarcodeLabel from "@/components/BarcodeLabel";
+import { supabase } from "@/integrations/supabase/client";
 
 type CardItem = {
   title: string;
@@ -34,6 +35,34 @@ const Index = () => {
   };
 
   const clearForm = () => setItem({ title: "", set: "", player: "", year: "", grade: "", psaCert: "", price: "", lot: "", sku: "" });
+
+  const fetchPsa = async () => {
+    const cert = (item.sku || item.psaCert || "").trim();
+    if (!cert) {
+      toast.error("Enter PSA number in SKU or PSA Cert");
+      return;
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke("psa-scrape", { body: { cert } });
+      if (error) throw error;
+      const d: any = data;
+      if (!d?.ok) throw new Error(d?.error || "Unknown PSA error");
+      setItem((prev) => ({
+        ...prev,
+        title: d.title || prev.title,
+        set: d.set || prev.set,
+        player: d.player || prev.player,
+        year: d.year || prev.year,
+        grade: d.grade || prev.grade,
+        psaCert: d.cert || prev.psaCert,
+        sku: prev.sku || d.cert || prev.psaCert,
+      }));
+      toast.success("PSA details fetched");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to fetch PSA details");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -99,7 +128,7 @@ const Index = () => {
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button onClick={addToBatch}>Add to Batch</Button>
                 <Button variant="secondary" onClick={clearForm}>Clear</Button>
-                <Button variant="outline" onClick={() => toast.info("PSA cert check will auto-fill after Supabase is connected")}>Fetch PSA Details</Button>
+                <Button variant="outline" onClick={fetchPsa}>Fetch PSA Details</Button>
               </div>
               <div className="mt-6">
                 <p className="text-sm text-muted-foreground mb-2">Barcode Preview</p>
