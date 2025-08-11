@@ -66,17 +66,27 @@ export default function RawIntake() {
   useEffect(() => {
     let active = true;
     const run = async () => {
-      if (!search || search.trim().length < 2) {
-        setSuggestions([]);
-        return;
-      }
       try {
         setLoading(true);
-        const { data, error } = await (supabase as any)
-          .from("trade_ins")
-          .select("name,set,set_code,card_number,price_each,sku,condition,language")
-          .ilike("name", `%${search}%`)
-          .limit(5);
+        const q = (search || "").trim();
+        let query: any;
+        if (!q || q.length < 2) {
+          // Show the 5 most recent trade-ins when query is empty/short
+          query = (supabase as any)
+            .from("trade_ins")
+            .select("name,set,set_code,card_number,price_each,sku,condition,language,created_at")
+            .order("created_at", { ascending: false })
+            .limit(5);
+        } else {
+          // Multi-field search across name, set, set_code, card_number, and sku
+          query = (supabase as any)
+            .from("trade_ins")
+            .select("name,set,set_code,card_number,price_each,sku,condition,language,created_at")
+            .or(`name.ilike.%${q}%,set.ilike.%${q}%,set_code.ilike.%${q}%,card_number.ilike.%${q}%,sku.ilike.%${q}%`)
+            .order("created_at", { ascending: false })
+            .limit(5);
+        }
+        const { data, error } = await query;
         if (error) throw error;
         if (!active) return;
         setSuggestions(data || []);
@@ -196,7 +206,7 @@ export default function RawIntake() {
 
       <div className="mt-4">
         <Label>Search existing (top 5)</Label>
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by name..." />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, set, set code, #, or SKU" />
         {loading ? (
           <div className="text-sm text-muted-foreground mt-2">Searching…</div>
         ) : suggestions.length > 0 ? (
@@ -205,7 +215,7 @@ export default function RawIntake() {
               <li key={`${s.sku || s.name}-${i}`} className="flex items-center justify-between gap-3 border rounded-md p-2">
                 <div className="text-sm">
                   <div className="font-medium">{s.name}</div>
-                  <div className="text-muted-foreground">{[s.set_code, s.card_number].filter(Boolean).join(" • ")}</div>
+                  <div className="text-muted-foreground">{[s.set_code, s.card_number, s.condition].filter(Boolean).join(" • ")}</div>
                 </div>
                 <Button size="sm" variant="secondary" onClick={() => applySuggestion(s)}>Use</Button>
               </li>
