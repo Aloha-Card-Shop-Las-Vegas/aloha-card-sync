@@ -289,9 +289,11 @@ export default function RawIntake() {
               </li>
             ))}
           </ul>
+        ) : ((form.name || '').trim().length >= 2 ? (
+          <div className="text-sm text-muted-foreground mt-2">No matches. Try refining the name or add a card # (e.g., 4/102).</div>
         ) : (
           <div className="text-sm text-muted-foreground mt-2">Type at least 2 characters in Name to search products</div>
-        )}
+        ))}
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
