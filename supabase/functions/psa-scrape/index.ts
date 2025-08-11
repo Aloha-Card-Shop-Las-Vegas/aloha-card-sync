@@ -61,24 +61,25 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         url,
-        formats: ["html", "markdown"],
-        pageOptions: {
-          includeTags: ["script[type='application/ld+json']", "title", "table", "div", "span"],
-        },
+        formats: ["html", "markdown"]
       }),
     });
 
     console.log("psa-scrape (firecrawl) status", fcResp.status);
 
     if (!fcResp.ok) {
-      const body = await fcResp.text().catch(() => "");
-      const bodySnippet = body.slice(0, 500);
+      const bodyText = await fcResp.text().catch(() => "");
+      let errorJson: any = null;
+      try { errorJson = JSON.parse(bodyText); } catch (_) {}
+      const bodySnippet = bodyText.slice(0, 500);
+      console.log("psa-scrape (firecrawl) error body", bodySnippet);
       return new Response(
         JSON.stringify({
           ok: false,
           error: `Firecrawl request failed (${fcResp.status})`,
           status: fcResp.status,
           bodySnippet,
+          errorJson,
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
