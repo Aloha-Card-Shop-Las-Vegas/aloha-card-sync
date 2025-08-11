@@ -45,7 +45,7 @@ const [item, setItem] = useState<CardItem>({
   cardNumber: "",
 });
   const [batch, setBatch] = useState<CardItem[]>([]);
-
+  const [lookupCert, setLookupCert] = useState("");
   const addToBatch = () => {
     if (!item.psaCert) {
       toast.error("Please fill Cert Number");
@@ -74,8 +74,8 @@ const clearForm = () => setItem({
   cardNumber: "",
 });
 
-  const fetchPsa = async () => {
-    const cert = (item.psaCert || item.sku || "").trim();
+  const fetchPsa = async (overrideCert?: string) => {
+    const cert = (overrideCert || item.psaCert || item.sku || "").trim();
     if (!cert) {
       toast.error("Enter PSA number in SKU or PSA Cert");
       return;
@@ -131,6 +131,15 @@ const clearForm = () => setItem({
               <CardTitle>Quick Intake</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="flex flex-col sm:flex-row items-stretch gap-2 mb-4">
+                <Input
+                  id="psa-lookup"
+                  value={lookupCert}
+                  onChange={(e) => setLookupCert(e.target.value)}
+                  placeholder="Enter PSA Cert # to fetch details"
+                />
+                <Button variant="outline" onClick={() => fetchPsa(lookupCert)}>Fetch PSA</Button>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="brandTitle">Brand / Title / Game</Label>
@@ -180,7 +189,7 @@ const clearForm = () => setItem({
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button onClick={addToBatch}>Add to Batch</Button>
                 <Button variant="secondary" onClick={clearForm}>Clear</Button>
-                <Button variant="outline" onClick={fetchPsa}>Fetch PSA Details</Button>
+                <Button variant="outline" onClick={() => fetchPsa()}>Fetch PSA Details</Button>
               </div>
             </CardContent>
           </Card>
