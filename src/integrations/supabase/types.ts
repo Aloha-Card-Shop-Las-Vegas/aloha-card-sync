@@ -73,6 +73,57 @@ export type Database = {
           },
         ]
       }
+      intake_items: {
+        Row: {
+          brand_title: string | null
+          card_number: string | null
+          category: string | null
+          created_at: string
+          grade: string | null
+          id: string
+          lot_number: string
+          price: number | null
+          psa_cert: string | null
+          sku: string | null
+          subject: string | null
+          updated_at: string
+          variant: string | null
+          year: string | null
+        }
+        Insert: {
+          brand_title?: string | null
+          card_number?: string | null
+          category?: string | null
+          created_at?: string
+          grade?: string | null
+          id?: string
+          lot_number?: string
+          price?: number | null
+          psa_cert?: string | null
+          sku?: string | null
+          subject?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: string | null
+        }
+        Update: {
+          brand_title?: string | null
+          card_number?: string | null
+          category?: string | null
+          created_at?: string
+          grade?: string | null
+          id?: string
+          lot_number?: string
+          price?: number | null
+          psa_cert?: string | null
+          sku?: string | null
+          subject?: string | null
+          updated_at?: string
+          variant?: string | null
+          year?: string | null
+        }
+        Relationships: []
+      }
       product_sync_status: {
         Row: {
           created_at: string | null
@@ -182,7 +233,10 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      generate_lot_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
     }
     Enums: {
       sync_status: "pending" | "synced" | "error"

@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,52 +28,163 @@ type CardItem = {
 };
 
 const Index = () => {
-const [item, setItem] = useState<CardItem>({
-  title: "",
-  set: "",
-  player: "",
-  year: "",
-  grade: "",
-  psaCert: "",
-  price: "",
-  lot: "",
-  sku: "",
-  brandTitle: "",
-  subject: "",
-  category: "",
-  variant: "",
-  labelType: "",
-  cardNumber: "",
-});
+  const [item, setItem] = useState<CardItem>({
+    title: "",
+    set: "",
+    player: "",
+    year: "",
+    grade: "",
+    psaCert: "",
+    price: "",
+    lot: "",
+    sku: "",
+    brandTitle: "",
+    subject: "",
+    category: "",
+    variant: "",
+    labelType: "",
+    cardNumber: "",
+  });
   const [batch, setBatch] = useState<CardItem[]>([]);
   const [lookupCert, setLookupCert] = useState("");
-  const addToBatch = () => {
+
+  // Build a display title similar to PSA fetch formatting
+  const buildTitleFromParts = (
+    year?: string | null,
+    brandTitle?: string | null,
+    cardNumber?: string | null,
+    subject?: string | null,
+    variant?: string | null
+  ) => {
+    return [
+      year,
+      (brandTitle || "").replace(/&amp;/g, "&"),
+      cardNumber ? `#${String(cardNumber).replace(/^#/, "")}` : undefined,
+      (subject || "").replace(/&amp;/g, "&"),
+      (variant || "").replace(/&amp;/g, "&"),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  };
+
+  // Load existing items from DB so batch persists
+  useEffect(() => {
+    const loadBatch = async () => {
+      console.log("Loading intake items from DB");
+      const { data, error } = await supabase
+        .from("intake_items")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Failed to load intake_items", error);
+        toast.error("Failed to load existing batch");
+        return;
+      }
+
+      const mapped: CardItem[] =
+        (data || []).map((row: any) => ({
+          title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
+          set: "", // not stored in DB
+          year: row.year || "",
+          grade: row.grade || "",
+          psaCert: row.psa_cert || "",
+          price: row?.price != null ? String(row.price) : "",
+          lot: row.lot_number || "",
+          sku: row.sku || "",
+          brandTitle: row.brand_title || "",
+          subject: row.subject || "",
+          category: row.category || "",
+          variant: row.variant || "",
+          cardNumber: row.card_number || "",
+        })) || [];
+
+      setBatch(mapped);
+    };
+
+    loadBatch();
+  }, []);
+
+  const addToBatch = async () => {
     if (!item.psaCert) {
       toast.error("Please fill Cert Number");
       return;
     }
-    const next = { ...item, sku: item.psaCert || `${Date.now()}` };
-    setBatch((b) => [next, ...b]);
-    toast.success("Added to batch");
+
+    const insertPayload = {
+      year: item.year || null,
+      brand_title: item.brandTitle || null,
+      subject: item.subject || null,
+      category: item.category || null,
+      variant: item.variant || null,
+      card_number: item.cardNumber || null,
+      grade: item.grade || null,
+      psa_cert: item.psaCert || null,
+      price: item.price ? Number(item.price) : null,
+      sku: item.sku || item.psaCert || null,
+    };
+
+    try {
+      const { data, error } = await supabase
+        .from("intake_items")
+        .insert(insertPayload)
+        .select("*")
+        .single();
+
+      if (error) throw error;
+
+      const next: CardItem = {
+        title:
+          buildTitleFromParts(
+            data?.year,
+            data?.brand_title,
+            data?.card_number,
+            data?.subject,
+            data?.variant
+          ) || item.title,
+        set: item.set || "",
+        player: item.player || "",
+        year: data?.year || "",
+        grade: data?.grade || "",
+        psaCert: data?.psa_cert || "",
+        price: data?.price != null ? String(data.price) : "",
+        lot: data?.lot_number || "",
+        sku: data?.sku || "",
+        brandTitle: data?.brand_title || "",
+        subject: data?.subject || "",
+        category: data?.category || "",
+        variant: data?.variant || "",
+        labelType: item.labelType || "",
+        cardNumber: data?.card_number || "",
+      };
+
+      setBatch((b) => [next, ...b]);
+      toast.success(`Added to batch (Lot ${next.lot})`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to save item");
+    }
   };
 
-const clearForm = () => setItem({
-  title: "",
-  set: "",
-  player: "",
-  year: "",
-  grade: "",
-  psaCert: "",
-  price: "",
-  lot: "",
-  sku: "",
-  brandTitle: "",
-  subject: "",
-  category: "",
-  variant: "",
-  labelType: "",
-  cardNumber: "",
-});
+  const clearForm = () =>
+    setItem({
+      title: "",
+      set: "",
+      player: "",
+      year: "",
+      grade: "",
+      psaCert: "",
+      price: "",
+      lot: "",
+      sku: "",
+      brandTitle: "",
+      subject: "",
+      category: "",
+      variant: "",
+      labelType: "",
+      cardNumber: "",
+    });
 
   const fetchPsa = async (overrideCert?: string) => {
     const cert = (overrideCert || item.psaCert || item.sku || "").trim();
@@ -177,10 +289,10 @@ const clearForm = () => setItem({
                   <Label htmlFor="price">Price</Label>
                   <Input id="price" value={item.price} onChange={(e) => setItem({ ...item, price: e.target.value })} placeholder="$" />
                 </div>
-                <div>
-                  <Label htmlFor="lot">Lot Number</Label>
-                  <Input id="lot" value={item.lot} onChange={(e) => setItem({ ...item, lot: e.target.value })} placeholder="e.g., LOT-2025-01" />
-                </div>
+                {/* Removed manual Lot Number input – lot is assigned automatically on save */}
+              </div>
+              <div className="mt-2 text-xs text-muted-foreground">
+                Lot number is assigned automatically when you add to batch.
               </div>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Button onClick={addToBatch}>Add to Batch</Button>
@@ -258,4 +370,3 @@ const clearForm = () => setItem({
 };
 
 export default Index;
-
