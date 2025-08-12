@@ -106,13 +106,37 @@ export default function LabelDesigner() {
     }
   };
 
+  const deleteSelected = () => {
+    if (!fabricCanvas) return;
+    const objs = fabricCanvas.getActiveObjects();
+    if (!objs.length) {
+      toast.info("No selection to delete");
+      return;
+    }
+    objs.forEach((o) => fabricCanvas.remove(o));
+    fabricCanvas.discardActiveObject();
+    fabricCanvas.requestRenderAll();
+  };
+
   const handleClear = () => {
     if (!fabricCanvas) return;
     fabricCanvas.getObjects().forEach((o) => fabricCanvas.remove(o));
     fabricCanvas.renderAll();
   };
-
   const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
+
+  // Keyboard shortcut: Delete key removes selected object(s)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete") return;
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || (ae as any).isContentEditable)) return;
+      e.preventDefault();
+      deleteSelected();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fabricCanvas]);
 
   const handleDownload = () => {
     const url = exportImageDataUrl();
@@ -168,6 +192,7 @@ export default function LabelDesigner() {
                 <Button onClick={() => addText(sku)}>Add SKU</Button>
                 <Button onClick={() => addText(price)}>Add Price</Button>
                 <Button variant="outline" onClick={addBarcode}>Add Barcode</Button>
+                <Button variant="outline" onClick={deleteSelected}>Delete Selected</Button>
                 <Button variant="secondary" onClick={handleClear}>Clear</Button>
               </div>
             </CardContent>
