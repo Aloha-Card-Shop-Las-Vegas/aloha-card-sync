@@ -538,17 +538,75 @@ const Index = () => {
     }
   };
 
+  // Isolated printing of barcode labels using hidden iframe
+  const printLabels = async (items: CardItem[]) => {
+    try {
+      const JsBarcode: any = (await import("jsbarcode")).default;
+      const images: string[] = [];
+      for (const it of items) {
+        const val = (it.sku || it.psaCert || "").trim();
+        if (!val) continue;
+        const tmp = document.createElement("canvas");
+        JsBarcode(tmp, val, {
+          format: "CODE128",
+          displayValue: true,
+          fontSize: 14,
+          lineColor: "#111827",
+          margin: 8,
+        });
+        images.push(tmp.toDataURL("image/png"));
+      }
+      if (images.length === 0) {
+        toast.error("No barcodes to print");
+        return;
+      }
+
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (!doc) { iframe.remove(); return; }
+
+      const imgsHtml = images.map((src) => `<div class="label"><img src="${src}" alt="Barcode" /></div>`).join("");
+      const html = `<!doctype html><html><head><title>Print Labels</title><style>
+        @page { size: auto; margin: 6mm; }
+        html, body { height: 100%; }
+        body { margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; }
+        .label { page-break-inside: avoid; margin: 8px 0; }
+        .label img { width: 320px; }
+      </style></head><body>${imgsHtml}
+      <script>setTimeout(function(){ window.focus(); window.print(); }, 20);<\/script>
+      </body></html>`;
+
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      const cleanup = () => setTimeout(() => iframe.remove(), 300);
+      iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
+      setTimeout(cleanup, 5000);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to prepare labels for printing");
+    }
+  };
+
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
     try {
       await markPrinted([b.id]);
-      window.print();
+      await printLabels([b]);
       toast.success(`Printed label for Lot ${b.lot || ""}`);
     } catch {
       toast.error("Failed to print");
     }
   };
-
   const handlePushRow = async (b: CardItem) => {
     if (!b.id) return;
     try {
@@ -589,7 +647,7 @@ const Index = () => {
     setPrintingAll(true);
     try {
       await markPrinted(ids);
-      window.print();
+      await printLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
       toast.success("Printed all labels");
     } catch {
       toast.error("Failed to print all");
@@ -628,7 +686,7 @@ const Index = () => {
     try {
       await markPushed(ids); // Remove from queue only after push succeeds
       await markPrinted(ids); // Mark printed for those items as well
-      window.print();
+      await printLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
       toast.success("Pushed and printed all");
     } catch {
       toast.error("Failed to push and print all");
