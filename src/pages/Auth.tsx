@@ -41,6 +41,7 @@ export default function Auth() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    console.log('Auth page mount');
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         // Check role and route accordingly
