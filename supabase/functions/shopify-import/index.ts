@@ -80,9 +80,55 @@ Deno.serve(async (req) => {
       return res.json();
     };
 
+    // Helper: Shopify GraphQL Admin API request
+    const gql = async (query: string, variables?: Record<string, unknown>) => {
+      const res = await fetch(`https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-07/graphql.json`, {
+        method: "POST",
+        headers: {
+          "X-Shopify-Access-Token": SHOPIFY_ADMIN_ACCESS_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query, variables }),
+      });
+      const json = await res.json();
+      if (!res.ok || json.errors) {
+        throw new Error(`Shopify GraphQL error: ${JSON.stringify(json.errors || json)}`);
+      }
+      return json.data;
+    };
+
+    const gidToId = (gid: string | null | undefined) => gid ? gid.split("/").pop() || "" : "";
+
     let productId = item.shopify_product_id as string | null;
     let variantId = item.shopify_variant_id as string | null;
     let inventoryItemId = item.shopify_inventory_item_id as string | null;
+
+    // If we don't have IDs yet, try to find an existing variant by SKU via GraphQL
+    if (!(variantId && productId && inventoryItemId)) {
+      try {
+        const data = await gql(
+          `query($q: String!) {\n            productVariants(first: 1, query: $q) {\n              edges { node { id product { id } inventoryItem { id } } }\n            }\n          }`,
+          { q: `sku:\"${String(sku).replace(/"/g, '\\"')}\"` }
+        );
+        const edge = data?.productVariants?.edges?.[0];
+        if (edge?.node) {
+          productId = gidToId(edge.node.product?.id);
+          variantId = gidToId(edge.node.id);
+          inventoryItemId = gidToId(edge.node.inventoryItem?.id);
+          // Persist Shopify IDs for future updates
+          await supabase
+            .from("intake_items")
+            .update({
+              shopify_product_id: productId,
+              shopify_variant_id: variantId,
+              shopify_inventory_item_id: inventoryItemId,
+            })
+            .eq("id", itemId);
+        }
+      } catch (e) {
+        console.warn("SKU lookup via GraphQL failed; will create product", e);
+      }
+    }
 
     if (variantId && productId && inventoryItemId) {
       // Update existing variant price and SKU if changed

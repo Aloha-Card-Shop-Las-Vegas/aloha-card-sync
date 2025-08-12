@@ -5,3 +5,7 @@ verify_jwt = false
 
 [functions.shopify-webhook]
 verify_jwt = false
+
+[functions.shopify-import]
+verify_jwt = false
+
