@@ -788,118 +788,21 @@ const Index = () => {
                     </TableHeader>
                     <TableBody>
                       {batch.map((b, i) => (
-                        <TableRow key={b.id || i}>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editYear} onChange={(e) => setEditYear(e.target.value)} />
-                            ) : (
-                              b.year
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editBrandTitle} onChange={(e) => setEditBrandTitle(e.target.value)} />
-                            ) : (
-                              b.brandTitle
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
-                            ) : (
-                              b.subject
-                            )}
-                          </TableCell>
-                          <TableCell>
-                          {editingId === b.id ? (
-                              <div className="min-w-[160px]">
-                                <Select value={editCategory || ""} onValueChange={setEditCategory}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select category" />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-background z-50">
-                                    {categories.length === 0 ? (
-                                      <SelectItem value="" disabled>No categories</SelectItem>
-                                    ) : (
-                                      categories.map((name) => (
-                                        <SelectItem key={name} value={name}>{name}</SelectItem>
-                                      ))
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            ) : (
-                              b.category
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editVariant} onChange={(e) => setEditVariant(e.target.value)} />
-                            ) : (
-                              b.variant
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editCardNumber} onChange={(e) => setEditCardNumber(e.target.value)} />
-                            ) : (
-                              b.cardNumber
-                            )}
-                          </TableCell>
-                          <TableCell>
-                          {editingId === b.id ? (
-                              <div className="min-w-[160px]">
-                                <Select value={editGrade || ""} onValueChange={setEditGrade}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select grade" />
-                                  </SelectTrigger>
-                                  <SelectContent className="bg-background z-50">
-                                    {PSA_GRADE_OPTIONS.map((g) => (
-                                      <SelectItem key={g} value={g}>{g}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            ) : (
-                              b.grade
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editPsaCert} onChange={(e) => setEditPsaCert(e.target.value)} />
-                            ) : (
-                              b.psaCert
-                            )}
-                          </TableCell>
+                        <> 
+                          <TableRow key={b.id || i}>
+                          <TableCell>{b.year}</TableCell>
+                          <TableCell>{b.brandTitle}</TableCell>
+                          <TableCell>{b.subject}</TableCell>
+                          <TableCell>{b.category}</TableCell>
+                          <TableCell>{b.variant}</TableCell>
+                          <TableCell>{b.cardNumber}</TableCell>
+                          <TableCell>{b.grade}</TableCell>
+                          <TableCell>{b.psaCert}</TableCell>
                           <TableCell>{b.lot}</TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editCost} onChange={(e) => setEditCost(e.target.value)} placeholder="$" />
-                            ) : (
-                              b.cost
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="$" />
-                            ) : (
-                              b.price
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input type="number" value={String(editQty)} onChange={(e) => setEditQty(Number(e.target.value) || 0)} />
-                            ) : (
-                              b.quantity ?? 1
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editSku} onChange={(e) => setEditSku(e.target.value)} />
-                            ) : (
-                              b.sku
-                            )}
-                          </TableCell>
+                          <TableCell>{b.cost}</TableCell>
+                          <TableCell>{b.price}</TableCell>
+                          <TableCell>{b.quantity ?? 1}</TableCell>
+                          <TableCell>{b.sku}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {editingId === b.id ? (
@@ -924,7 +827,92 @@ const Index = () => {
                               )}
                             </div>
                           </TableCell>
-                        </TableRow>
+                          </TableRow>
+                          {editingId === b.id && (
+                            <TableRow>
+                              <TableCell colSpan={15}>
+                                <div className="p-4 rounded-md border bg-card">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                      <Label htmlFor={`year-${b.id}`}>Year</Label>
+                                      <Input id={`year-${b.id}`} value={editYear} onChange={(e) => setEditYear(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`brand-${b.id}`}>Brand / Title / Game</Label>
+                                      <Input id={`brand-${b.id}`} value={editBrandTitle} onChange={(e) => setEditBrandTitle(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`subject-${b.id}`}>Subject</Label>
+                                      <Input id={`subject-${b.id}`} value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label>Category</Label>
+                                      <Select value={editCategory || ""} onValueChange={setEditCategory}>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select category" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-background z-50">
+                                          {categories.length === 0 ? (
+                                            <SelectItem value="" disabled>No categories</SelectItem>
+                                          ) : (
+                                            categories.map((name) => (
+                                              <SelectItem key={name} value={name}>{name}</SelectItem>
+                                            ))
+                                          )}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`variant-${b.id}`}>Variant</Label>
+                                      <Input id={`variant-${b.id}`} value={editVariant} onChange={(e) => setEditVariant(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`cardno-${b.id}`}>Card Number</Label>
+                                      <Input id={`cardno-${b.id}`} value={editCardNumber} onChange={(e) => setEditCardNumber(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label>Grade</Label>
+                                      <Select value={editGrade || ""} onValueChange={setEditGrade}>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select grade" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-background z-50">
+                                          {PSA_GRADE_OPTIONS.map((g) => (
+                                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`psa-${b.id}`}>PSA Cert</Label>
+                                      <Input id={`psa-${b.id}`} value={editPsaCert} onChange={(e) => setEditPsaCert(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`cost-${b.id}`}>Cost</Label>
+                                      <Input id={`cost-${b.id}`} value={editCost} onChange={(e) => setEditCost(e.target.value)} placeholder="$" />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`price-${b.id}`}>Price</Label>
+                                      <Input id={`price-${b.id}`} value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="$" />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`qty-${b.id}`}>Quantity</Label>
+                                      <Input id={`qty-${b.id}`} type="number" value={String(editQty)} onChange={(e) => setEditQty(Number(e.target.value) || 0)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`sku-${b.id}`}>SKU</Label>
+                                      <Input id={`sku-${b.id}`} value={editSku} onChange={(e) => setEditSku(e.target.value)} />
+                                    </div>
+                                  </div>
+                                  <div className="mt-4 flex flex-wrap gap-2">
+                                    <Button onClick={() => saveEditRow(b)}>Save</Button>
+                                    <Button variant="secondary" onClick={cancelEditRow}>Cancel</Button>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
                       ))}
                     </TableBody>
                   </Table>
