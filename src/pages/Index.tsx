@@ -823,10 +823,7 @@ const Index = () => {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
                               {editingId === b.id ? (
-                                <>
-                                  <Button size="sm" onClick={() => saveEditRow(b)}>Save</Button>
-                                  <Button size="sm" variant="secondary" onClick={cancelEditRow}>Cancel</Button>
-                                </>
+                                <Button size="sm" variant="secondary" onClick={cancelEditRow}>Close</Button>
                               ) : (
                                 <>
                                   <Button
