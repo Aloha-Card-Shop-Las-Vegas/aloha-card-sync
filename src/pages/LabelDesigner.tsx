@@ -1,0 +1,239 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { Link } from "react-router-dom";
+import { Canvas as FabricCanvas, Textbox, Image as FabricImage } from "fabric";
+
+function useSEO(opts: { title: string; description?: string; canonical?: string }) {
+  useEffect(() => {
+    document.title = opts.title;
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) metaDesc.setAttribute("content", opts.description || "");
+    else if (opts.description) {
+      const m = document.createElement("meta");
+      m.name = "description";
+      m.content = opts.description;
+      document.head.appendChild(m);
+    }
+    const linkCanonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    const href = opts.canonical || window.location.href;
+    if (linkCanonical) linkCanonical.href = href; else { const l = document.createElement("link"); l.rel = "canonical"; l.href = href; document.head.appendChild(l); }
+  }, [opts.title, opts.description, opts.canonical]);
+}
+
+const LABEL_WIDTH_IN = 2; // inches
+const LABEL_HEIGHT_IN = 1; // inches
+const PREVIEW_DPI = 150; // screen preview DPI
+const PX_WIDTH = Math.round(LABEL_WIDTH_IN * PREVIEW_DPI); // 300 px
+const PX_HEIGHT = Math.round(LABEL_HEIGHT_IN * PREVIEW_DPI); // 150 px
+
+export default function LabelDesigner() {
+  useSEO({ title: "Label Designer 2x1 in | Aloha", description: "Design and print 2x1 inch labels with barcode, lot, SKU, price, and more." });
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
+
+  // Printer UI (note: browsers can't enumerate printers without helpers like QZ Tray)
+  const [printerName, setPrinterName] = useState("");
+  const labelSizeText = useMemo(() => `${LABEL_WIDTH_IN} in × ${LABEL_HEIGHT_IN} in`, []);
+
+  const [barcodeValue, setBarcodeValue] = useState("120979260");
+  const [title, setTitle] = useState("POKEMON GENGAR VMAX #020");
+  const [lot, setLot] = useState("LOT-000001");
+  const [price, setPrice] = useState("$1,000");
+  const [sku, setSku] = useState("120979260");
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    const canvas = new FabricCanvas(canvasRef.current, {
+      width: PX_WIDTH,
+      height: PX_HEIGHT,
+      backgroundColor: "#ffffff",
+    });
+
+    // Starter layout: Title, Lot, Price
+    const titleBox = new Textbox(title, { left: 6, top: 6, fontSize: 14, width: PX_WIDTH - 12 });
+    const lotBox = new Textbox(lot, { left: 6, top: 28, fontSize: 12, width: PX_WIDTH - 12 });
+    const priceBox = new Textbox(price, { left: PX_WIDTH - 80, top: PX_HEIGHT - 22, fontSize: 14, textAlign: "right", width: 74 });
+
+    canvas.add(titleBox, lotBox, priceBox);
+
+    setFabricCanvas(canvas);
+    toast.success("Label canvas ready. Drag elements to position.");
+
+    return () => {
+      canvas.dispose();
+    };
+  }, []);
+
+  const addText = (text: string) => {
+    if (!fabricCanvas) return;
+    const tb = new Textbox(text, { left: 10, top: 10, fontSize: 12, width: PX_WIDTH - 20 });
+    fabricCanvas.add(tb);
+    fabricCanvas.setActiveObject(tb);
+  };
+
+  const addBarcode = async () => {
+    if (!fabricCanvas) return;
+    if (!barcodeValue.trim()) {
+      toast.error("Enter a barcode value");
+      return;
+    }
+
+    try {
+      const tempCanvas = document.createElement("canvas");
+      const JsBarcode: any = (await import("jsbarcode")).default;
+      JsBarcode(tempCanvas, barcodeValue, { format: "CODE128", displayValue: false, margin: 0, width: 2, height: 40, lineColor: "#000" });
+      const dataUrl = tempCanvas.toDataURL("image/png");
+
+      FabricImage.fromURL(dataUrl).then((img) => {
+        img.set({ left: 6, top: PX_HEIGHT - 50, selectable: true });
+        // Scale if too wide
+        const maxW = PX_WIDTH - 12;
+        if (img.width && img.width > maxW) {
+          img.scaleToWidth(maxW);
+        }
+        fabricCanvas.add(img);
+        fabricCanvas.setActiveObject(img);
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to generate barcode");
+    }
+  };
+
+  const handleClear = () => {
+    if (!fabricCanvas) return;
+    fabricCanvas.getObjects().forEach((o) => fabricCanvas.remove(o));
+    fabricCanvas.renderAll();
+  };
+
+  const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
+
+  const handleDownload = () => {
+    const url = exportImageDataUrl();
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `label-${Date.now()}.png`;
+    a.click();
+  };
+
+  const handlePrint = () => {
+    const url = exportImageDataUrl();
+    if (!url) return;
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`<!doctype html><html><head><title>Print 2x1 Label</title><style>
+      @page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in; margin: 0; }
+      body { margin: 0; display: flex; align-items: center; justify-content: center; }
+      img { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; }
+    </style></head><body><img src="${url}" alt="Label" /></body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 200);
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b">
+        <div className="container mx-auto px-6 py-8 flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground">Label Designer</h1>
+            <p className="text-muted-foreground mt-2">Design 2×1 inch labels. Use system print dialog to choose your printer.</p>
+          </div>
+          <Link to="/">
+            <Button variant="secondary">Back to Dashboard</Button>
+          </Link>
+        </div>
+      </header>
+
+      <main className="container mx-auto px-6 py-8">
+        <div className="grid lg:grid-cols-3 gap-6">
+          <Card className="shadow-aloha lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Canvas (2×1 in preview)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded-md p-3 inline-block" style={{ width: PX_WIDTH + 8, height: PX_HEIGHT + 8 }}>
+                <canvas ref={canvasRef} width={PX_WIDTH} height={PX_HEIGHT} aria-label="Label design canvas" />
+              </div>
+              <div className="flex flex-wrap gap-2 mt-4">
+                <Button onClick={() => addText(title)}>Add Title</Button>
+                <Button onClick={() => addText(lot)}>Add Lot</Button>
+                <Button onClick={() => addText(sku)}>Add SKU</Button>
+                <Button onClick={() => addText(price)}>Add Price</Button>
+                <Button variant="outline" onClick={addBarcode}>Add Barcode</Button>
+                <Button variant="secondary" onClick={handleClear}>Clear</Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-6">
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Printer Options</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="printer">Printer</Label>
+                    <Input id="printer" value={printerName} onChange={(e) => setPrinterName(e.target.value)} placeholder="Select in system dialog (optional name)" />
+                    <p className="text-xs text-muted-foreground mt-1">Browsers can’t list printers. When you click Print, choose your printer in the system dialog.</p>
+                  </div>
+                  <div>
+                    <Label>Label Size</Label>
+                    <div className="mt-2">{labelSizeText}</div>
+                  </div>
+                  <div>
+                    <Label htmlFor="barcode">Barcode Value</Label>
+                    <Input id="barcode" value={barcodeValue} onChange={(e) => setBarcodeValue(e.target.value)} placeholder="e.g., 120979260" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="title">Title</Label>
+                      <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="lot">Lot</Label>
+                      <Input id="lot" value={lot} onChange={(e) => setLot(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="sku">SKU</Label>
+                      <Input id="sku" value={sku} onChange={(e) => setSku(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="price">Price</Label>
+                      <Input id="price" value={price} onChange={(e) => setPrice(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <Button onClick={handlePrint}>Print 2×1</Button>
+                    <Button variant="outline" onClick={handleDownload}>Download PNG</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Tips</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
+                  <li>Set your printer media to 2×1 inches and zero margins.</li>
+                  <li>Disable page headers/footers in the print dialog.</li>
+                  <li>Use thermal printer driver settings for best density.</li>
+                </ul>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

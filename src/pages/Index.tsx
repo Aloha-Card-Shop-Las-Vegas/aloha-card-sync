@@ -404,6 +404,7 @@ const Index = () => {
               <Button onClick={() => toast.info("Connect Supabase to enable login & sync")}>Get Started</Button>
               <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
               <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
+              <Link to="/labels"><Button variant="outline">Label Designer</Button></Link>
             </div>
           </div>
         </div>
