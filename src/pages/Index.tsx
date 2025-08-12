@@ -11,7 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
-import EditIntakeItemDialog from "@/components/EditIntakeItemDialog";
+
 
 type CardItem = {
   title: string;
@@ -67,6 +67,14 @@ const Index = () => {
 
   // Inline edit state for Batch Queue
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editYear, setEditYear] = useState<string>("");
+  const [editBrandTitle, setEditBrandTitle] = useState<string>("");
+  const [editSubject, setEditSubject] = useState<string>("");
+  const [editCategory, setEditCategory] = useState<string>("");
+  const [editVariant, setEditVariant] = useState<string>("");
+  const [editCardNumber, setEditCardNumber] = useState<string>("");
+  const [editGrade, setEditGrade] = useState<string>("");
+  const [editPsaCert, setEditPsaCert] = useState<string>("");
   const [editPrice, setEditPrice] = useState<string>("");
   const [editCost, setEditCost] = useState<string>("");
   const [editQty, setEditQty] = useState<number>(1);
@@ -344,6 +352,14 @@ const Index = () => {
   const startEditRow = (b: CardItem) => {
     if (!b.id) return;
     setEditingId(b.id);
+    setEditYear(b.year || "");
+    setEditBrandTitle(b.brandTitle || "");
+    setEditSubject(b.subject || "");
+    setEditCategory(b.category || "");
+    setEditVariant(b.variant || "");
+    setEditCardNumber(b.cardNumber || "");
+    setEditGrade(b.grade || "");
+    setEditPsaCert(b.psaCert || "");
     setEditPrice(b.price || "");
     setEditCost(b.cost || "");
     setEditQty(b.quantity ?? 1);
@@ -356,26 +372,43 @@ const Index = () => {
 
   const saveEditRow = async (b: CardItem) => {
     if (!b.id) return;
-    const payload = {
+    const payload: any = {
+      year: editYear || null,
+      brand_title: editBrandTitle || null,
+      subject: editSubject || null,
+      category: editCategory || null,
+      variant: editVariant || null,
+      card_number: editCardNumber || null,
+      grade: editGrade || null,
+      psa_cert: editPsaCert || null,
       price: editPrice !== "" ? Number(editPrice) : null,
       cost: editCost !== "" ? Number(editCost) : null,
       quantity: Number(editQty) || 1,
       sku: editSku || null,
-    } as const;
+    };
     try {
       const { data, error } = await supabase
         .from('intake_items')
-        .update(payload as any)
+        .update(payload)
         .eq('id', b.id)
         .select('*')
         .single();
       if (error) throw error;
       setBatch(prev => prev.map(x => x.id === b.id ? {
         ...x,
-        price: payload.price != null ? String(payload.price) : '',
-        cost: payload.cost != null ? String(payload.cost) : '',
-        quantity: payload.quantity,
-        sku: payload.sku || ''
+        year: data?.year || '',
+        brandTitle: data?.brand_title || '',
+        subject: data?.subject || '',
+        category: data?.category || '',
+        variant: data?.variant || '',
+        cardNumber: data?.card_number || '',
+        grade: data?.grade || '',
+        psaCert: data?.psa_cert || '',
+        price: data?.price != null ? String(data.price) : '',
+        cost: data?.cost != null ? String(data.cost) : '',
+        quantity: data?.quantity ?? (Number(editQty) || 1),
+        sku: data?.sku || '' ,
+        title: buildTitleFromParts(data?.year, data?.brand_title, data?.card_number, data?.subject, data?.variant),
       } : x));
       setEditingId(null);
       toast.success(`Updated Lot ${b.lot || ''}`);
@@ -704,8 +737,12 @@ const Index = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Title</TableHead>
-                        <TableHead>Set</TableHead>
+                        <TableHead>Year</TableHead>
+                        <TableHead>Brand/Title</TableHead>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Variant</TableHead>
+                        <TableHead>Card #</TableHead>
                         <TableHead>Grade</TableHead>
                         <TableHead>PSA</TableHead>
                         <TableHead>Lot</TableHead>
@@ -719,10 +756,62 @@ const Index = () => {
                     <TableBody>
                       {batch.map((b, i) => (
                         <TableRow key={b.id || i}>
-                          <TableCell>{b.title}</TableCell>
-                          <TableCell>{b.set}</TableCell>
-                          <TableCell>{b.grade}</TableCell>
-                          <TableCell>{b.psaCert}</TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editYear} onChange={(e) => setEditYear(e.target.value)} />
+                            ) : (
+                              b.year
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editBrandTitle} onChange={(e) => setEditBrandTitle(e.target.value)} />
+                            ) : (
+                              b.brandTitle
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
+                            ) : (
+                              b.subject
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editCategory} onChange={(e) => setEditCategory(e.target.value)} />
+                            ) : (
+                              b.category
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editVariant} onChange={(e) => setEditVariant(e.target.value)} />
+                            ) : (
+                              b.variant
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editCardNumber} onChange={(e) => setEditCardNumber(e.target.value)} />
+                            ) : (
+                              b.cardNumber
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editGrade} onChange={(e) => setEditGrade(e.target.value)} />
+                            ) : (
+                              b.grade
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editPsaCert} onChange={(e) => setEditPsaCert(e.target.value)} />
+                            ) : (
+                              b.psaCert
+                            )}
+                          </TableCell>
                           <TableCell>{b.lot}</TableCell>
                           <TableCell>
                             {editingId === b.id ? (
@@ -771,7 +860,6 @@ const Index = () => {
                                   </Button>
                                   <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
                                   <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
-                                  <Button size="sm" variant="secondary" onClick={() => openDetails(b)}>Details</Button>
                                   <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(b)}>Delete</Button>
                                 </>
                               )}
