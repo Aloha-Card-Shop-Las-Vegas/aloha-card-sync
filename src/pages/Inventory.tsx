@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 
 // Simple SEO helpers without extra deps
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
@@ -126,6 +127,9 @@ export default function Inventory() {
         if (pushed === "pushed") query = query.not("pushed_at", "is", null);
         if (pushed === "unpushed") query = query.is("pushed_at", null);
 
+        // Exclude soft-deleted records
+        query = query.is("deleted_at", null);
+
         const from = (page - 1) * pageSize;
         const to = from + pageSize - 1;
         const { data, error, count } = await query.range(from, to);
@@ -147,6 +151,23 @@ export default function Inventory() {
     else {
       setSortKey(key);
       setSortAsc(false);
+    }
+  };
+
+  const handleDeleteRow = async (row: ItemRow) => {
+    const reason = window.prompt("Delete reason (optional)?") || null;
+    try {
+      const { error } = await supabase
+        .from("intake_items")
+        .update({ deleted_at: new Date().toISOString(), deleted_reason: reason })
+        .eq("id", row.id);
+      if (error) throw error;
+      setItems((prev) => prev.filter((it) => it.id !== row.id));
+      setTotal((t) => Math.max(0, t - 1));
+      toast.success(`Deleted Lot ${row.lot_number}${reason ? ` (${reason})` : ""}`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to delete item");
     }
   };
 
@@ -274,6 +295,7 @@ export default function Inventory() {
                     <TableHead>Printed</TableHead>
                     <TableHead>Pushed</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -294,12 +316,17 @@ export default function Inventory() {
                           {it.pushed_at ? <Badge variant="secondary">Pushed</Badge> : <Badge>Unpushed</Badge>}
                         </TableCell>
                         <TableCell>{new Date(it.created_at).toLocaleString()}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(it)}>
+                            Delete
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     );
                   })}
                   {items.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-muted-foreground">
+                      <TableCell colSpan={10} className="text-center text-muted-foreground">
                         {loading ? "Loading…" : "No items found"}
                       </TableCell>
                     </TableRow>
