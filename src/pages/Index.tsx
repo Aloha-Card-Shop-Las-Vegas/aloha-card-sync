@@ -88,6 +88,7 @@ const Index = () => {
       const { data, error } = await supabase
         .from("intake_items")
         .select("*")
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -337,6 +338,23 @@ const Index = () => {
     }
   };
 
+  const handleDeleteRow = async (b: CardItem) => {
+    if (!b.id) return;
+    const reason = window.prompt("Delete reason (optional)?") || null;
+    try {
+      const { error } = await supabase
+        .from("intake_items")
+        .update({ deleted_at: new Date().toISOString(), deleted_reason: reason })
+        .eq("id", b.id);
+      if (error) throw error;
+      setBatch((prev) => prev.filter((x) => x.id !== b.id));
+      toast.success(`Deleted Lot ${b.lot || ""}${reason ? ` (${reason})` : ""}`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to delete item");
+    }
+  };
+
   // Bulk actions
   const handlePrintAll = async () => {
     const ids = batch.map((b) => b.id!).filter(Boolean);
@@ -573,6 +591,13 @@ const Index = () => {
                                 onClick={() => handlePushRow(b)}
                               >
                                 Push
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleDeleteRow(b)}
+                              >
+                                Delete
                               </Button>
                             </div>
                           </TableCell>

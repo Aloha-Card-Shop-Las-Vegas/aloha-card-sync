@@ -80,6 +80,8 @@ export type Database = {
           category: string | null
           cost: number | null
           created_at: string
+          deleted_at: string | null
+          deleted_reason: string | null
           grade: string | null
           id: string
           lot_number: string
@@ -99,6 +101,8 @@ export type Database = {
           category?: string | null
           cost?: number | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_reason?: string | null
           grade?: string | null
           id?: string
           lot_number?: string
@@ -118,6 +122,8 @@ export type Database = {
           category?: string | null
           cost?: number | null
           created_at?: string
+          deleted_at?: string | null
+          deleted_reason?: string | null
           grade?: string | null
           id?: string
           lot_number?: string
