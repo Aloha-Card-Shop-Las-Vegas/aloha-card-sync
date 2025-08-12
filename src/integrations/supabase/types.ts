@@ -133,6 +133,33 @@ export type Database = {
         }
         Relationships: []
       }
+      label_templates: {
+        Row: {
+          canvas: Json
+          created_at: string
+          data: Json | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          canvas: Json
+          created_at?: string
+          data?: Json | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          canvas?: Json
+          created_at?: string
+          data?: Json | null
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       product_sync_status: {
         Row: {
           created_at: string | null

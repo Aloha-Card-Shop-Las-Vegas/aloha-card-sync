@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { Canvas as FabricCanvas, Textbox, Image as FabricImage, Rect } from "fabric";
+import { supabase } from "@/integrations/supabase/client";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -44,6 +45,16 @@ const withCondition = (base: string, condition: string) => {
   return base ? `${base} • ${abbr}` : abbr;
 };
 
+// Shared template type
+type LabelTemplate = {
+  id: string;
+  name: string;
+  canvas: any;
+  data: any;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export default function LabelDesigner() {
   useSEO({ title: "Label Designer 2x1 in | Aloha", description: "Design and print 2x1 inch labels with barcode, lot, SKU, price, and more." });
 
@@ -59,8 +70,13 @@ export default function LabelDesigner() {
   const [title, setTitle] = useState("POKEMON GENGAR VMAX #020");
   const [lot, setLot] = useState("LOT-000001");
   const [price, setPrice] = useState("$1,000");
-  const [sku, setSku] = useState("120979260");
+const [sku, setSku] = useState("120979260");
   const [condition, setCondition] = useState("Near Mint");
+
+  // Templates state
+  const [templateName, setTemplateName] = useState("");
+  const [templates, setTemplates] = useState<LabelTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -161,7 +177,108 @@ export default function LabelDesigner() {
     fabricCanvas.discardActiveObject();
     fabricCanvas.requestRenderAll();
   };
-  const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
+const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
+
+  // Templates: fetch, save, load, delete
+  const fetchTemplates = async () => {
+    const { data, error } = await supabase
+      .from('label_templates')
+      .select('*')
+      .order('updated_at', { ascending: false });
+    if (error) {
+      console.error(error);
+      toast.error('Failed to load templates');
+      return;
+    }
+    setTemplates((data as unknown as LabelTemplate[]) || []);
+  };
+
+  const saveTemplate = async () => {
+    if (!fabricCanvas) return;
+    if (!templateName.trim()) {
+      toast.error('Enter a template name');
+      return;
+    }
+    const payload = {
+      name: templateName.trim(),
+      canvas: fabricCanvas.toJSON(),
+      data: {
+        barcodeValue,
+        title,
+        lot,
+        price,
+        sku,
+        condition,
+        size: { widthIn: LABEL_WIDTH_IN, heightIn: LABEL_HEIGHT_IN, dpi: PREVIEW_DPI },
+      },
+    } as const;
+
+    const { error } = await supabase.from('label_templates').insert(payload as any);
+    if (error) {
+      console.error(error);
+      toast.error('Save failed');
+    } else {
+      toast.success('Template saved');
+      setTemplateName('');
+      fetchTemplates();
+    }
+  };
+
+  const loadTemplate = async (id: string) => {
+    const tpl = templates.find(t => (t as any).id === id) as any;
+    if (!tpl || !fabricCanvas) return;
+
+    // Restore side fields if present
+    const d = (tpl.data || {}) as any;
+    setBarcodeValue(d.barcodeValue ?? "");
+    setTitle(d.title ?? "");
+    setLot(d.lot ?? "");
+    setPrice(d.price ?? "");
+    setSku(d.sku ?? "");
+    setCondition(d.condition ?? condition);
+
+    // Reset canvas then load objects
+    fabricCanvas.clear();
+    fabricCanvas.backgroundColor = '#ffffff';
+    fabricCanvas.renderAll();
+
+    fabricCanvas.loadFromJSON(tpl.canvas, () => {
+      // Re-add non-exported border outline
+      const border = new Rect({
+        left: 1,
+        top: 1,
+        width: PX_WIDTH - 2,
+        height: PX_HEIGHT - 2,
+        rx: 6,
+        ry: 6,
+        fill: 'transparent',
+        stroke: '#000',
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+        excludeFromExport: true,
+      });
+      borderRef.current = border;
+      fabricCanvas.add(border);
+      fabricCanvas.renderAll();
+    });
+  };
+
+  const deleteTemplate = async (id: string) => {
+    const { error } = await supabase.from('label_templates').delete().eq('id', id);
+    if (error) {
+      console.error(error);
+      toast.error('Delete failed');
+    } else {
+      toast.success('Template deleted');
+      if (selectedTemplateId === id) setSelectedTemplateId('');
+      fetchTemplates();
+    }
+  };
+
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
 
   // Keyboard shortcut: Delete key removes selected object(s)
   useEffect(() => {
@@ -292,6 +409,47 @@ export default function LabelDesigner() {
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button onClick={handlePrint}>Print 2×1</Button>
                     <Button variant="outline" onClick={handleDownload}>Download PNG</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Templates</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="tplName">New template name</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input id="tplName" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g., 2×1: Pokemon NM" />
+                      <Button onClick={saveTemplate}>Save</Button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="tplSelect">Load template</Label>
+                    <Select
+                      value={selectedTemplateId}
+                      onValueChange={(v) => {
+                        setSelectedTemplateId(v);
+                        loadTemplate(v);
+                      }}
+                    >
+                      <SelectTrigger id="tplSelect">
+                        <SelectValue placeholder={templates.length ? `Choose (${templates.length})` : "No templates yet"} />
+                      </SelectTrigger>
+                      <SelectContent className="z-50">
+                        {templates.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedTemplateId && (
+                      <div className="mt-2">
+                        <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete Selected</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>
