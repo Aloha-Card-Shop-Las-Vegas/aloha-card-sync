@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { Canvas as FabricCanvas, Textbox, Image as FabricImage, Rect } from "fabric";
@@ -30,6 +31,19 @@ const PREVIEW_DPI = 150; // screen preview DPI
 const PX_WIDTH = Math.round(LABEL_WIDTH_IN * PREVIEW_DPI); // 300 px
 const PX_HEIGHT = Math.round(LABEL_HEIGHT_IN * PREVIEW_DPI); // 150 px
 
+const condMap: Record<string, string> = {
+  "Near Mint": "NM",
+  "Lightly Played": "LP",
+  "Moderately Played": "MP",
+  "Heavily Played": "HP",
+  "Damaged": "DMG",
+};
+
+const withCondition = (base: string, condition: string) => {
+  const abbr = condMap[condition] || condition;
+  return base ? `${base} • ${abbr}` : abbr;
+};
+
 export default function LabelDesigner() {
   useSEO({ title: "Label Designer 2x1 in | Aloha", description: "Design and print 2x1 inch labels with barcode, lot, SKU, price, and more." });
 
@@ -46,6 +60,7 @@ export default function LabelDesigner() {
   const [lot, setLot] = useState("LOT-000001");
   const [price, setPrice] = useState("$1,000");
   const [sku, setSku] = useState("120979260");
+  const [condition, setCondition] = useState("Near Mint");
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -74,7 +89,7 @@ export default function LabelDesigner() {
     borderRef.current = border;
 
     // Starter layout: Title, Lot, Price
-    const titleBox = new Textbox(title, { left: 6, top: 6, fontSize: 14, width: PX_WIDTH - 12 });
+    const titleBox = new Textbox(withCondition(title, condition), { left: 6, top: 6, fontSize: 14, width: PX_WIDTH - 12 });
     const lotBox = new Textbox(lot, { left: 6, top: 28, fontSize: 12, width: PX_WIDTH - 12 });
     const priceBox = new Textbox(price, { left: PX_WIDTH - 80, top: PX_HEIGHT - 22, fontSize: 14, textAlign: "right", width: 74 });
 
@@ -210,7 +225,7 @@ export default function LabelDesigner() {
                 <canvas ref={canvasRef} width={PX_WIDTH} height={PX_HEIGHT} aria-label="Label design canvas" />
               </div>
               <div className="flex flex-wrap gap-2 mt-4">
-                <Button onClick={() => addText(title)}>Add Title</Button>
+                <Button onClick={() => addText(withCondition(title, condition))}>Add Title + Condition</Button>
                 <Button onClick={() => addText(lot)}>Add Lot</Button>
                 <Button onClick={() => addText(sku)}>Add SKU</Button>
                 <Button onClick={() => addText(price)}>Add Price</Button>
@@ -245,6 +260,21 @@ export default function LabelDesigner() {
                     <div>
                       <Label htmlFor="title">Title</Label>
                       <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="condition">Condition</Label>
+                      <Select value={condition} onValueChange={setCondition}>
+                        <SelectTrigger id="condition">
+                          <SelectValue placeholder="Select condition" />
+                        </SelectTrigger>
+                        <SelectContent className="z-50">
+                          <SelectItem value="Near Mint">Near Mint (NM)</SelectItem>
+                          <SelectItem value="Lightly Played">Lightly Played (LP)</SelectItem>
+                          <SelectItem value="Moderately Played">Moderately Played (MP)</SelectItem>
+                          <SelectItem value="Heavily Played">Heavily Played (HP)</SelectItem>
+                          <SelectItem value="Damaged">Damaged</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
                       <Label htmlFor="lot">Lot</Label>
