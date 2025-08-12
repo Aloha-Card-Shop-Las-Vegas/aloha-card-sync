@@ -429,7 +429,7 @@ const Index = () => {
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">Aloha Card Inventory Manager</h1>
             <p className="mt-4 text-lg text-muted-foreground">Centralize PSA-graded cards, batch intake with lot tracking, print barcodes, and sync to Shopify.</p>
             <div className="mt-6 flex gap-3">
-              <Button onClick={() => toast.info("Connect Supabase to enable login & sync")}>Get Started</Button>
+              <Link to="/auth"><Button>Sign in</Button></Link>
               <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
               <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
               <Link to="/labels"><Button variant="outline">Label Designer</Button></Link>
