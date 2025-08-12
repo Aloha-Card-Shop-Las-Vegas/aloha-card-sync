@@ -89,6 +89,10 @@ export type Database = {
           printed_at: string | null
           psa_cert: string | null
           pushed_at: string | null
+          quantity: number
+          shopify_inventory_item_id: string | null
+          shopify_product_id: string | null
+          shopify_variant_id: string | null
           sku: string | null
           subject: string | null
           updated_at: string
@@ -110,6 +114,10 @@ export type Database = {
           printed_at?: string | null
           psa_cert?: string | null
           pushed_at?: string | null
+          quantity?: number
+          shopify_inventory_item_id?: string | null
+          shopify_product_id?: string | null
+          shopify_variant_id?: string | null
           sku?: string | null
           subject?: string | null
           updated_at?: string
@@ -131,6 +139,10 @@ export type Database = {
           printed_at?: string | null
           psa_cert?: string | null
           pushed_at?: string | null
+          quantity?: number
+          shopify_inventory_item_id?: string | null
+          shopify_product_id?: string | null
+          shopify_variant_id?: string | null
           sku?: string | null
           subject?: string | null
           updated_at?: string

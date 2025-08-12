@@ -75,6 +75,7 @@ type ItemRow = {
   grade: string | null;
   psa_cert: string | null;
   sku: string | null;
+  quantity: number | null;
 };
 
 export default function Inventory() {
@@ -170,6 +171,19 @@ export default function Inventory() {
       toast.error("Failed to delete item");
     }
   };
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('inventory-updates')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'intake_items' }, (payload) => {
+        const row: any = payload.new;
+        setItems((prev) => prev.map((it) => it.id === row.id ? { ...it, quantity: row.quantity, pushed_at: row.pushed_at, printed_at: row.printed_at } : it));
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -292,6 +306,7 @@ export default function Inventory() {
                     <TableHead>SKU</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>Cost</TableHead>
+                    <TableHead>Qty</TableHead>
                     <TableHead>Printed</TableHead>
                     <TableHead>Pushed</TableHead>
                     <TableHead>Created</TableHead>
@@ -302,21 +317,22 @@ export default function Inventory() {
                   {items.map((it) => {
                     const title = buildTitleFromParts(it.year, it.brand_title, it.card_number, it.subject, it.variant);
                     return (
-                      <TableRow key={it.id}>
-                        <TableCell className="font-medium">{it.lot_number}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground">{it.id}</TableCell>
-                        <TableCell>{title || "—"}</TableCell>
-                        <TableCell>{it.sku || "—"}</TableCell>
-                        <TableCell>{it.price != null ? `$${Number(it.price).toLocaleString()}` : "—"}</TableCell>
-                        <TableCell>{it.cost != null ? `$${Number(it.cost).toLocaleString()}` : "—"}</TableCell>
-                        <TableCell>
-                          {it.printed_at ? <Badge variant="secondary">Printed</Badge> : <Badge>Unprinted</Badge>}
-                        </TableCell>
-                        <TableCell>
-                          {it.pushed_at ? <Badge variant="secondary">Pushed</Badge> : <Badge>Unpushed</Badge>}
-                        </TableCell>
-                        <TableCell>{new Date(it.created_at).toLocaleString()}</TableCell>
-                        <TableCell className="text-right">
+                    <TableRow key={it.id}>
+                      <TableCell className="font-medium">{it.lot_number}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{it.id}</TableCell>
+                      <TableCell>{title || "—"}</TableCell>
+                      <TableCell>{it.sku || "—"}</TableCell>
+                      <TableCell>{it.price != null ? `$${Number(it.price).toLocaleString()}` : "—"}</TableCell>
+                      <TableCell>{it.cost != null ? `$${Number(it.cost).toLocaleString()}` : "—"}</TableCell>
+                      <TableCell>{it.quantity != null ? Number(it.quantity) : "—"}</TableCell>
+                      <TableCell>
+                        {it.printed_at ? <Badge variant="secondary">Printed</Badge> : <Badge>Unprinted</Badge>}
+                      </TableCell>
+                      <TableCell>
+                        {it.pushed_at ? <Badge variant="secondary">Pushed</Badge> : <Badge>Unpushed</Badge>}
+                      </TableCell>
+                      <TableCell>{new Date(it.created_at).toLocaleString()}</TableCell>
+                      <TableCell className="text-right">
                           <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(it)}>
                             Delete
                           </Button>

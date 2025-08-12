@@ -2,3 +2,6 @@ project_id = "dmpoandoydaqxhzdjnmk"
 
 [functions.psa-scrape]
 verify_jwt = false
+
+[functions.shopify-webhook]
+verify_jwt = false

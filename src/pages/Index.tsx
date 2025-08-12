@@ -28,6 +28,7 @@ type CardItem = {
   variant?: string;
   labelType?: string;
   cardNumber?: string;
+  quantity?: number;
   id?: string;
   printedAt?: string | null;
   pushedAt?: string | null;
@@ -51,6 +52,7 @@ const Index = () => {
     variant: "",
     labelType: "",
     cardNumber: "",
+    quantity: 1,
   });
   const [batch, setBatch] = useState<CardItem[]>([]);
   const [lookupCert, setLookupCert] = useState("");
@@ -175,6 +177,7 @@ const Index = () => {
       price: item.price ? Number(item.price) : null,
       cost: item.cost ? Number(item.cost) : null,
       sku: item.sku || item.psaCert || null,
+      quantity: typeof item.quantity === 'number' ? item.quantity : Number(item.quantity) || 1,
     };
 
     try {
@@ -241,6 +244,7 @@ const Index = () => {
       variant: "",
       labelType: "",
       cardNumber: "",
+      quantity: 1,
     });
 
   const fetchPsa = async (overrideCert?: string) => {
@@ -331,9 +335,12 @@ const Index = () => {
   const handlePushRow = async (b: CardItem) => {
     if (!b.id) return;
     try {
+      const { error } = await supabase.functions.invoke("shopify-import", { body: { itemId: b.id } });
+      if (error) throw error;
       await markPushed([b.id]);
       toast.success(`Pushed Lot ${b.lot || ""} to Shopify`);
-    } catch {
+    } catch (e) {
+      console.error(e);
       toast.error("Failed to push");
     }
   };
@@ -382,9 +389,12 @@ const Index = () => {
     }
     setPushingAll(true);
     try {
+      // Import each item to Shopify first
+      await Promise.all(ids.map((id) => supabase.functions.invoke("shopify-import", { body: { itemId: id } })));
       await markPushed(ids);
       toast.success("Pushed all to Shopify");
-    } catch {
+    } catch (e) {
+      console.error(e);
       toast.error("Failed to push all");
     } finally {
       setPushingAll(false);
@@ -498,6 +508,10 @@ const Index = () => {
                       <Label htmlFor="price">Price</Label>
                       <Input id="price" value={item.price} onChange={(e) => setItem({ ...item, price: e.target.value })} placeholder="$" />
                     </div>
+                    <div>
+                      <Label htmlFor="quantity">Quantity</Label>
+                      <Input id="quantity" type="number" value={String(item.quantity ?? 1)} onChange={(e) => setItem({ ...item, quantity: Number(e.target.value) || 0 })} placeholder="1" />
+                    </div>
                   </div>
                   <div className="mt-2 text-xs text-muted-foreground">
                     Lot number is assigned automatically when you add to batch.
@@ -561,6 +575,7 @@ const Index = () => {
                         <TableHead>Lot</TableHead>
                         <TableHead>Cost</TableHead>
                         <TableHead>Price</TableHead>
+                        <TableHead>Qty</TableHead>
                         <TableHead>SKU</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
@@ -575,6 +590,7 @@ const Index = () => {
                           <TableCell>{b.lot}</TableCell>
                           <TableCell>{b.cost}</TableCell>
                           <TableCell>{b.price}</TableCell>
+                          <TableCell>{b.quantity ?? 1}</TableCell>
                           <TableCell>{b.sku}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
