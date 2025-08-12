@@ -54,7 +54,16 @@ export default function Auth() {
             const admin = await supabase.rpc("has_role", { _user_id: uid, _role: "admin" as any });
             const ok = Boolean(staff.data) || Boolean(admin.data);
             if (ok) navigate("/", { replace: true });
-            else setRoleError("Your account is signed in but not authorized. Ask an admin to grant Staff access.");
+            else {
+              // Attempt to bootstrap admin role for initial setup
+              try { await supabase.functions.invoke("bootstrap-admin"); } catch {}
+              // Re-check roles after bootstrap attempt
+              const staff2 = await supabase.rpc("has_role", { _user_id: uid, _role: "staff" as any });
+              const admin2 = await supabase.rpc("has_role", { _user_id: uid, _role: "admin" as any });
+              const ok2 = Boolean(staff2.data) || Boolean(admin2.data);
+              if (ok2) navigate("/", { replace: true });
+              else setRoleError("Your account is signed in but not authorized. Ask an admin to grant Staff access.");
+            }
           } catch (e) {
             console.error(e);
           }
