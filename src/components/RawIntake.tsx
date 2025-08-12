@@ -244,6 +244,8 @@ export default function RawIntake() {
         .select("*")
         .single();
       if (error) throw error;
+      // Notify listeners (e.g., batch queue) that an item was added
+      window.dispatchEvent(new CustomEvent('intake:item-added', { detail: data }));
       toast.success(`Added to batch (Lot ${data?.lot_number || ''})`);
     } catch (e) {
       console.error(e);

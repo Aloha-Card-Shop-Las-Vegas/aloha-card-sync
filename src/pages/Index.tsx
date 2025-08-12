@@ -124,6 +124,38 @@ const Index = () => {
     loadBatch();
   }, []);
 
+  // Listen for Raw Intake additions and update batch in real time
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const any = e as CustomEvent;
+      const row: any = any.detail;
+      if (!row) return;
+      const next: CardItem = {
+        title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
+        set: "",
+        year: row.year || "",
+        grade: row.grade || "",
+        psaCert: row.psa_cert || "",
+        price: row?.price != null ? String(row.price) : "",
+        cost: row?.cost != null ? String(row.cost) : "",
+        lot: row.lot_number || "",
+        sku: row.sku || "",
+        brandTitle: row.brand_title || "",
+        subject: row.subject || "",
+        category: row.category || "",
+        variant: row.variant || "",
+        cardNumber: row.card_number || "",
+        id: row.id,
+        printedAt: row.printed_at || null,
+        pushedAt: row.pushed_at || null,
+      };
+      if (!next.pushedAt) setBatch((b) => [next, ...b]);
+    };
+
+    window.addEventListener("intake:item-added", handler);
+    return () => window.removeEventListener("intake:item-added", handler);
+  }, []);
+
   const addToBatch = async () => {
     if (!item.psaCert) {
       toast.error("Please fill Cert Number");
