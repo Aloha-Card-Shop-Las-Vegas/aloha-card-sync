@@ -64,6 +64,13 @@ const Index = () => {
   const [pushingAll, setPushingAll] = useState(false);
   const [pushPrintAllRunning, setPushPrintAllRunning] = useState(false);
 
+  // Inline edit state for Batch Queue
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState<string>("");
+  const [editCost, setEditCost] = useState<string>("");
+  const [editQty, setEditQty] = useState<number>(1);
+  const [editSku, setEditSku] = useState<string>("");
+
   const handleSignOut = async () => {
     try {
       cleanupAuthState();
@@ -330,7 +337,51 @@ const Index = () => {
     setBatch((prev) => prev.filter((b) => !(b.id && pushedIds.has(b.id))));
   };
 
-  // Row actions
+  // Row actions + inline edit
+  const startEditRow = (b: CardItem) => {
+    if (!b.id) return;
+    setEditingId(b.id);
+    setEditPrice(b.price || "");
+    setEditCost(b.cost || "");
+    setEditQty(b.quantity ?? 1);
+    setEditSku(b.sku || "");
+  };
+
+  const cancelEditRow = () => {
+    setEditingId(null);
+  };
+
+  const saveEditRow = async (b: CardItem) => {
+    if (!b.id) return;
+    const payload = {
+      price: editPrice !== "" ? Number(editPrice) : null,
+      cost: editCost !== "" ? Number(editCost) : null,
+      quantity: Number(editQty) || 1,
+      sku: editSku || null,
+    } as const;
+    try {
+      const { data, error } = await supabase
+        .from('intake_items')
+        .update(payload as any)
+        .eq('id', b.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      setBatch(prev => prev.map(x => x.id === b.id ? {
+        ...x,
+        price: payload.price != null ? String(payload.price) : '',
+        cost: payload.cost != null ? String(payload.cost) : '',
+        quantity: payload.quantity,
+        sku: payload.sku || ''
+      } : x));
+      setEditingId(null);
+      toast.success(`Updated Lot ${b.lot || ''}`);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to save changes');
+    }
+  };
+
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
     try {
@@ -600,33 +651,56 @@ const Index = () => {
                           <TableCell>{b.grade}</TableCell>
                           <TableCell>{b.psaCert}</TableCell>
                           <TableCell>{b.lot}</TableCell>
-                          <TableCell>{b.cost}</TableCell>
-                          <TableCell>{b.price}</TableCell>
-                          <TableCell>{b.quantity ?? 1}</TableCell>
-                          <TableCell>{b.sku}</TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editCost} onChange={(e) => setEditCost(e.target.value)} placeholder="$" />
+                            ) : (
+                              b.cost
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="$" />
+                            ) : (
+                              b.price
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input type="number" value={String(editQty)} onChange={(e) => setEditQty(Number(e.target.value) || 0)} />
+                            ) : (
+                              b.quantity ?? 1
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {editingId === b.id ? (
+                              <Input value={editSku} onChange={(e) => setEditSku(e.target.value)} />
+                            ) : (
+                              b.sku
+                            )}
+                          </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button
-                                size="sm"
-                                variant={b.printedAt ? "secondary" : "default"}
-                                onClick={() => handlePrintRow(b)}
-                                disabled={!!b.printedAt}
-                              >
-                                {b.printedAt ? "Printed" : "Print"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                onClick={() => handlePushRow(b)}
-                              >
-                                Push
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => handleDeleteRow(b)}
-                              >
-                                Delete
-                              </Button>
+                              {editingId === b.id ? (
+                                <>
+                                  <Button size="sm" onClick={() => saveEditRow(b)}>Save</Button>
+                                  <Button size="sm" variant="secondary" onClick={cancelEditRow}>Cancel</Button>
+                                </>
+                              ) : (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant={b.printedAt ? "secondary" : "default"}
+                                    onClick={() => handlePrintRow(b)}
+                                    disabled={!!b.printedAt}
+                                  >
+                                    {b.printedAt ? "Printed" : "Print"}
+                                  </Button>
+                                  <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
+                                  <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
+                                  <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(b)}>Delete</Button>
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
