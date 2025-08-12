@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
+import { cleanupAuthState } from "@/lib/auth";
 
 type CardItem = {
   title: string;
@@ -62,6 +63,15 @@ const Index = () => {
   const [printingAll, setPrintingAll] = useState(false);
   const [pushingAll, setPushingAll] = useState(false);
   const [pushPrintAllRunning, setPushPrintAllRunning] = useState(false);
+
+  const handleSignOut = async () => {
+    try {
+      cleanupAuthState();
+      try { await supabase.auth.signOut({ scope: 'global' } as any); } catch {}
+    } finally {
+      window.location.href = '/auth';
+    }
+  };
 
   // Build a display title similar to PSA fetch formatting
   const buildTitleFromParts = (
@@ -428,13 +438,14 @@ const Index = () => {
           <div className="max-w-3xl">
             <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">Aloha Card Inventory Manager</h1>
             <p className="mt-4 text-lg text-muted-foreground">Centralize PSA-graded cards, batch intake with lot tracking, print barcodes, and sync to Shopify.</p>
-            <div className="mt-6 flex gap-3">
-              <Link to="/auth"><Button>Sign in</Button></Link>
-              <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
-              <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
-              <Link to="/labels"><Button variant="outline">Label Designer</Button></Link>
-              <Link to="/admin"><Button variant="outline">Admin</Button></Link>
-            </div>
+              <div className="mt-6 flex gap-3">
+                <Button onClick={handleSignOut}>Sign out</Button>
+                <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
+                <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
+                <Link to="/labels"><Button variant="outline">Label Designer</Button></Link>
+                <Link to="/admin"><Button variant="outline">Admin</Button></Link>
+                <Link to="/users"><Button variant="outline">Users</Button></Link>
+              </div>
           </div>
         </div>
       </header>
