@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { Canvas as FabricCanvas, Textbox, Image as FabricImage } from "fabric";
+import { Canvas as FabricCanvas, Textbox, Image as FabricImage, Rect } from "fabric";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -55,12 +55,27 @@ export default function LabelDesigner() {
       backgroundColor: "#ffffff",
     });
 
+    // Visible label outline (design only, not exported)
+    const border = new Rect({
+      left: 0.5,
+      top: 0.5,
+      width: PX_WIDTH - 1,
+      height: PX_HEIGHT - 1,
+      fill: 'transparent',
+      stroke: '#000',
+      strokeWidth: 3,
+      selectable: false,
+      evented: false,
+      excludeFromExport: true,
+    });
+    canvas.add(border);
+
     // Starter layout: Title, Lot, Price
     const titleBox = new Textbox(title, { left: 6, top: 6, fontSize: 14, width: PX_WIDTH - 12 });
     const lotBox = new Textbox(lot, { left: 6, top: 28, fontSize: 12, width: PX_WIDTH - 12 });
     const priceBox = new Textbox(price, { left: PX_WIDTH - 80, top: PX_HEIGHT - 22, fontSize: 14, textAlign: "right", width: 74 });
 
-    canvas.add(titleBox, lotBox, priceBox);
+    canvas.add(border, titleBox, lotBox, priceBox);
 
     setFabricCanvas(canvas);
     toast.success("Label canvas ready. Drag elements to position.");
@@ -183,7 +198,7 @@ export default function LabelDesigner() {
               <CardTitle>Canvas (2×1 in preview)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-md p-3 inline-block" style={{ width: PX_WIDTH + 8, height: PX_HEIGHT + 8 }}>
+              <div className="border-2 border-foreground rounded-md p-3 inline-block" style={{ width: PX_WIDTH + 8, height: PX_HEIGHT + 8 }}>
                 <canvas ref={canvasRef} width={PX_WIDTH} height={PX_HEIGHT} aria-label="Label design canvas" />
               </div>
               <div className="flex flex-wrap gap-2 mt-4">
