@@ -433,6 +433,7 @@ const Index = () => {
               <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
               <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
               <Link to="/labels"><Button variant="outline">Label Designer</Button></Link>
+              <Link to="/admin"><Button variant="outline">Admin</Button></Link>
             </div>
           </div>
         </div>

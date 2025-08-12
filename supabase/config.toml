@@ -9,3 +9,9 @@ verify_jwt = false
 [functions.shopify-import]
 verify_jwt = false
 
+[functions.shopify-config-check]
+verify_jwt = false
+
+[functions.shopify-webhook-test]
+verify_jwt = false
+
