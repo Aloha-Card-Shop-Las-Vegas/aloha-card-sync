@@ -11,6 +11,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
+import EditIntakeItemDialog from "@/components/EditIntakeItemDialog";
 
 type CardItem = {
   title: string;
@@ -70,6 +71,8 @@ const Index = () => {
   const [editCost, setEditCost] = useState<string>("");
   const [editQty, setEditQty] = useState<number>(1);
   const [editSku, setEditSku] = useState<string>("");
+  // Details dialog state
+  const [detailsItem, setDetailsItem] = useState<CardItem | null>(null);
 
   const handleSignOut = async () => {
     try {
@@ -379,6 +382,76 @@ const Index = () => {
     } catch (e) {
       console.error(e);
       toast.error('Failed to save changes');
+    }
+  };
+
+  // Open full details dialog
+  const openDetails = (b: CardItem) => {
+    if (!b.id) return;
+    setDetailsItem(b);
+  };
+
+  // Save full details from dialog
+  const handleSaveDetails = async (values: {
+    id: string;
+    year?: string;
+    brandTitle?: string;
+    subject?: string;
+    category?: string;
+    variant?: string;
+    cardNumber?: string;
+    grade?: string;
+    psaCert?: string;
+    price?: string;
+    cost?: string;
+    sku?: string;
+    quantity?: number;
+  }) => {
+    try {
+      const payload: any = {
+        year: values.year || null,
+        brand_title: values.brandTitle || null,
+        subject: values.subject || null,
+        category: values.category || null,
+        variant: values.variant || null,
+        card_number: values.cardNumber || null,
+        grade: values.grade || null,
+        psa_cert: values.psaCert || null,
+        price: values.price !== undefined && values.price !== "" ? Number(values.price) : null,
+        cost: values.cost !== undefined && values.cost !== "" ? Number(values.cost) : null,
+        sku: values.sku || null,
+        quantity: typeof values.quantity === 'number' ? values.quantity : 1,
+      };
+      const { data, error } = await supabase
+        .from('intake_items')
+        .update(payload)
+        .eq('id', values.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+
+      setBatch(prev => prev.map(x => x.id === values.id ? {
+        ...x,
+        year: data?.year || '',
+        brandTitle: data?.brand_title || '',
+        subject: data?.subject || '',
+        category: data?.category || '',
+        variant: data?.variant || '',
+        cardNumber: data?.card_number || '',
+        grade: data?.grade || '',
+        psaCert: data?.psa_cert || '',
+        price: data?.price != null ? String(data.price) : '',
+        cost: data?.cost != null ? String(data.cost) : '',
+        sku: data?.sku || '',
+        quantity: data?.quantity ?? x.quantity,
+        title: buildTitleFromParts(data?.year, data?.brand_title, data?.card_number, data?.subject, data?.variant),
+      } : x));
+
+      toast.success('Item updated');
+      setDetailsItem(null);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to update item');
     }
   };
 
@@ -698,6 +771,7 @@ const Index = () => {
                                   </Button>
                                   <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
                                   <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
+                                  <Button size="sm" variant="secondary" onClick={() => openDetails(b)}>Details</Button>
                                   <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(b)}>Delete</Button>
                                 </>
                               )}
