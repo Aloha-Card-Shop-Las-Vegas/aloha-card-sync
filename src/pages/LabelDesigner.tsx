@@ -312,16 +312,40 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
   const handlePrint = () => {
     const url = exportImageDataUrl();
     if (!url) return;
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>Print 2x1 Label</title><style>
+
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) { iframe.remove(); return; }
+
+    const html = `<!doctype html><html><head><title>Print 2x1 Label</title><style>
       @page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in; margin: 0; }
+      html, body { height: 100%; }
       body { margin: 0; display: flex; align-items: center; justify-content: center; }
       img { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; }
-    </style></head><body><img src="${url}" alt="Label" /></body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 200);
+    </style></head><body>
+      <img src="${url}" alt="Label" />
+      <script>setTimeout(function(){ window.focus(); window.print(); }, 20);<\/script>
+    </body></html>`;
+
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    iframe.onload = () => {
+      const win = iframe.contentWindow; if (!win) return; win.focus(); win.print();
+    };
+
+    const cleanup = () => setTimeout(() => iframe.remove(), 300);
+    iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
+    setTimeout(cleanup, 5000);
   };
 
   return (

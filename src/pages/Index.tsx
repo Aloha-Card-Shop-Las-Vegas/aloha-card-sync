@@ -588,6 +588,14 @@ const Index = () => {
       doc.write(html);
       doc.close();
 
+      // Ensure we print the iframe content (not the main page)
+      iframe.onload = () => {
+        const win = iframe.contentWindow;
+        if (!win) return;
+        win.focus();
+        win.print();
+      };
+
       const cleanup = () => setTimeout(() => iframe.remove(), 300);
       iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
       setTimeout(cleanup, 5000);
