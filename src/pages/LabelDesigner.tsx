@@ -35,6 +35,7 @@ export default function LabelDesigner() {
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
+  const borderRef = useRef<Rect | null>(null);
 
   // Printer UI (note: browsers can't enumerate printers without helpers like QZ Tray)
   const [printerName, setPrinterName] = useState("");
@@ -57,18 +58,20 @@ export default function LabelDesigner() {
 
     // Visible label outline (design only, not exported)
     const border = new Rect({
-      left: 0.5,
-      top: 0.5,
-      width: PX_WIDTH - 1,
-      height: PX_HEIGHT - 1,
+      left: 1,
+      top: 1,
+      width: PX_WIDTH - 2,
+      height: PX_HEIGHT - 2,
+      rx: 6,
+      ry: 6,
       fill: 'transparent',
       stroke: '#000',
-      strokeWidth: 3,
+      strokeWidth: 2,
       selectable: false,
       evented: false,
       excludeFromExport: true,
     });
-    canvas.add(border);
+    borderRef.current = border;
 
     // Starter layout: Title, Lot, Price
     const titleBox = new Textbox(title, { left: 6, top: 6, fontSize: 14, width: PX_WIDTH - 12 });
@@ -76,6 +79,7 @@ export default function LabelDesigner() {
     const priceBox = new Textbox(price, { left: PX_WIDTH - 80, top: PX_HEIGHT - 22, fontSize: 14, textAlign: "right", width: 74 });
 
     canvas.add(border, titleBox, lotBox, priceBox);
+    
 
     setFabricCanvas(canvas);
     toast.success("Label canvas ready. Drag elements to position.");
@@ -135,8 +139,12 @@ export default function LabelDesigner() {
 
   const handleClear = () => {
     if (!fabricCanvas) return;
-    fabricCanvas.getObjects().forEach((o) => fabricCanvas.remove(o));
-    fabricCanvas.renderAll();
+    const objs = fabricCanvas.getObjects();
+    objs.forEach((o) => {
+      if (o !== borderRef.current) fabricCanvas.remove(o);
+    });
+    fabricCanvas.discardActiveObject();
+    fabricCanvas.requestRenderAll();
   };
   const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
 
@@ -198,7 +206,7 @@ export default function LabelDesigner() {
               <CardTitle>Canvas (2×1 in preview)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="border-2 border-foreground rounded-md p-3 inline-block" style={{ width: PX_WIDTH + 8, height: PX_HEIGHT + 8 }}>
+              <div className="border rounded-md p-3 inline-block" style={{ width: PX_WIDTH + 8, height: PX_HEIGHT + 8 }}>
                 <canvas ref={canvasRef} width={PX_WIDTH} height={PX_HEIGHT} aria-label="Label design canvas" />
               </div>
               <div className="flex flex-wrap gap-2 mt-4">
