@@ -82,8 +82,11 @@ const Index = () => {
   const [editSku, setEditSku] = useState<string>("");
   // Details dialog state
   const [detailsItem, setDetailsItem] = useState<CardItem | null>(null);
-  // Categories for dropdown
+  // Categories and Games for dropdowns
   const [categories, setCategories] = useState<string[]>([]);
+  type GameOption = { id: number; name: string; categoryId: number | null; categoryName: string | null };
+  const [games, setGames] = useState<GameOption[]>([]);
+  const [editGameId, setEditGameId] = useState<number | null>(null);
   const handleSignOut = async () => {
     try {
       cleanupAuthState();
@@ -174,18 +177,32 @@ const Index = () => {
     loadBatch();
   }, []);
 
-  // Load categories for dropdown
+  // Load categories and games for dropdown
   useEffect(() => {
-    const loadCategories = async () => {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('name')
-        .order('name', { ascending: true });
-      if (!error && data) {
-        setCategories((data as any[]).map((d) => d.name).filter(Boolean));
-      }
+    const loadCatsAndGames = async () => {
+      const [catsRes, groupsRes] = await Promise.all([
+        supabase.from('categories').select('id, name').order('name', { ascending: true }),
+        supabase.from('groups').select('id, name, category_id').order('name', { ascending: true }),
+      ]);
+
+      const catData: any[] = (catsRes as any)?.data || [];
+      const grpData: any[] = (groupsRes as any)?.data || [];
+
+      // Categories list (names)
+      setCategories(catData.map((d) => d.name).filter(Boolean));
+
+      // Build games with category name
+      const catMap = new Map<number, string>();
+      catData.forEach((c: any) => catMap.set(c.id, c.name));
+      const gameOpts: GameOption[] = grpData.map((g: any) => ({
+        id: g.id,
+        name: g.name,
+        categoryId: g.category_id ?? null,
+        categoryName: g.category_id ? catMap.get(g.category_id) ?? null : null,
+      }));
+      setGames(gameOpts);
     };
-    loadCategories();
+    loadCatsAndGames();
   }, []);
 
   // Listen for Raw Intake additions and update batch in real time
@@ -846,21 +863,32 @@ const Index = () => {
                                       <Input id={`subject-${b.id}`} value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
                                     </div>
                                     <div>
-                                      <Label>Category</Label>
-                                      <Select value={editCategory || ""} onValueChange={setEditCategory}>
+                                      <Label>Game</Label>
+                                      <Select value={editGameId ? String(editGameId) : ""} onValueChange={(v) => {
+                                        const id = Number(v);
+                                        setEditGameId(id);
+                                        const found = games.find((x) => x.id === id);
+                                        setEditCategory(found?.categoryName || "");
+                                      }}>
                                         <SelectTrigger>
-                                          <SelectValue placeholder="Select category" />
+                                          <SelectValue placeholder="Select game" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-background z-50">
-                                          {categories.length === 0 ? (
-                                            <SelectItem value="" disabled>No categories</SelectItem>
+                                          {games.length === 0 ? (
+                                            <SelectItem value="" disabled>No games</SelectItem>
                                           ) : (
-                                            categories.map((name) => (
-                                              <SelectItem key={name} value={name}>{name}</SelectItem>
+                                            games.map((g) => (
+                                              <SelectItem key={g.id} value={String(g.id)}>
+                                                {g.name}{g.categoryName ? ` (${g.categoryName})` : ""}
+                                              </SelectItem>
                                             ))
                                           )}
                                         </SelectContent>
                                       </Select>
+                                    </div>
+                                    <div>
+                                      <Label>Category</Label>
+                                      <Input value={editCategory} readOnly />
                                     </div>
                                     <div>
                                       <Label htmlFor={`variant-${b.id}`}>Variant</Label>
