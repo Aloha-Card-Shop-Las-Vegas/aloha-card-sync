@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
@@ -81,7 +82,8 @@ const Index = () => {
   const [editSku, setEditSku] = useState<string>("");
   // Details dialog state
   const [detailsItem, setDetailsItem] = useState<CardItem | null>(null);
-
+  // Categories for dropdown
+  const [categories, setCategories] = useState<string[]>([]);
   const handleSignOut = async () => {
     try {
       cleanupAuthState();
@@ -110,6 +112,23 @@ const Index = () => {
       .join(" ")
       .trim();
   };
+
+  // Common PSA grades for quick selection
+  const PSA_GRADE_OPTIONS = [
+    "Raw",
+    "Authentic",
+    "PR 1",
+    "FR 1.5",
+    "GOOD 2",
+    "VG 3",
+    "VG-EX 4",
+    "EX 5",
+    "EX-MT 6",
+    "NM 7",
+    "NM-MT 8",
+    "MINT 9",
+    "GEM MT 10",
+  ];
 
   // Load existing items from DB so batch persists
   useEffect(() => {
@@ -153,6 +172,20 @@ const Index = () => {
     };
 
     loadBatch();
+  }, []);
+
+  // Load categories for dropdown
+  useEffect(() => {
+    const loadCategories = async () => {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('name')
+        .order('name', { ascending: true });
+      if (!error && data) {
+        setCategories((data as any[]).map((d) => d.name).filter(Boolean));
+      }
+    };
+    loadCategories();
   }, []);
 
   // Listen for Raw Intake additions and update batch in real time
@@ -778,8 +811,23 @@ const Index = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editCategory} onChange={(e) => setEditCategory(e.target.value)} />
+                          {editingId === b.id ? (
+                              <div className="min-w-[160px]">
+                                <Select value={editCategory || ""} onValueChange={setEditCategory}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select category" />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-background z-50">
+                                    {categories.length === 0 ? (
+                                      <SelectItem value="" disabled>No categories</SelectItem>
+                                    ) : (
+                                      categories.map((name) => (
+                                        <SelectItem key={name} value={name}>{name}</SelectItem>
+                                      ))
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             ) : (
                               b.category
                             )}
@@ -799,8 +847,19 @@ const Index = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            {editingId === b.id ? (
-                              <Input value={editGrade} onChange={(e) => setEditGrade(e.target.value)} />
+                          {editingId === b.id ? (
+                              <div className="min-w-[160px]">
+                                <Select value={editGrade || ""} onValueChange={setEditGrade}>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select grade" />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-background z-50">
+                                    {PSA_GRADE_OPTIONS.map((g) => (
+                                      <SelectItem key={g} value={g}>{g}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             ) : (
                               b.grade
                             )}
