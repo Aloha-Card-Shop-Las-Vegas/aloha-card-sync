@@ -35,18 +35,48 @@ const BarcodeLabel = ({ value, label, className, showPrintButton = true }: Barco
   }, [value]);
 
   const handlePrint = () => {
-    if (!canvasRef.current) return;
-    const dataUrl = canvasRef.current.toDataURL("image/png");
-    const w = window.open("", "_blank");
-    if (!w) return;
-    w.document.write(`<!doctype html><html><head><title>Print Barcode</title><style>
-      @page { size: auto; margin: 6mm; }
-      body { display: flex; align-items: center; justify-content: center; height: 100vh; }
-      img { width: 320px; }
-    </style></head><body><img src="${dataUrl}" alt="Barcode ${value}" /></body></html>`);
-    w.document.close();
-    w.focus();
-    w.print();
+    try {
+      if (!canvasRef.current) return;
+      const dataUrl = canvasRef.current.toDataURL("image/png");
+
+      // Create a hidden iframe to isolate print content (avoids printing full app)
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (!doc) {
+        iframe.remove();
+        return;
+      }
+
+      const html = `<!doctype html><html><head><title>Print Barcode</title><style>
+        @page { size: auto; margin: 6mm; }
+        html, body { height: 100%; }
+        body { display: flex; align-items: center; justify-content: center; }
+        img { width: 320px; }
+      </style></head>
+      <body>
+        <img src="${dataUrl}" alt="Barcode ${value}"
+          onload="setTimeout(() => { window.focus(); window.print(); }, 20)" />
+      </body></html>`;
+
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      const cleanup = () => setTimeout(() => iframe.remove(), 300);
+      iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
+      // Fallback cleanup in case afterprint doesn't fire
+      setTimeout(cleanup, 5000);
+    } catch (e) {
+      // no-op
+    }
   };
 
   return (
