@@ -38,10 +38,12 @@ export default function Auth() {
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [roleError, setRoleError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     console.log('Auth page mount');
+    setMounted(true);
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         // Check role and route accordingly
@@ -119,6 +121,9 @@ export default function Auth() {
             <CardTitle>{mode === 'signin' ? 'Sign In' : 'Create an account'}</CardTitle>
           </CardHeader>
           <CardContent>
+            {mounted && (
+              <p data-testid="auth-debug" className="text-xs text-muted-foreground mb-2">Auth mounted</p>
+            )}
             <form onSubmit={mode === 'signin' ? handleSignIn : handleSignUp} className="space-y-4">
               <div>
                 <Label htmlFor="email">Email</Label>
