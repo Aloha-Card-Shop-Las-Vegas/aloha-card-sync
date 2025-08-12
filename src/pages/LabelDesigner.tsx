@@ -193,14 +193,15 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
     setTemplates((data as unknown as LabelTemplate[]) || []);
   };
 
-  const saveTemplate = async () => {
+  const saveTemplate = async (nameOverride?: string) => {
     if (!fabricCanvas) return;
-    if (!templateName.trim()) {
+    const name = (nameOverride ?? templateName).trim();
+    if (!name) {
       toast.error('Enter a template name');
       return;
     }
     const payload = {
-      name: templateName.trim(),
+      name,
       canvas: fabricCanvas.toJSON(),
       data: {
         barcodeValue,
@@ -222,6 +223,12 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
       setTemplateName('');
       fetchTemplates();
     }
+  };
+
+  const quickSaveTemplate = async () => {
+    const name = window.prompt('Template name');
+    if (!name) return;
+    await saveTemplate(name);
   };
 
   const loadTemplate = async (id: string) => {
@@ -348,6 +355,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                 <Button onClick={() => addText(price)}>Add Price</Button>
                 <Button variant="outline" onClick={addBarcode}>Add Barcode</Button>
                 <Button variant="outline" onClick={deleteSelected}>Delete Selected</Button>
+                <Button onClick={quickSaveTemplate}>Save Template</Button>
                 <Button variant="secondary" onClick={handleClear}>Clear</Button>
               </div>
             </CardContent>
@@ -424,7 +432,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                     <Label htmlFor="tplName">New template name</Label>
                     <div className="flex gap-2 mt-2">
                       <Input id="tplName" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g., 2×1: Pokemon NM" />
-                      <Button onClick={saveTemplate}>Save</Button>
+                      <Button onClick={() => saveTemplate()}>Save</Button>
                     </div>
                   </div>
                   <div>
