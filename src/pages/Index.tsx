@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
+import { Link } from "react-router-dom";
 
 type CardItem = {
   title: string;
@@ -370,6 +371,7 @@ const Index = () => {
             <div className="mt-6 flex gap-3">
               <Button onClick={() => toast.info("Connect Supabase to enable login & sync")}>Get Started</Button>
               <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
+              <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
             </div>
           </div>
         </div>
