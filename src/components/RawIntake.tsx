@@ -218,6 +218,39 @@ export default function RawIntake() {
     }));
   };
 
+  const addToBatch = async () => {
+    if (!form.name?.trim()) {
+      toast.error("Name is required to add to batch");
+      return;
+    }
+    const insertPayload = {
+      year: null,
+      brand_title: form.set || form.game || null,
+      subject: form.name || null,
+      category: form.printing ? `Raw ${form.printing}` : 'Raw',
+      variant: form.condition || null,
+      card_number: form.card_number || null,
+      grade: null,
+      psa_cert: null,
+      price: form.price_each ? Number(form.price_each) : null,
+      cost: form.cost_each ? Number(form.cost_each) : null,
+      sku: form.sku || autoSku,
+    } as const;
+
+    try {
+      const { data, error } = await (supabase as any)
+        .from("intake_items")
+        .insert(insertPayload)
+        .select("*")
+        .single();
+      if (error) throw error;
+      toast.success(`Added to batch (Lot ${data?.lot_number || ''})`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to add to batch");
+    }
+  };
+
   const save = async () => {
     if (!form.name?.trim()) {
       toast.error("Name is required");
@@ -366,6 +399,7 @@ export default function RawIntake() {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-3">
+        <Button onClick={addToBatch}>Add to Batch</Button>
         <Button onClick={save}>Save</Button>
         <Button variant="secondary" onClick={() => setForm((f) => ({ ...f, name: "", price_each: "", cost_each: "", quantity: 1, sku: autoSku, product_id: undefined }))}>Clear</Button>
       </div>
