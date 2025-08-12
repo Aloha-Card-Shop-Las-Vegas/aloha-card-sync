@@ -400,7 +400,6 @@ export default function RawIntake() {
 
       <div className="mt-5 flex flex-wrap gap-3">
         <Button onClick={addToBatch}>Add to Batch</Button>
-        <Button onClick={save}>Save</Button>
         <Button variant="secondary" onClick={() => setForm((f) => ({ ...f, name: "", price_each: "", cost_each: "", quantity: 1, sku: autoSku, product_id: undefined }))}>Clear</Button>
       </div>
     </div>
