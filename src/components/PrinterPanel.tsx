@@ -3,58 +3,61 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Printer, Wifi, WifiOff, TestTube } from "lucide-react";
+import { Printer, Wifi, WifiOff, TestTube, Cloud } from "lucide-react";
 import { toast } from "sonner";
-import { 
-  generateWorkstationId, 
-  fetchPrinters, 
-  sendTSPL, 
-  getPrinterSettings,
-  upsertPrinterSettings,
-  insertPrintJob,
-  updatePrintJobStatus
-} from "@/lib/printerService";
+import { printNodeService } from "@/lib/printNodeService";
 import { buildSampleLabel } from "@/lib/tspl";
+import { supabase } from "@/integrations/supabase/client";
+
+interface PrintNodePrinter {
+  id: number;
+  name: string;
+}
 
 export function PrinterPanel() {
-  const [workstationId] = useState(generateWorkstationId());
-  const [printers, setPrinters] = useState<string[]>([]);
-  const [selectedPrinter, setSelectedPrinter] = useState<string>("");
-  const [bridgeOnline, setBridgeOnline] = useState(false);
-  const [bridgePort, setBridgePort] = useState(17777);
-  const [loading, setLoading] = useState(false);
-  const [testPrinting, setTestPrinting] = useState(false);
+  const [workstationId, setWorkstationId] = useState<string>('');
+  const [printers, setPrinters] = useState<PrintNodePrinter[]>([]);
+  const [selectedPrinter, setSelectedPrinter] = useState<PrintNodePrinter | null>(null);
+  const [printNodeOnline, setPrintNodeOnline] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [testPrinting, setTestPrinting] = useState<boolean>(false);
 
-  // Load printer settings on mount
   useEffect(() => {
     loadPrinterSettings();
-  }, [workstationId]);
+  }, []);
 
-  // Check bridge status periodically
   useEffect(() => {
-    const checkBridge = async () => {
+    const interval = setInterval(async () => {
       try {
-        const printerList = await fetchPrinters(bridgePort);
-        setPrinters(printerList);
-        setBridgeOnline(true);
+        const printerList = await printNodeService.getPrinters();
+        const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
+        setPrinters(formattedPrinters);
+        setPrintNodeOnline(true);
       } catch (error) {
-        setBridgeOnline(false);
+        setPrintNodeOnline(false);
         setPrinters([]);
       }
-    };
+    }, 30000);
 
-    checkBridge();
-    const interval = setInterval(checkBridge, 30000); // Check every 30 seconds
-    
     return () => clearInterval(interval);
-  }, [bridgePort]);
+  }, []);
 
   const loadPrinterSettings = async () => {
     try {
-      const settings = await getPrinterSettings(workstationId);
-      if (settings) {
-        setSelectedPrinter(settings.preferred_printer || "");
-        setBridgePort(settings.bridge_port || 17777);
+      const id = crypto.randomUUID().substring(0, 8);
+      setWorkstationId(id);
+      
+      const { data: settings } = await supabase
+        .from('printer_settings')
+        .select('*')
+        .eq('workstation_id', id)
+        .single();
+        
+      if (settings && settings.selected_printer_id && settings.selected_printer_name) {
+        setSelectedPrinter({
+          id: settings.selected_printer_id,
+          name: settings.selected_printer_name
+        });
       }
     } catch (error) {
       console.error('Failed to load printer settings:', error);
@@ -62,14 +65,21 @@ export function PrinterPanel() {
   };
 
   const savePrinterSettings = async () => {
+    if (!selectedPrinter) return;
+    
     try {
-      await upsertPrinterSettings({
-        workstation_id: workstationId,
-        preferred_printer: selectedPrinter,
-        bridge_port: bridgePort
-      });
+      await supabase
+        .from('printer_settings')
+        .upsert({
+          workstation_id: workstationId,
+          selected_printer_id: selectedPrinter.id,
+          selected_printer_name: selectedPrinter.name,
+          use_printnode: true,
+        });
+        
       toast.success("Printer settings saved");
     } catch (error) {
+      console.error('Failed to save printer settings:', error);
       toast.error("Failed to save settings");
     }
   };
@@ -77,59 +87,63 @@ export function PrinterPanel() {
   const refreshPrinters = async () => {
     setLoading(true);
     try {
-      const printerList = await fetchPrinters(bridgePort);
-      setPrinters(printerList);
-      setBridgeOnline(true);
-      toast.success(`Found ${printerList.length} printer(s)`);
+      const printerList = await printNodeService.getPrinters();
+      const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
+      setPrinters(formattedPrinters);
+      setPrintNodeOnline(true);
+      toast.success(`Found ${formattedPrinters.length} printer(s)`);
     } catch (error) {
-      setBridgeOnline(false);
+      setPrintNodeOnline(false);
       setPrinters([]);
-      toast.error("Bridge offline or no printers found");
+      toast.error("Failed to connect to PrintNode. Check your API key.");
     } finally {
       setLoading(false);
     }
   };
 
   const runSmokeTest = async () => {
-    if (!bridgeOnline) {
-      toast.error("Bridge is offline");
+    if (!selectedPrinter) {
+      toast.error("No printer selected");
       return;
     }
 
     setTestPrinting(true);
     
     try {
-      // 1. Confirm bridge is online
-      await fetchPrinters(bridgePort);
-      
-      // 2. Generate sample TSPL
-      const tspl = buildSampleLabel();
-      
-      // 3. Insert job record
-      const jobId = await insertPrintJob({
-        workstation_id: workstationId,
-        status: 'queued',
-        copies: 1,
-        language: 'TSPL',
-        payload: tspl
+      // Generate test label TSPL
+      const testTSPL = buildSampleLabel();
+
+      // Create print job record
+      const { data: printJob } = await supabase
+        .from('print_jobs')
+        .insert({
+          workstation_id: workstationId,
+          printer_name: selectedPrinter.name,
+          printer_id: selectedPrinter.id,
+          tspl_code: testTSPL,
+          status: 'queued'
+        })
+        .select()
+        .single();
+
+      if (!printJob) throw new Error('Failed to create print job record');
+
+      // Send print job via PrintNode
+      const result = await printNodeService.printTSPL(testTSPL, selectedPrinter.id, {
+        title: 'Smoke Test Label',
+        copies: 1
       });
 
-      try {
-        // 4. Send to printer
-        await sendTSPL(tspl, {
-          printerName: selectedPrinter,
-          copies: 1,
-          port: bridgePort
-        });
-        
-        // 5. Update job status
-        await updatePrintJobStatus(jobId, 'sent');
-        toast.success("Smoke test completed successfully!");
-        
-      } catch (printError) {
-        await updatePrintJobStatus(jobId, 'error', printError instanceof Error ? printError.message : 'Print failed');
-        throw printError;
-      }
+      // Update print job with PrintNode job ID
+      await supabase
+        .from('print_jobs')
+        .update({
+          status: 'sent',
+          printnode_job_id: result.id
+        })
+        .eq('id', printJob.id);
+
+      toast.success("Smoke test completed successfully!");
       
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Smoke test failed';
@@ -144,16 +158,16 @@ export function PrinterPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Printer className="h-5 w-5" />
-          Printer Management
+          PrintNode Management
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Bridge Status */}
+        {/* PrintNode Status */}
         <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">Bridge Status:</span>
-          <Badge variant={bridgeOnline ? "default" : "destructive"} className="gap-1">
-            {bridgeOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-            {bridgeOnline ? "Online" : "Offline"}
+          <span className="text-sm font-medium">PrintNode Status:</span>
+          <Badge variant={printNodeOnline ? "default" : "destructive"} className="gap-1">
+            {printNodeOnline ? <Cloud className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+            {printNodeOnline ? "Online" : "Offline"}
           </Badge>
         </div>
 
@@ -166,17 +180,20 @@ export function PrinterPanel() {
         <div className="space-y-2">
           <label className="text-sm font-medium">Selected Printer:</label>
           <Select 
-            value={selectedPrinter} 
-            onValueChange={setSelectedPrinter}
-            disabled={!bridgeOnline}
+            value={selectedPrinter?.id.toString() || ''} 
+            onValueChange={(value) => {
+              const printer = printers.find(p => p.id.toString() === value);
+              setSelectedPrinter(printer || null);
+            }}
+            disabled={!printNodeOnline}
           >
             <SelectTrigger>
               <SelectValue placeholder="Choose printer" />
             </SelectTrigger>
             <SelectContent>
               {printers.map((printer) => (
-                <SelectItem key={printer} value={printer}>
-                  {printer}
+                <SelectItem key={printer.id} value={printer.id.toString()}>
+                  {printer.name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -208,15 +225,15 @@ export function PrinterPanel() {
         <Button 
           className="w-full gap-2" 
           onClick={runSmokeTest}
-          disabled={!bridgeOnline || !selectedPrinter || testPrinting}
+          disabled={!printNodeOnline || !selectedPrinter || testPrinting}
         >
           <TestTube className="h-4 w-4" />
           {testPrinting ? "Testing..." : "Smoke Test"}
         </Button>
 
-        {/* Bridge Info */}
+        {/* PrintNode Info */}
         <div className="text-xs text-muted-foreground pt-2 border-t">
-          Bridge: http://127.0.0.1:{bridgePort}
+          PrintNode Cloud Service
           <br />
           {printers.length > 0 && `${printers.length} printer(s) available`}
         </div>

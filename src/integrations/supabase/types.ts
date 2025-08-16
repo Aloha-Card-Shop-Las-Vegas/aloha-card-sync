@@ -178,6 +178,78 @@ export type Database = {
         }
         Relationships: []
       }
+      print_jobs: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          printer_id: number | null
+          printer_name: string | null
+          printnode_job_id: number | null
+          status: string
+          tspl_code: string
+          updated_at: string | null
+          workstation_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          printer_id?: number | null
+          printer_name?: string | null
+          printnode_job_id?: number | null
+          status?: string
+          tspl_code: string
+          updated_at?: string | null
+          workstation_id: string
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          printer_id?: number | null
+          printer_name?: string | null
+          printnode_job_id?: number | null
+          status?: string
+          tspl_code?: string
+          updated_at?: string | null
+          workstation_id?: string
+        }
+        Relationships: []
+      }
+      printer_settings: {
+        Row: {
+          bridge_port: number | null
+          created_at: string | null
+          id: string
+          selected_printer_id: number | null
+          selected_printer_name: string | null
+          updated_at: string | null
+          use_printnode: boolean | null
+          workstation_id: string
+        }
+        Insert: {
+          bridge_port?: number | null
+          created_at?: string | null
+          id?: string
+          selected_printer_id?: number | null
+          selected_printer_name?: string | null
+          updated_at?: string | null
+          use_printnode?: boolean | null
+          workstation_id: string
+        }
+        Update: {
+          bridge_port?: number | null
+          created_at?: string | null
+          id?: string
+          selected_printer_id?: number | null
+          selected_printer_name?: string | null
+          updated_at?: string | null
+          use_printnode?: boolean | null
+          workstation_id?: string
+        }
+        Relationships: []
+      }
       product_sync_status: {
         Row: {
           created_at: string | null
