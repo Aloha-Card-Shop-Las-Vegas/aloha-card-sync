@@ -70,6 +70,19 @@ export default function LabelDesigner() {
   const [selectedPrinter, setSelectedPrinter] = useState("");
   const [qzLoading, setQzLoading] = useState(false);
 
+  // Load printer selection from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem('qz-selected-printer');
+    if (saved) setSelectedPrinter(saved);
+  }, []);
+
+  // Save printer selection to localStorage
+  useEffect(() => {
+    if (selectedPrinter) {
+      localStorage.setItem('qz-selected-printer', selectedPrinter);
+    }
+  }, [selectedPrinter]);
+
   // Printer UI (note: browsers can't enumerate printers without helpers like QZ Tray)
   const [printerName, setPrinterName] = useState("");
   const labelSizeText = useMemo(() => `${LABEL_WIDTH_IN} in × ${LABEL_HEIGHT_IN} in`, []);
@@ -337,13 +350,18 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
             const printers = await qz.printers.find();
             setQzPrinters(printers);
             
-            // Auto-select first Rollo printer if available
-            const rolloPrinter = printers.find((p: string) => 
-              p.toLowerCase().includes('rollo') || 
-              p.toLowerCase().includes('label')
-            );
-            if (rolloPrinter) {
-              setSelectedPrinter(rolloPrinter);
+            // Auto-select saved printer or first Rollo printer if available
+            const savedPrinter = localStorage.getItem('qz-selected-printer');
+            if (savedPrinter && printers.includes(savedPrinter)) {
+              setSelectedPrinter(savedPrinter);
+            } else {
+              const rolloPrinter = printers.find((p: string) => 
+                p.toLowerCase().includes('rollo') || 
+                p.toLowerCase().includes('label')
+              );
+              if (rolloPrinter) {
+                setSelectedPrinter(rolloPrinter);
+              }
             }
             
             toast.success("QZ Tray connected - Direct printing available");
@@ -366,6 +384,36 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
     loadQZ();
     fetchTemplates();
   }, []);
+
+  const refreshPrinters = async () => {
+    if (!qzInstance || !qzConnected) return;
+    try {
+      const printers = await qzInstance.printers.find();
+      setQzPrinters(printers);
+      toast.success(`Found ${printers.length} printer(s)`);
+    } catch (e) {
+      console.error("Failed to refresh printers:", e);
+      toast.error("Failed to refresh printers");
+    }
+  };
+
+  const reconnectQZ = async () => {
+    if (!qzInstance) return;
+    try {
+      if (qzInstance.websocket.isActive()) {
+        await qzInstance.websocket.disconnect();
+      }
+      await qzInstance.websocket.connect();
+      setQzConnected(true);
+      const printers = await qzInstance.printers.find();
+      setQzPrinters(printers);
+      toast.success("QZ Tray reconnected successfully");
+    } catch (e) {
+      console.error("Reconnection failed:", e);
+      setQzConnected(false);
+      toast.error("Failed to reconnect to QZ Tray");
+    }
+  };
 
   // Keyboard shortcut: Delete key removes selected object(s)
   useEffect(() => {
@@ -670,7 +718,10 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
               <CardContent>
                 {!qzConnected && (
                   <div className="mb-4">
-                    <QZTraySetup isConnected={qzConnected} />
+                    <QZTraySetup 
+                      isConnected={qzConnected} 
+                      onRetryConnection={reconnectQZ}
+                    />
                   </div>
                 )}
                 
@@ -683,12 +734,22 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                     <p className="text-xs text-green-700 mb-2">
                       Found {qzPrinters.length} printer(s) - Direct printing available
                     </p>
-                    <Label htmlFor="qz-printer" className="text-xs text-green-800">Select Printer</Label>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Label htmlFor="qz-printer" className="text-xs text-green-800">Select Printer</Label>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        onClick={refreshPrinters}
+                        className="h-6 px-2 text-xs text-green-700 hover:bg-green-100"
+                      >
+                        Refresh
+                      </Button>
+                    </div>
                     <Select value={selectedPrinter} onValueChange={setSelectedPrinter}>
                       <SelectTrigger id="qz-printer" className="h-8 text-xs border-green-200">
                         <SelectValue placeholder="Choose printer" />
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="z-[100]">
                         {qzPrinters.map((printer) => (
                           <SelectItem key={printer} value={printer} className="text-xs">
                             {printer}
@@ -696,6 +757,13 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                         ))}
                       </SelectContent>
                     </Select>
+                    {selectedPrinter && (
+                      <div className="mt-2 p-2 rounded bg-green-100">
+                        <span className="text-xs text-green-800 font-medium">
+                          Selected: {selectedPrinter}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="space-y-3">
