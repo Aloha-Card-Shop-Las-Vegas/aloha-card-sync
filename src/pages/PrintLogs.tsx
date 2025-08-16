@@ -45,7 +45,7 @@ export default function PrintLogs() {
 
   const loadPrintJobs = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('print_jobs')
         .select('*')
         .order('created_at', { ascending: false })
@@ -87,7 +87,7 @@ export default function PrintLogs() {
   const reprintJob = async (job: PrintJob) => {
     try {
       // Update job status to reprinted
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('print_jobs')
         .update({ status: 'reprinted' })
         .eq('id', job.id);
@@ -95,7 +95,7 @@ export default function PrintLogs() {
       if (error) throw error;
 
       // Create new job for reprint
-      const { data: newJob, error: insertError } = await supabase
+      const { data: newJob, error: insertError } = await (supabase as any)
         .from('print_jobs')
         .insert({
           workstation_id: job.workstation_id,
@@ -114,7 +114,7 @@ export default function PrintLogs() {
         await sendTSPL(job.payload, { copies: job.copies });
         
         // Update new job status
-        await supabase
+        await (supabase as any)
           .from('print_jobs')
           .update({ status: 'sent' })
           .eq('id', newJob.id);
@@ -124,7 +124,7 @@ export default function PrintLogs() {
         
       } catch (printError) {
         // Update new job with error
-        await supabase
+        await (supabase as any)
           .from('print_jobs')
           .update({ 
             status: 'error', 

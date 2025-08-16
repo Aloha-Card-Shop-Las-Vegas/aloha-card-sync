@@ -83,7 +83,7 @@ export async function getPrinterSettings(workstationId: string): Promise<Printer
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error('Not authenticated');
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('printer_settings')
     .select('*')
     .eq('user_id', user.user.id)
@@ -98,7 +98,7 @@ export async function upsertPrinterSettings(settings: Partial<PrinterSettings>):
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error('Not authenticated');
 
-  const { error } = await supabase
+  const { error } = await (supabase as any)
     .from('printer_settings')
     .upsert({
       ...settings,
@@ -113,7 +113,7 @@ export async function insertPrintJob(job: Omit<PrintJob, 'id' | 'created_at'>): 
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) throw new Error('Not authenticated');
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('print_jobs')
     .insert({
       ...job,
@@ -134,7 +134,7 @@ export async function updatePrintJobStatus(
   const updateData: any = { status };
   if (error !== undefined) updateData.error = error;
 
-  const { error: updateError } = await supabase
+  const { error: updateError } = await (supabase as any)
     .from('print_jobs')
     .update(updateData)
     .eq('id', id);

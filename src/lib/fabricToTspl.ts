@@ -1,6 +1,15 @@
 import { Canvas as FabricCanvas, FabricObject } from "fabric";
 import { buildTSPL, TSPLOptions } from "./tspl";
 
+// Extend FabricObject with custom properties
+interface ExtendedFabricObject extends FabricObject {
+  name?: string;
+  meta?: {
+    type: 'barcode' | 'qrcode';
+    data: string;
+  };
+}
+
 // Convert Fabric.js canvas objects to TSPL
 export function fabricToTSPL(fabricCanvas: FabricCanvas): string {
   const objects = fabricCanvas.getObjects();
@@ -9,8 +18,9 @@ export function fabricToTSPL(fabricCanvas: FabricCanvas): string {
   let qrcode: TSPLOptions['qrcode'] | undefined;
 
   objects.forEach((obj: FabricObject) => {
+    const extObj = obj as ExtendedFabricObject;
     // Skip border objects or objects marked as non-printable
-    if (obj.excludeFromExport || obj.name === 'border') {
+    if ((obj as any).excludeFromExport || extObj.name === 'border') {
       return;
     }
 
@@ -40,10 +50,10 @@ export function fabricToTSPL(fabricCanvas: FabricCanvas): string {
     }
     
     // Convert images marked as QR codes
-    else if (obj.type === 'image' && obj.meta?.type === 'qrcode') {
+    else if (obj.type === 'image' && extObj.meta?.type === 'qrcode') {
       if (!qrcode) { // Take first QR code only
         qrcode = {
-          data: obj.meta?.data || 'https://example.com',
+          data: extObj.meta?.data || 'https://example.com',
           x: Math.round(obj.left || 0),
           y: Math.round(obj.top || 0),
           size: getQRSize(obj.width || 50)
@@ -52,10 +62,10 @@ export function fabricToTSPL(fabricCanvas: FabricCanvas): string {
     }
     
     // Convert barcode images
-    else if (obj.type === 'image' && obj.meta?.type === 'barcode') {
+    else if (obj.type === 'image' && extObj.meta?.type === 'barcode') {
       // For now, treat barcodes as text (TSPL doesn't have simple barcode support)
       textLines?.push({
-        text: obj.meta?.data || 'BARCODE',
+        text: extObj.meta?.data || 'BARCODE',
         x: Math.round(obj.left || 0),
         y: Math.round((obj.top || 0) + (obj.height || 20) + 5), // Below barcode image
         fontSize: 1
@@ -98,9 +108,9 @@ function getQRSize(objectSize: number): 'S' | 'M' | 'L' {
 
 // Helper to mark Fabric objects with metadata for TSPL conversion
 export function markAsBarcode(obj: FabricObject, data: string): void {
-  obj.meta = { type: 'barcode', data };
+  (obj as ExtendedFabricObject).meta = { type: 'barcode', data };
 }
 
 export function markAsQRCode(obj: FabricObject, data: string): void {
-  obj.meta = { type: 'qrcode', data };
+  (obj as ExtendedFabricObject).meta = { type: 'qrcode', data };
 }
