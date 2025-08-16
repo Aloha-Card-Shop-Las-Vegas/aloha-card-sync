@@ -309,6 +309,113 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
     a.click();
   };
 
+  const handleTestPrint = async () => {
+    if (!fabricCanvas) return;
+    
+    // Create a temporary canvas with test data
+    const tempCanvas = new FabricCanvas(document.createElement("canvas"), {
+      width: PX_WIDTH,
+      height: PX_HEIGHT,
+      backgroundColor: "#ffffff",
+    });
+
+    try {
+      // Add test content
+      const testTitle = new Textbox("TEST LABEL • NM", { 
+        left: 6, 
+        top: 6, 
+        fontSize: 14, 
+        width: PX_WIDTH - 12 
+      });
+      
+      const testLot = new Textbox("TEST-LOT-001", { 
+        left: 6, 
+        top: 28, 
+        fontSize: 12, 
+        width: PX_WIDTH - 12 
+      });
+      
+      const testPrice = new Textbox("$99.99", { 
+        left: PX_WIDTH - 80, 
+        top: PX_HEIGHT - 22, 
+        fontSize: 14, 
+        textAlign: "right", 
+        width: 74 
+      });
+
+      // Add test barcode
+      const testBarcodeCanvas = document.createElement("canvas");
+      const JsBarcode: any = (await import("jsbarcode")).default;
+      JsBarcode(testBarcodeCanvas, "123456789", { 
+        format: "CODE128", 
+        displayValue: false, 
+        margin: 0, 
+        width: 2, 
+        height: 40, 
+        lineColor: "#000" 
+      });
+      const barcodeDataUrl = testBarcodeCanvas.toDataURL("image/png");
+
+      const barcodeImg = await FabricImage.fromURL(barcodeDataUrl);
+      barcodeImg.set({ left: 6, top: PX_HEIGHT - 50, selectable: false });
+      
+      // Scale if too wide
+      const maxW = PX_WIDTH - 12;
+      if (barcodeImg.width && barcodeImg.width > maxW) {
+        barcodeImg.scaleToWidth(maxW);
+      }
+
+      tempCanvas.add(testTitle, testLot, testPrice, barcodeImg);
+      
+      // Export and print
+      const testUrl = tempCanvas.toDataURL({ multiplier: 1, format: "png", quality: 1 });
+      
+      const iframe = document.createElement("iframe");
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "0";
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentWindow?.document;
+      if (!doc) { iframe.remove(); return; }
+
+      const html = `<!doctype html><html><head><title>Print Test Label</title><style>
+        @page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in; margin: 0; }
+        html, body { height: 100%; }
+        body { margin: 0; display: flex; align-items: center; justify-content: center; }
+        img { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; }
+      </style></head><body>
+        <img src="${testUrl}" alt="Test Label" />
+        <script>setTimeout(function(){ window.focus(); window.print(); }, 20);<\/script>
+      </body></html>`;
+
+      doc.open();
+      doc.write(html);
+      doc.close();
+
+      iframe.onload = () => {
+        const win = iframe.contentWindow; if (!win) return; win.focus(); win.print();
+      };
+
+      const cleanup = () => {
+        setTimeout(() => iframe.remove(), 300);
+        tempCanvas.dispose();
+      };
+      iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
+      setTimeout(cleanup, 5000);
+      
+      toast.success("Test label sent to printer");
+      
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to generate test label");
+      tempCanvas.dispose();
+    }
+  };
+
   const handlePrint = () => {
     const url = exportImageDataUrl();
     if (!url) return;
@@ -440,6 +547,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button onClick={handlePrint}>Print 2×1</Button>
+                    <Button variant="outline" onClick={handleTestPrint}>Print Test</Button>
                     <Button variant="outline" onClick={handleDownload}>Download PNG</Button>
                   </div>
                 </div>
