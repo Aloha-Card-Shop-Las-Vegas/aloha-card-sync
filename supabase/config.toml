@@ -15,3 +15,6 @@ verify_jwt = false
 [functions.shopify-webhook-test]
 verify_jwt = false
 
+[functions.qz-sign]
+verify_jwt = false
+
