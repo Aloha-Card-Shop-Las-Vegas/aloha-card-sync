@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { Canvas as FabricCanvas, Textbox, Image as FabricImage, Rect } from "fabric";
 import { supabase } from "@/integrations/supabase/client";
-import { QZTraySetup } from "@/components/QZTraySetup";
+import { printNodeService } from "@/lib/printNodeService";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -63,27 +63,24 @@ export default function LabelDesigner() {
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const borderRef = useRef<Rect | null>(null);
 
-  // QZ Tray state
-  const [qzInstance, setQzInstance] = useState<any>(null);
-  const [qzConnected, setQzConnected] = useState(false);
-  const [qzPrinters, setQzPrinters] = useState<string[]>([]);
-  const [selectedPrinter, setSelectedPrinter] = useState("");
-  const [qzLoading, setQzLoading] = useState(false);
+  // PrintNode state
+  const [printers, setPrinters] = useState<any[]>([]);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
+  const [printLoading, setPrintLoading] = useState(false);
+  const [printNodeConnected, setPrintNodeConnected] = useState(false);
 
   // Load printer selection from localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('qz-selected-printer');
-    if (saved) setSelectedPrinter(saved);
+    const saved = localStorage.getItem('printnode-selected-printer');
+    if (saved) setSelectedPrinterId(parseInt(saved));
   }, []);
 
   // Save printer selection to localStorage
   useEffect(() => {
-    if (selectedPrinter) {
-      localStorage.setItem('qz-selected-printer', selectedPrinter);
+    if (selectedPrinterId) {
+      localStorage.setItem('printnode-selected-printer', selectedPrinterId.toString());
     }
-  }, [selectedPrinter]);
-
-  // Printer UI (note: browsers can't enumerate printers without helpers like QZ Tray)
+  }, [selectedPrinterId]);
   const [printerName, setPrinterName] = useState("");
   const labelSizeText = useMemo(() => `${LABEL_WIDTH_IN} in × ${LABEL_HEIGHT_IN} in`, []);
 
@@ -304,114 +301,44 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
     }
   };
 
-  // Load QZ Tray on component mount
+  // Load PrintNode printers on component mount
   useEffect(() => {
-    const loadQZ = async () => {
+    const loadPrintNode = async () => {
       try {
-        // Load QZ Tray library
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js';
-        script.onload = async () => {
-          const qz = (window as any).qz;
-          if (!qz) return;
-          
-          setQzInstance(qz);
-          
-          // Configure QZ with demo certificate for development
-          qz.security.setCertificatePromise(() => {
-            return Promise.resolve(
-              "-----BEGIN CERTIFICATE-----\n" +
-              "MIIEKzCCApOgAwIBAgIJALm161xCHrWKMA0GCSqGSIb3DQEBCwUAMCoxGDAWBgNV\n" +
-              "BAMMD3F6LWluZHVzdHJpZXMuY29tMQ4wDAYDVQQKDAVxei5pbzAeFw0xNzAzMjgx\n" +
-              "OTQ3NDNaFw0yNzAzMjYxOTQ3NDNaMCoxGDAWBgNVBAMMD3F6LWluZHVzdHJpZXMu\n" +
-              "Y29tMQ4wDAYDVQQKDAVxei5pbzCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoC\n" +
-              "ggIBALCCAdP1mZLj8qVTCzqJJHSEudw2SXLF+Xn9mhN6X1kxvUo7vS5SPEVpVjJG\n" +
-              "2Fv0TKDuKbKu/V5gFLs8+aS8Qa8l1V+yRV4gJ8l5H8R1P6VJa7JKqOgO5Oea8k\n" +
-              "NvH0dE7Kng/lgNh3AkJzT8L9O4Z0DgA8TJzpEoNp9+Ka5lV3FLSV3m1jPqj+zQ\n" +
-              "J6i2vZs1E8tPztZgF6OzH0XJQJ7hL8b7mhC7o6Nkn7V0fEQqvE9w5M2l+B9WQa\n" +
-              "ggIBALCCAdP1mZLj8qVTCzqJJHSEudw2SXLF+Xn9mhN6X1kxvUo7vS5SPEVpVjJG\n" +
-              "-----END CERTIFICATE-----"
-            );
-          });
-
-          // For development, use demo signature - in production, call your signing endpoint
-          qz.security.setSignaturePromise((toSign: string) => {
-            return Promise.resolve("demo"); // This would call your signing endpoint in production
-          });
-
-          // Try to connect
-          try {
-            if (!qz.websocket.isActive()) {
-              await qz.websocket.connect();
-            }
-            setQzConnected(true);
-            
-            // Get available printers
-            const printers = await qz.printers.find();
-            setQzPrinters(printers);
-            
-            // Auto-select saved printer or first Rollo printer if available
-            const savedPrinter = localStorage.getItem('qz-selected-printer');
-            if (savedPrinter && printers.includes(savedPrinter)) {
-              setSelectedPrinter(savedPrinter);
-            } else {
-              const rolloPrinter = printers.find((p: string) => 
-                p.toLowerCase().includes('rollo') || 
-                p.toLowerCase().includes('label')
-              );
-              if (rolloPrinter) {
-                setSelectedPrinter(rolloPrinter);
-              }
-            }
-            
-            toast.success("QZ Tray connected - Direct printing available");
-          } catch (e) {
-            console.error("QZ connection failed:", e);
-            setQzConnected(false);
-          }
-        };
+        const printerList = await printNodeService.getPrinters();
+        setPrinters(printerList);
+        setPrintNodeConnected(true);
         
-        script.onerror = () => {
-          console.warn("QZ Tray library failed to load");
-        };
+        // Auto-select saved printer or first printer if available
+        const saved = localStorage.getItem('printnode-selected-printer');
+        if (saved && printerList.find(p => p.id === parseInt(saved))) {
+          setSelectedPrinterId(parseInt(saved));
+        } else if (printerList.length > 0) {
+          setSelectedPrinterId(printerList[0].id);
+        }
         
-        document.head.appendChild(script);
+        toast.success(`PrintNode connected - Found ${printerList.length} printer(s)`);
       } catch (e) {
-        console.error("Failed to load QZ Tray:", e);
+        console.error("PrintNode connection failed:", e);
+        setPrintNodeConnected(false);
+        toast.error("PrintNode connection failed");
       }
     };
 
-    loadQZ();
+    loadPrintNode();
     fetchTemplates();
   }, []);
 
   const refreshPrinters = async () => {
-    if (!qzInstance || !qzConnected) return;
     try {
-      const printers = await qzInstance.printers.find();
-      setQzPrinters(printers);
-      toast.success(`Found ${printers.length} printer(s)`);
+      const printerList = await printNodeService.getPrinters();
+      setPrinters(printerList);
+      setPrintNodeConnected(true);
+      toast.success(`Found ${printerList.length} printer(s)`);
     } catch (e) {
       console.error("Failed to refresh printers:", e);
       toast.error("Failed to refresh printers");
-    }
-  };
-
-  const reconnectQZ = async () => {
-    if (!qzInstance) return;
-    try {
-      if (qzInstance.websocket.isActive()) {
-        await qzInstance.websocket.disconnect();
-      }
-      await qzInstance.websocket.connect();
-      setQzConnected(true);
-      const printers = await qzInstance.printers.find();
-      setQzPrinters(printers);
-      toast.success("QZ Tray reconnected successfully");
-    } catch (e) {
-      console.error("Reconnection failed:", e);
-      setQzConnected(false);
-      toast.error("Failed to reconnect to QZ Tray");
+      setPrintNodeConnected(false);
     }
   };
 
@@ -583,93 +510,51 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
     setTimeout(cleanup, 5000);
   };
 
-  // QZ Tray direct print function
+  // PrintNode direct print function
   const handleDirectPrint = async (isTest = false) => {
-    if (!qzInstance || !qzConnected || !selectedPrinter) {
-      toast.error("QZ Tray not connected or no printer selected");
+    if (!printNodeConnected || !selectedPrinterId) {
+      toast.error("PrintNode not connected or no printer selected");
       return;
     }
 
-    setQzLoading(true);
+    setPrintLoading(true);
     try {
-      let imageData;
+      // Convert canvas to TSPL for PrintNode
+      const { labelDataToTSPL } = await import("@/lib/tspl");
       
+      let tsplData;
       if (isTest) {
-        // Create test label similar to handleTestPrint but export as image data
-        const tempCanvas = new FabricCanvas(document.createElement("canvas"), {
-          width: PX_WIDTH,
-          height: PX_HEIGHT,
-          backgroundColor: "#ffffff",
+        tsplData = labelDataToTSPL({
+          title: "PRINTNODE TEST",
+          sku: "PN-TEST-001",
+          price: "$99.99",
+          condition: "NM",
+          barcode: "987654321"
         });
-
-        const testTitle = new Textbox("DIRECT TEST • NM", { 
-          left: 6, top: 6, fontSize: 14, width: PX_WIDTH - 12 
-        });
-        const testLot = new Textbox("QZ-TEST-001", { 
-          left: 6, top: 28, fontSize: 12, width: PX_WIDTH - 12 
-        });
-        const testPrice = new Textbox("$199.99", { 
-          left: PX_WIDTH - 80, top: PX_HEIGHT - 22, fontSize: 14, textAlign: "right", width: 74 
-        });
-
-        // Add test barcode
-        const testBarcodeCanvas = document.createElement("canvas");
-        const JsBarcode: any = (await import("jsbarcode")).default;
-        JsBarcode(testBarcodeCanvas, "987654321", { 
-          format: "CODE128", displayValue: false, margin: 0, width: 2, height: 40, lineColor: "#000" 
-        });
-        const barcodeDataUrl = testBarcodeCanvas.toDataURL("image/png");
-        const barcodeImg = await FabricImage.fromURL(barcodeDataUrl);
-        barcodeImg.set({ left: 6, top: PX_HEIGHT - 50, selectable: false });
-        
-        const maxW = PX_WIDTH - 12;
-        if (barcodeImg.width && barcodeImg.width > maxW) {
-          barcodeImg.scaleToWidth(maxW);
-        }
-
-        tempCanvas.add(testTitle, testLot, testPrice, barcodeImg);
-        
-        // Export at higher DPI for Rollo (203 DPI)
-        const printDPI = 203;
-        const multiplier = printDPI / PREVIEW_DPI; // ~1.35x for better quality
-        imageData = tempCanvas.toDataURL({ multiplier, format: "png", quality: 1 });
-        tempCanvas.dispose();
       } else {
-        // Use current canvas
-        const printDPI = 203;
-        const multiplier = printDPI / PREVIEW_DPI;
-        imageData = fabricCanvas?.toDataURL({ multiplier, format: "png", quality: 1 });
+        tsplData = labelDataToTSPL({
+          title: withCondition(title, condition),
+          sku,
+          price,
+          lot,
+          barcode: barcodeValue,
+          condition
+        });
       }
 
-      if (!imageData) {
-        throw new Error("Failed to generate image data");
-      }
-
-      // Print configuration for 2x1 inch label on Rollo
-      const config = qzInstance.configs.create(selectedPrinter, {
-        margins: { top: 0, right: 0, bottom: 0, left: 0 },
-        size: { width: 2.0, height: 1.0 }, // inches
-        units: "in"
+      // Send to PrintNode
+      await printNodeService.printTSPL(tsplData, selectedPrinterId, {
+        title: isTest ? "Test Label" : "Label Print"
       });
-
-      const printData = [{ 
-        type: 'image', 
-        format: 'png',
-        data: imageData,
-        options: {
-          pageWidth: 2.0,
-          pageHeight: 1.0
-        }
-      }];
-
-      await qzInstance.print(config, printData);
-      toast.success(`Label sent directly to ${selectedPrinter}`);
+      
+      const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
+      toast.success(`Label sent to ${selectedPrinter?.name || 'printer'} via PrintNode`);
       
     } catch (e) {
-      console.error("Direct print failed:", e);
-      toast.error(`Direct print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      console.error("PrintNode direct print failed:", e);
+      toast.error(`Print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
-      setQzLoading(false);
+      setPrintLoading(false);
     }
   };
 
@@ -679,7 +564,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
         <div className="container mx-auto px-6 py-8 flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground">Label Designer</h1>
-            <p className="text-muted-foreground mt-2">Design 2×1 inch labels. Direct printing available with QZ Tray for Rollo printers.</p>
+            <p className="text-muted-foreground mt-2">Design 2×1 inch labels. Direct printing available with PrintNode cloud printing.</p>
           </div>
           <Link to="/">
             <Button variant="secondary">Back to Dashboard</Button>
@@ -716,54 +601,53 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                 <CardTitle>Printer Options</CardTitle>
               </CardHeader>
               <CardContent>
-                {!qzConnected && (
-                  <div className="mb-4">
-                    <QZTraySetup 
-                      isConnected={qzConnected} 
-                      onRetryConnection={reconnectQZ}
-                    />
-                  </div>
-                )}
-                
-                {qzConnected && qzPrinters.length > 0 && (
-                  <div className="mb-4 p-3 border rounded-lg bg-green-50">
+                {printNodeConnected && printers.length > 0 && (
+                  <div className="mb-4 p-3 border rounded-lg bg-blue-50">
                     <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm font-medium text-green-800">QZ Tray Connected</Label>
-                      <div className="h-2 w-2 rounded-full bg-green-500" />
+                      <Label className="text-sm font-medium text-blue-800">PrintNode Connected</Label>
+                      <div className="h-2 w-2 rounded-full bg-blue-500" />
                     </div>
-                    <p className="text-xs text-green-700 mb-2">
-                      Found {qzPrinters.length} printer(s) - Direct printing available
+                    <p className="text-xs text-blue-700 mb-2">
+                      Found {printers.length} printer(s) - Cloud printing available
                     </p>
                     <div className="flex items-center gap-2 mb-2">
-                      <Label htmlFor="qz-printer" className="text-xs text-green-800">Select Printer</Label>
+                      <Label htmlFor="printnode-printer" className="text-xs text-blue-800">Select Printer</Label>
                       <Button 
                         size="sm" 
                         variant="ghost" 
                         onClick={refreshPrinters}
-                        className="h-6 px-2 text-xs text-green-700 hover:bg-green-100"
+                        className="h-6 px-2 text-xs text-blue-700 hover:bg-blue-100"
                       >
                         Refresh
                       </Button>
                     </div>
-                    <Select value={selectedPrinter} onValueChange={setSelectedPrinter}>
-                      <SelectTrigger id="qz-printer" className="h-8 text-xs border-green-200">
+                    <Select value={selectedPrinterId?.toString() || ""} onValueChange={(value) => setSelectedPrinterId(parseInt(value))}>
+                      <SelectTrigger id="printnode-printer" className="h-8 text-xs border-blue-200">
                         <SelectValue placeholder="Choose printer" />
                       </SelectTrigger>
                       <SelectContent className="z-[100]">
-                        {qzPrinters.map((printer) => (
-                          <SelectItem key={printer} value={printer} className="text-xs">
-                            {printer}
+                        {printers.map((printer) => (
+                          <SelectItem key={printer.id} value={printer.id.toString()} className="text-xs">
+                            {printer.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {selectedPrinter && (
-                      <div className="mt-2 p-2 rounded bg-green-100">
-                        <span className="text-xs text-green-800 font-medium">
-                          Selected: {selectedPrinter}
+                    {selectedPrinterId && (
+                      <div className="mt-2 p-2 rounded bg-blue-100">
+                        <span className="text-xs text-blue-800 font-medium">
+                          Selected: {printers.find(p => p.id === selectedPrinterId)?.name}
                         </span>
                       </div>
                     )}
+                  </div>
+                )}
+                
+                {!printNodeConnected && (
+                  <div className="mb-4 p-3 border rounded-lg bg-orange-50">
+                    <p className="text-sm text-orange-700">
+                      PrintNode not connected. Check your API key configuration.
+                    </p>
                   </div>
                 )}
                 <div className="space-y-3">
@@ -816,21 +700,21 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button onClick={handlePrint}>Print 2×1 (Dialog)</Button>
                     <Button variant="outline" onClick={handleTestPrint}>Test (Dialog)</Button>
-                    {qzConnected && selectedPrinter && (
+                    {printNodeConnected && selectedPrinterId && (
                       <>
                         <Button 
                           onClick={() => handleDirectPrint(false)} 
-                          disabled={qzLoading}
+                          disabled={printLoading}
                           className="bg-blue-600 hover:bg-blue-700"
                         >
-                          {qzLoading ? "Printing..." : "Direct Print"}
+                          {printLoading ? "Printing..." : "PrintNode Print"}
                         </Button>
                         <Button 
                           variant="outline" 
                           onClick={() => handleDirectPrint(true)}
-                          disabled={qzLoading}
+                          disabled={printLoading}
                         >
-                          Direct Test
+                          PrintNode Test
                         </Button>
                       </>
                     )}
