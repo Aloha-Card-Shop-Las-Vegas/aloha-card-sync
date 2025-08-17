@@ -7,9 +7,16 @@ const app = express();
 
 // Enable CORS for web app communication
 app.use(cors({
-  origin: ['http://localhost:8080', 'https://localhost:8080'],
-  credentials: true
+  origin: ['http://localhost:8080', 'https://localhost:8080', 'https://27406049-6243-4487-9589-cdc440cd3aa0.lovableproject.com'],
+  credentials: true,
+  optionsSuccessStatus: 200
 }));
+
+// Add headers for local network access
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Private-Network', 'true');
+  next();
+});
 
 app.use(bodyParser.text({ type: "*/*", limit: "1mb" }));
 app.use(express.json());
@@ -107,6 +114,62 @@ app.post("/print", (req, res) => {
     }
   } catch (e) {
     const errorMsg = `Print error: ${e.message}`;
+    console.error(`[${new Date().toISOString()}] ${errorMsg}`);
+    res.status(500).json({ error: errorMsg });
+  }
+});
+
+// Direct TCP endpoint for network printers
+app.post("/rawtcp", async (req, res) => {
+  const data = req.body;
+  const printerIP = req.query.ip || "192.168.0.248";
+  const port = parseInt(req.query.port || "9100", 10);
+  
+  if (!data) {
+    return res.status(400).json({ error: "No TSPL data provided" });
+  }
+
+  console.log(`[${new Date().toISOString()}] Direct TCP print to ${printerIP}:${port}`);
+  
+  try {
+    const net = require('net');
+    const client = new net.Socket();
+    
+    const promise = new Promise((resolve, reject) => {
+      client.setTimeout(5000);
+      
+      client.on('connect', () => {
+        console.log(`[${new Date().toISOString()}] Connected to ${printerIP}:${port}`);
+        client.write(data);
+        client.end();
+      });
+      
+      client.on('close', () => {
+        console.log(`[${new Date().toISOString()}] Connection closed`);
+        resolve();
+      });
+      
+      client.on('error', (err) => {
+        console.error(`[${new Date().toISOString()}] TCP Error:`, err);
+        reject(err);
+      });
+      
+      client.on('timeout', () => {
+        console.error(`[${new Date().toISOString()}] TCP Timeout`);
+        client.destroy();
+        reject(new Error('Connection timeout'));
+      });
+    });
+    
+    client.connect(port, printerIP);
+    await promise;
+    
+    res.json({ 
+      success: true, 
+      message: `TSPL data sent to ${printerIP}:${port}` 
+    });
+  } catch (e) {
+    const errorMsg = `TCP print error: ${e.message}`;
     console.error(`[${new Date().toISOString()}] ${errorMsg}`);
     res.status(500).json({ error: errorMsg });
   }

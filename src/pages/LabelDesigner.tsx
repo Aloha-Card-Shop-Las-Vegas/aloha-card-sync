@@ -536,9 +536,9 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
         });
       }
 
-      // Try network printer first (raw socket approach)
+      // Try local bridge with network TCP first
       try {
-        const response = await fetch('http://192.168.0.248:9100', {
+        const response = await fetch('http://127.0.0.1:17777/rawtcp?ip=192.168.0.248&port=9100', {
           method: 'POST',
           headers: {
             'Content-Type': 'text/plain',
@@ -547,14 +547,14 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
         });
         
         if (response.ok) {
-          toast.success(`${isTest ? 'Test' : 'Label'} printed to network Rollo (2×1 exact)`);
+          toast.success(`${isTest ? 'Test' : 'Label'} sent to network printer via bridge (2×1 exact)`);
           return;
         }
-      } catch (networkError) {
-        console.log("Network printer (port 9100) failed, trying local bridge:", networkError);
+      } catch (tcpError) {
+        console.log("TCP via bridge failed, trying direct local printer:", tcpError);
       }
 
-      // Try local bridge second (for desktop Rollo)
+      // Try local bridge for direct USB printer
       try {
         const response = await fetch('http://127.0.0.1:17777/print', {
           method: 'POST',
@@ -563,7 +563,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
         });
         
         if (response.ok) {
-          toast.success(`${isTest ? 'Test' : 'Label'} printed to local Rollo (2×1 exact)`);
+          toast.success(`${isTest ? 'Test' : 'Label'} sent to local USB printer (2×1 exact)`);
           return;
         }
       } catch (localError) {
