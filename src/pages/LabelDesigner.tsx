@@ -536,12 +536,12 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
         });
       }
 
-      // Try network printer first (IPP at 192.168.0.248:631)
+      // Try network printer first (raw socket approach)
       try {
-        const response = await fetch('http://192.168.0.248:631/printers/Rollo', {
+        const response = await fetch('http://192.168.0.248:9100', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/vnd.cups-raw',
+            'Content-Type': 'text/plain',
           },
           body: tsplData
         });
@@ -551,7 +551,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
           return;
         }
       } catch (networkError) {
-        console.log("Network printer not available, trying local bridge");
+        console.log("Network printer (port 9100) failed, trying local bridge:", networkError);
       }
 
       // Try local bridge second (for desktop Rollo)
@@ -567,24 +567,11 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
           return;
         }
       } catch (localError) {
-        console.log("Local bridge not available, trying PrintNode");
+        console.log("Local bridge failed:", localError);
       }
 
-      // Fallback to PrintNode
-      try {
-        if (printNodeConnected && selectedPrinterId) {
-          await printNodeService.printTSPL(tsplData, selectedPrinterId, {
-            title: isTest ? "Test Label" : "Label Print"
-          });
-          
-          const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
-          toast.success(`${isTest ? 'Test' : 'Label'} sent to ${selectedPrinter?.name || 'printer'} via PrintNode (2×1 exact)`);
-        } else {
-          throw new Error("No printing method available");
-        }
-      } catch (printNodeError) {
-        throw new Error("Unable to print - all methods failed");
-      }
+      // No fallback - show error
+      throw new Error("Unable to print - both network printer and local bridge failed. Check printer connections.");
       
     } catch (e) {
       console.error("Direct print failed:", e);
