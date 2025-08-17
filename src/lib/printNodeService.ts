@@ -68,11 +68,14 @@ class PrintNodeService {
     printerId: number, 
     options: PrintJobOptions = {}
   ): Promise<PrintNodeJob> {
+    // Convert TSPL string to base64, handling UTF-8 characters properly
+    const base64Content = btoa(unescape(encodeURIComponent(tspl)));
+    
     const printJob = {
       printerId,
       title: options.title || 'Label Print',
       contentType: 'raw_base64',
-      content: btoa(tspl),
+      content: base64Content,
       source: 'web-app',
       ...(options.copies && { qty: options.copies })
     };
