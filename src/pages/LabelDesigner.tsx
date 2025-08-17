@@ -510,48 +510,67 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
     setTimeout(cleanup, 5000);
   };
 
-  // PrintNode direct print function
+  // Direct print to Rollo with exact 2x1 dimensions
   const handleDirectPrint = async (isTest = false) => {
-    if (!printNodeConnected || !selectedPrinterId) {
-      toast.error("PrintNode not connected or no printer selected");
-      return;
-    }
-
     setPrintLoading(true);
     try {
-      // Convert canvas to TSPL for PrintNode
+      // Import required functions
       const { labelDataToTSPL } = await import("@/lib/tspl");
+      const { fabricToTSPL } = await import("@/lib/fabricToTspl");
       
-      let tsplData;
-      if (isTest) {
-        tsplData = labelDataToTSPL({
-          title: "PRINTNODE TEST",
-          sku: "PN-TEST-001",
-          price: "$99.99",
-          condition: "NM",
-          barcode: "987654321"
-        });
+      let tsplData: string;
+      
+      // Generate TSPL with exact 2x1 inch dimensions
+      if (fabricCanvas && fabricCanvas.getObjects().filter(obj => !(obj as any).excludeFromExport).length > 0) {
+        // Use canvas content if available
+        tsplData = fabricToTSPL(fabricCanvas);
       } else {
+        // Generate from form data with exact dimensions
         tsplData = labelDataToTSPL({
-          title: withCondition(title, condition),
-          sku,
-          price,
-          lot,
-          barcode: barcodeValue,
-          condition
+          title: isTest ? "ROLLO TEST PRINT" : withCondition(title, condition),
+          sku: isTest ? "TEST-001" : sku,
+          price: isTest ? "$99.99" : price,
+          lot: isTest ? "TEST-LOT" : lot,
+          barcode: isTest ? "123456789" : barcodeValue,
+          condition: isTest ? "NM" : condition
         });
       }
 
-      // Send to PrintNode
-      await printNodeService.printTSPL(tsplData, selectedPrinterId, {
-        title: isTest ? "Test Label" : "Label Print"
-      });
-      
-      const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
-      toast.success(`Label sent to ${selectedPrinter?.name || 'printer'} via PrintNode`);
+      // Try local bridge first (for desktop Rollo)
+      try {
+        const response = await fetch('http://127.0.0.1:17777/print', {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: tsplData
+        });
+        
+        if (response.ok) {
+          toast.success(`${isTest ? 'Test' : 'Label'} printed to local Rollo (2×1 exact)`);
+          return;
+        }
+      } catch (localError) {
+        console.log("Local bridge not available, trying network printer");
+      }
+
+      // Fallback to network printer via raw socket (192.168.0.248:9100)
+      try {
+        // Use PrintNode as fallback if available
+        if (printNodeConnected && selectedPrinterId) {
+          await printNodeService.printTSPL(tsplData, selectedPrinterId, {
+            title: isTest ? "Test Label" : "Label Print"
+          });
+          
+          const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
+          toast.success(`${isTest ? 'Test' : 'Label'} sent to ${selectedPrinter?.name || 'printer'} via PrintNode (2×1 exact)`);
+        } else {
+          throw new Error("No printing method available");
+        }
+      } catch (printNodeError) {
+        throw new Error("Unable to print - local bridge and PrintNode failed");
+      }
       
     } catch (e) {
-      console.error("PrintNode direct print failed:", e);
+      console.error("Direct print failed:", e);
       toast.error(`Print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
       setPrintLoading(false);
@@ -698,26 +717,20 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
-                    <Button onClick={handlePrint}>Print 2×1 (Dialog)</Button>
-                    <Button variant="outline" onClick={handleTestPrint}>Test (Dialog)</Button>
-                    {printNodeConnected && selectedPrinterId && (
-                      <>
-                        <Button 
-                          onClick={() => handleDirectPrint(false)} 
-                          disabled={printLoading}
-                          className="bg-blue-600 hover:bg-blue-700"
-                        >
-                          {printLoading ? "Printing..." : "PrintNode Print"}
-                        </Button>
-                        <Button 
-                          variant="outline" 
-                          onClick={() => handleDirectPrint(true)}
-                          disabled={printLoading}
-                        >
-                          PrintNode Test
-                        </Button>
-                      </>
-                    )}
+                    <Button 
+                      onClick={() => handleDirectPrint(false)} 
+                      disabled={printLoading}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {printLoading ? "Printing..." : "Print to Rollo (2×1 exact)"}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => handleDirectPrint(true)}
+                      disabled={printLoading}
+                    >
+                      Test Print
+                    </Button>
                     <Button variant="outline" onClick={handleDownload}>Download PNG</Button>
                   </div>
                 </div>
