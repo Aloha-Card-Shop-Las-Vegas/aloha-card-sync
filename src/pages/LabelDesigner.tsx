@@ -536,7 +536,25 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
         });
       }
 
-      // Try local bridge first (for desktop Rollo)
+      // Try network printer first (IPP at 192.168.0.248:631)
+      try {
+        const response = await fetch('http://192.168.0.248:631/printers/Rollo', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/vnd.cups-raw',
+          },
+          body: tsplData
+        });
+        
+        if (response.ok) {
+          toast.success(`${isTest ? 'Test' : 'Label'} printed to network Rollo (2×1 exact)`);
+          return;
+        }
+      } catch (networkError) {
+        console.log("Network printer not available, trying local bridge");
+      }
+
+      // Try local bridge second (for desktop Rollo)
       try {
         const response = await fetch('http://127.0.0.1:17777/print', {
           method: 'POST',
@@ -549,12 +567,11 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
           return;
         }
       } catch (localError) {
-        console.log("Local bridge not available, trying network printer");
+        console.log("Local bridge not available, trying PrintNode");
       }
 
-      // Fallback to network printer via raw socket (192.168.0.248:9100)
+      // Fallback to PrintNode
       try {
-        // Use PrintNode as fallback if available
         if (printNodeConnected && selectedPrinterId) {
           await printNodeService.printTSPL(tsplData, selectedPrinterId, {
             title: isTest ? "Test Label" : "Label Print"
@@ -566,7 +583,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
           throw new Error("No printing method available");
         }
       } catch (printNodeError) {
-        throw new Error("Unable to print - local bridge and PrintNode failed");
+        throw new Error("Unable to print - all methods failed");
       }
       
     } catch (e) {
