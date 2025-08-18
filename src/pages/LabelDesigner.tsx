@@ -75,6 +75,7 @@ export default function LabelDesigner() {
   const [tsplDensity, setTsplDensity] = useState('10');
   const [tsplSpeed, setTsplSpeed] = useState('4');
   const [tsplGap, setTsplGap] = useState('0');
+  const [selectedFontFamily, setSelectedFontFamily] = useState('Roboto Condensed');
 
   // Load printer selection from localStorage
   useEffect(() => {
@@ -153,9 +154,31 @@ export default function LabelDesigner() {
     borderRef.current = border;
 
     // Starter layout: Title, Lot, Price
-    const titleBox = new Textbox(withCondition(title, condition), { left: 6, top: 6, fontSize: 14, width: PX_WIDTH - 12 });
-    const lotBox = new Textbox(lot, { left: 6, top: 28, fontSize: 12, width: PX_WIDTH - 12 });
-    const priceBox = new Textbox(price, { left: PX_WIDTH - 80, top: PX_HEIGHT - 22, fontSize: 14, textAlign: "right", width: 74 });
+    const titleBox = new Textbox(withCondition(title, condition), { 
+      left: 6, 
+      top: 6, 
+      fontSize: 14, 
+      width: PX_WIDTH - 12,
+      fontFamily: 'Roboto Condensed',
+      fontWeight: 600,
+    });
+    const lotBox = new Textbox(lot, { 
+      left: 6, 
+      top: 28, 
+      fontSize: 12, 
+      width: PX_WIDTH - 12,
+      fontFamily: 'Roboto Condensed',
+      fontWeight: 400,
+    });
+    const priceBox = new Textbox(price, { 
+      left: PX_WIDTH - 80, 
+      top: PX_HEIGHT - 22, 
+      fontSize: 14, 
+      textAlign: "right", 
+      width: 74,
+      fontFamily: 'Inter',
+      fontWeight: 600,
+    });
 
     canvas.add(border, titleBox, lotBox, priceBox);
     
@@ -169,7 +192,14 @@ export default function LabelDesigner() {
 
   const addText = (text: string) => {
     if (!fabricCanvas) return;
-    const tb = new Textbox(text, { left: 10, top: 10, fontSize: 12, width: PX_WIDTH - 20 });
+    const tb = new Textbox(text, { 
+      left: 10, 
+      top: 10, 
+      fontSize: 12, 
+      width: PX_WIDTH - 20,
+      fontFamily: selectedFontFamily,
+      fontWeight: 500,
+    });
     fabricCanvas.add(tb);
     fabricCanvas.setActiveObject(tb);
   };
@@ -411,6 +441,9 @@ export default function LabelDesigner() {
       let pdfBase64: string;
       
       if (fabricCanvas && fabricCanvas.getObjects().filter(obj => !(obj as any).excludeFromExport).length > 0) {
+        // Wait for fonts to load before printing
+        await document.fonts.ready;
+        
         // Use canvas content - export as image and convert to PDF
         const dataURL = fabricCanvas.toDataURL({
           format: 'png',
@@ -529,19 +562,26 @@ export default function LabelDesigner() {
     });
 
     try {
+      // Wait for fonts to load
+      await document.fonts.ready;
+
       // Add test content
       const testTitle = new Textbox("TEST LABEL • NM", { 
         left: 6, 
         top: 6, 
         fontSize: 14, 
-        width: PX_WIDTH - 12 
+        width: PX_WIDTH - 12,
+        fontFamily: 'Roboto Condensed',
+        fontWeight: 600,
       });
       
       const testLot = new Textbox("TEST-LOT-001", { 
         left: 6, 
         top: 28, 
         fontSize: 12, 
-        width: PX_WIDTH - 12 
+        width: PX_WIDTH - 12,
+        fontFamily: 'Roboto Condensed',
+        fontWeight: 400,
       });
       
       const testPrice = new Textbox("$99.99", { 
@@ -549,7 +589,9 @@ export default function LabelDesigner() {
         top: PX_HEIGHT - 22, 
         fontSize: 14, 
         textAlign: "right", 
-        width: 74 
+        width: 74,
+        fontFamily: 'Inter',
+        fontWeight: 600,
       });
 
       // Add test barcode
@@ -625,7 +667,10 @@ export default function LabelDesigner() {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+    // Wait for fonts to load before printing
+    await document.fonts.ready;
+    
     const url = exportImageDataUrl();
     if (!url) return;
 
@@ -662,6 +707,19 @@ export default function LabelDesigner() {
     const cleanup = () => setTimeout(() => iframe.remove(), 300);
     iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
     setTimeout(cleanup, 5000);
+  };
+
+  const applyFontToSelected = (fontFamily: string) => {
+    if (!fabricCanvas) return;
+    
+    const activeObject = fabricCanvas.getActiveObject();
+    if (activeObject && (activeObject.type === 'text' || activeObject.type === 'textbox')) {
+      (activeObject as any).set('fontFamily', fontFamily);
+      fabricCanvas.renderAll();
+      toast.success(`Font changed to ${fontFamily}`);
+    } else {
+      toast.info('Select a text object first');
+    }
   };
 
   return (
@@ -819,6 +877,46 @@ export default function LabelDesigner() {
                     <Button variant="outline" onClick={handlePrint}>Browser Print</Button>
                     <Button variant="outline" onClick={handleTestPrint}>Test Print</Button>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Font Settings</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="font-family">Default Font for New Text</Label>
+                    <Select value={selectedFontFamily} onValueChange={setSelectedFontFamily}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Roboto Condensed">
+                          <span style={{ fontFamily: 'Roboto Condensed' }}>Roboto Condensed</span>
+                        </SelectItem>
+                        <SelectItem value="Atkinson Hyperlegible">
+                          <span style={{ fontFamily: 'Atkinson Hyperlegible' }}>Atkinson Hyperlegible</span>
+                        </SelectItem>
+                        <SelectItem value="Inter">
+                          <span style={{ fontFamily: 'Inter' }}>Inter</span>
+                        </SelectItem>
+                        <SelectItem value="Arial">Arial</SelectItem>
+                        <SelectItem value="Times New Roman">Times New Roman</SelectItem>
+                        <SelectItem value="Courier New">Courier New</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button 
+                    onClick={() => applyFontToSelected(selectedFontFamily)}
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Apply Font to Selected Text
+                  </Button>
                 </div>
               </CardContent>
             </Card>
