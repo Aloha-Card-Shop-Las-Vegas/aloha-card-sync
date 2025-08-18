@@ -24,6 +24,8 @@ export function PrinterPanel() {
 
   useEffect(() => {
     loadPrinterSettings();
+    // Immediately check PrintNode status on mount
+    refreshPrinters();
   }, []);
 
   useEffect(() => {
