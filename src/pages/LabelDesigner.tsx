@@ -77,6 +77,8 @@ export default function LabelDesigner() {
   const [networkPrinterPort, setNetworkPrinterPort] = useState('9100');
   const [testPrintLoading, setTestPrintLoading] = useState(false);
   
+  const BRIDGE = 'http://127.0.0.1:17777';
+  
   // Advanced TSPL settings
   const [tsplDensity, setTsplDensity] = useState('10');
   const [tsplSpeed, setTsplSpeed] = useState('4');
@@ -88,10 +90,10 @@ export default function LabelDesigner() {
     if (saved) setSelectedPrinterId(parseInt(saved));
     
     // Load saved network printer settings
-    const savedIP = localStorage.getItem('network-printer-ip');
+    const savedIP = localStorage.getItem('networkPrinterIP');
     if (savedIP) setNetworkPrinterIP(savedIP);
     
-    const savedPort = localStorage.getItem('network-printer-port');
+    const savedPort = localStorage.getItem('networkPrinterPort');
     if (savedPort) setNetworkPrinterPort(savedPort);
     
     // Load saved TSPL settings
@@ -114,11 +116,11 @@ export default function LabelDesigner() {
 
   // Save network printer and TSPL settings to localStorage
   useEffect(() => {
-    localStorage.setItem('network-printer-ip', networkPrinterIP);
+    localStorage.setItem('networkPrinterIP', networkPrinterIP);
   }, [networkPrinterIP]);
   
   useEffect(() => {
-    localStorage.setItem('network-printer-port', networkPrinterPort);
+    localStorage.setItem('networkPrinterPort', networkPrinterPort);
   }, [networkPrinterPort]);
   
   useEffect(() => {
@@ -386,23 +388,30 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
   }, []);
 
   const checkBridgeStatus = async () => {
-    try {
-      const response = await fetch('http://127.0.0.1:17777/', { 
-        method: 'GET',
-        signal: AbortSignal.timeout(3000) // 3 second timeout
-      });
-      if (response.ok) {
-        setBridgeStatus('online');
-        const data = await response.json();
-        setBridgeFlavor(data.version === 'minimal' ? 'minimal' : 'full');
-      } else {
-        setBridgeStatus('offline');
-        setBridgeFlavor(null);
+    setBridgeStatus('checking');
+    
+    // Try 127.0.0.1 first, fallback to localhost if CORS fails
+    const attempts = [BRIDGE, 'http://localhost:17777'];
+    
+    for (const url of attempts) {
+      try {
+        const response = await fetch(`${url}/`, { 
+          method: 'GET',
+          signal: AbortSignal.timeout(3000)
+        });
+        if (response.ok) {
+          setBridgeStatus('online');
+          const data = await response.json();
+          setBridgeFlavor(data.version === 'minimal' ? 'minimal' : 'full');
+          return;
+        }
+      } catch (e) {
+        // Continue to next attempt
       }
-    } catch (e) {
-      setBridgeStatus('offline');
-      setBridgeFlavor(null);
     }
+    
+    setBridgeStatus('offline');
+    setBridgeFlavor(null);
   };
 
   const refreshPrinters = async () => {
@@ -420,47 +429,51 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
 
   const handleTestBridge = async () => {
     setTestPrintLoading(true);
+    
+    // Trim and validate inputs
+    const ip = networkPrinterIP.trim();
+    const port = networkPrinterPort.trim();
+    
+    if (!ip || !port) {
+      toast.error('Enter valid Network Printer IP and Port');
+      setTestPrintLoading(false);
+      return;
+    }
+    
+    console.info('Bridge send', { ip, port, bridge: BRIDGE });
+    
     try {
       const testTSPL = `SIZE 2,1
-GAP ${tsplGap},0
-DENSITY ${tsplDensity}
-SPEED ${tsplSpeed}
+GAP 0,0
 DIRECTION 1
-SET TEAR ON
 CLS
-TEXT 10,10,"3",0,1,1,"BRIDGE TEST"
-TEXT 10,40,"2",0,1,1,"IP: ${networkPrinterIP}:${networkPrinterPort}"
-TEXT 10,70,"2",0,1,1,"Status: OK"
-PRINT 1
-`;
+TEXT 20,20,"0",0,1,1,"WEB TCP OK"
+PRINT 1`;
 
-      const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=${networkPrinterPort}`, {
+      const response = await fetch(`${BRIDGE}/rawtcp?ip=${ip}&port=${port}`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: testTSPL,
-        signal: AbortSignal.timeout(10000) // 10 second timeout for TCP
+        signal: AbortSignal.timeout(10000)
       });
 
       if (response.ok) {
-        toast.success(`Test sent to ${networkPrinterIP}:${networkPrinterPort} via bridge`);
+        toast.success('Printed test via bridge.');
       } else {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
+        if (response.status === 504 && errorData.error?.includes('timeout')) {
+          toast.error('TCP timeout — enable Raw/JetDirect 9100 or check printer IP/power.');
+        } else {
+          toast.error(`Bridge error: ${errorData.error || `HTTP ${response.status}`}`);
+        }
       }
     } catch (e) {
       console.error("Bridge test failed:", e);
       
-      // Enhanced error handling
-      if (e instanceof Error) {
-        if (e.message.includes('timeout') || e.message.includes('ETIMEDOUT')) {
-          toast.error(`TCP timeout: Enable "Raw TCP/JetDirect" on port ${networkPrinterPort} or use PrintNode for reliable printing`);
-        } else if (e.message.includes('ECONNREFUSED')) {
-          toast.error(`Connection refused: Check if printer at ${networkPrinterIP}:${networkPrinterPort} accepts raw TCP connections`);
-        } else {
-          toast.error(`Bridge test failed: ${e.message}`);
-        }
+      if (e instanceof Error && e.name === 'TypeError' && e.message.includes('fetch')) {
+        toast.error('Bridge unreachable / CORS. Ensure bridge is running and CORS is enabled.');
       } else {
-        toast.error('Bridge test failed: Unknown error');
+        toast.error(`Bridge test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
       }
     } finally {
       setTestPrintLoading(false);

@@ -1,33 +1,55 @@
-const express = require("express");
-const bodyParser = require("body-parser");
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const net = require('net');
 const printer = require("printer");
-const cors = require("cors");
 
 const app = express();
 
-// Enable CORS for web app communication
-app.use(cors({
-  origin: ['http://localhost:8080', 'https://localhost:8080', 'https://27406049-6243-4487-9589-cdc440cd3aa0.lovableproject.com'],
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
-
-// Add headers for local network access
+// Always advertise Private Network Access (Chrome)
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Private-Network', 'true');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
   next();
 });
 
-app.use(bodyParser.text({ type: "*/*", limit: "1mb" }));
+// Allow localhost and Lovable origins
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin) return cb(null, true); // curl/DevTools
+    try {
+      const host = new URL(origin).host;
+      const ok =
+        /^localhost(:\d+)?$/i.test(host) ||
+        /^127\.0\.0\.1(:\d+)?$/i.test(host) ||
+        /(^|\.)lovable(app|dev|project)\.com$/i.test(host);
+      cb(null, ok);
+    } catch {
+      cb(null, false);
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
+  credentials: false,
+  optionsSuccessStatus: 204,
+}));
+
+// Preflight for everything
+app.options('*', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  res.sendStatus(204);
+});
+
+// Accept raw TSPL as text
+app.use(bodyParser.text({ type: ['text/plain', '*/*'], limit: '1mb' }));
+
 app.use(express.json());
 
-// Health check endpoint
-app.get("/", (req, res) => {
-  res.json({ 
-    status: "online", 
-    version: "1.0.0",
-    timestamp: new Date().toISOString()
-  });
+app.get('/', (_req, res) => {
+  res.json({ status: 'ok', version: 'minimal', time: new Date().toISOString() });
 });
 
 // Get list of available printers
@@ -119,59 +141,31 @@ app.post("/print", (req, res) => {
   }
 });
 
-// Direct TCP endpoint for network printers
-app.post("/rawtcp", async (req, res) => {
-  const data = req.body;
-  const printerIP = req.query.ip || "192.168.0.248";
-  const port = parseInt(req.query.port || "9100", 10);
-  
-  if (!data) {
-    return res.status(400).json({ error: "No TSPL data provided" });
-  }
+app.post('/rawtcp', async (req, res) => {
+  const data = typeof req.body === 'string' ? req.body : '';
+  const ip = (req.query.ip || '192.168.0.248').toString();
+  const port = parseInt(req.query.port || '9100', 10);
 
-  console.log(`[${new Date().toISOString()}] Direct TCP print to ${printerIP}:${port}`);
-  
+  if (!data) return res.status(400).json({ error: 'No TSPL data provided' });
+
+  const socket = new net.Socket();
+  socket.setTimeout(10000);          // more forgiving than 5s
+  socket.setKeepAlive(true, 3000);
+
+  console.log(`[${new Date().toISOString()}] TCP print to ${ip}:${port}, bytes=${Buffer.byteLength(data, 'utf8')}`);
+
   try {
-    const net = require('net');
-    const client = new net.Socket();
-    
-    const promise = new Promise((resolve, reject) => {
-      client.setTimeout(5000);
-      
-      client.on('connect', () => {
-        console.log(`[${new Date().toISOString()}] Connected to ${printerIP}:${port}`);
-        client.write(data);
-        client.end();
-      });
-      
-      client.on('close', () => {
-        console.log(`[${new Date().toISOString()}] Connection closed`);
-        resolve();
-      });
-      
-      client.on('error', (err) => {
-        console.error(`[${new Date().toISOString()}] TCP Error:`, err);
-        reject(err);
-      });
-      
-      client.on('timeout', () => {
-        console.error(`[${new Date().toISOString()}] TCP Timeout`);
-        client.destroy();
-        reject(new Error('Connection timeout'));
-      });
+    await new Promise((resolve, reject) => {
+      socket.once('connect', () => socket.write(data, 'utf8', () => socket.end()));
+      socket.once('close', () => resolve());
+      socket.once('timeout', () => { socket.destroy(new Error('timeout')); });
+      socket.once('error', reject);
+      socket.connect(port, ip);
     });
-    
-    client.connect(port, printerIP);
-    await promise;
-    
-    res.json({ 
-      success: true, 
-      message: `TSPL data sent to ${printerIP}:${port}` 
-    });
+    res.json({ success: true, message: `TSPL sent to ${ip}:${port}` });
   } catch (e) {
-    const errorMsg = `TCP print error: ${e.message}`;
-    console.error(`[${new Date().toISOString()}] ${errorMsg}`);
-    res.status(500).json({ error: errorMsg });
+    console.error('TCP error:', e.message);
+    res.status(504).json({ error: `TCP ${e.message || 'failure'} — check Raw/JetDirect 9100, IP, and power.` });
   }
 });
 
