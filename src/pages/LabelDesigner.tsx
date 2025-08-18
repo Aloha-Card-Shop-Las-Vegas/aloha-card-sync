@@ -480,6 +480,48 @@ PRINT 1`;
     }
   };
 
+  const handleCheckTCP = async () => {
+    setTestPrintLoading(true);
+    
+    // Trim and validate inputs
+    const ip = networkPrinterIP.trim();
+    const port = networkPrinterPort.trim();
+    
+    if (!ip || !port) {
+      toast.error('Enter valid Network Printer IP and Port');
+      setTestPrintLoading(false);
+      return;
+    }
+    
+    try {
+      const response = await fetch(`${BRIDGE}/check-tcp?ip=${ip}&port=${port}`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(10000)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok) {
+          toast.success(`TCP connection to ${ip}:${port} successful`);
+        } else {
+          toast.error(`TCP connection failed: ${data.error}`);
+        }
+      } else {
+        toast.error(`Check failed: HTTP ${response.status}`);
+      }
+    } catch (e) {
+      console.error("TCP check failed:", e);
+      
+      if (e instanceof Error && e.name === 'TypeError' && e.message.includes('fetch')) {
+        toast.error('Bridge unreachable / CORS. Ensure bridge is running and CORS is enabled.');
+      } else {
+        toast.error(`TCP check failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      }
+    } finally {
+      setTestPrintLoading(false);
+    }
+  };
+
   const handleTestUSB = async () => {
     if (bridgeFlavor !== 'full') {
       toast.error('USB testing requires the full bridge. Run "npm start" in rollo-local-bridge/');
@@ -518,6 +560,57 @@ PRINT 1
       toast.error(`USB test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
       setTestPrintLoading(false);
+    }
+  };
+
+  const handlePrintNodePrint = async (isTest = false) => {
+    if (!selectedPrinterId) {
+      toast.error('Select a PrintNode printer first');
+      return;
+    }
+
+    setPrintLoading(true);
+    try {
+      // Import required functions
+      const { labelDataToTSPL } = await import("@/lib/tspl");
+      const { fabricToTSPL } = await import("@/lib/fabricToTspl");
+      
+      let tsplData: string;
+      
+      // Advanced TSPL settings
+      const tsplSettings = {
+        density: parseInt(tsplDensity) || 10,
+        speed: parseInt(tsplSpeed) || 4,
+        gapInches: parseFloat(tsplGap) || 0
+      };
+
+      // Generate TSPL with exact 2x1 inch dimensions and advanced settings
+      if (fabricCanvas && fabricCanvas.getObjects().filter(obj => !(obj as any).excludeFromExport).length > 0) {
+        // Use canvas content if available
+        tsplData = fabricToTSPL(fabricCanvas, tsplSettings);
+      } else {
+        // Generate from form data with exact dimensions
+        tsplData = labelDataToTSPL({
+          title: isTest ? "PRINTNODE TEST" : withCondition(title, condition),
+          sku: isTest ? "TEST-001" : sku,
+          price: isTest ? "$99.99" : price,
+          lot: isTest ? "TEST-LOT" : lot,
+          barcode: isTest ? "123456789" : barcodeValue,
+          condition: isTest ? "NM" : condition
+        }, tsplSettings);
+      }
+
+      await printNodeService.printTSPL(tsplData, selectedPrinterId, {
+        title: isTest ? 'Test Label' : 'Label Print'
+      });
+
+      toast.success(`${isTest ? 'Test' : 'Label'} sent to PrintNode printer successfully`);
+      
+    } catch (e) {
+      console.error("PrintNode print failed:", e);
+      toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    } finally {
+      setPrintLoading(false);
     }
   };
 
@@ -724,7 +817,7 @@ PRINT 1
 
       // Try local bridge with network TCP first
       try {
-        const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=${networkPrinterPort}`, {
+        const response = await fetch(`${BRIDGE}/rawtcp?ip=${networkPrinterIP.trim()}&port=${networkPrinterPort.trim()}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/plain',
@@ -738,7 +831,21 @@ PRINT 1
           return;
         }
       } catch (tcpError) {
-        console.log("TCP via bridge failed, trying direct local printer:", tcpError);
+        console.log("TCP via bridge failed, trying PrintNode fallback:", tcpError);
+        
+        // Auto-fallback to PrintNode if available
+        if (printNodeConnected && selectedPrinterId) {
+          try {
+            await printNodeService.printTSPL(tsplData, selectedPrinterId, {
+              title: isTest ? 'Test Label (Auto-fallback)' : 'Label Print (Auto-fallback)'
+            });
+            
+            toast.success(`${isTest ? 'Test' : 'Label'} sent via PrintNode (auto-fallback from bridge failure)`);
+            return;
+          } catch (printNodeError) {
+            console.log("PrintNode fallback also failed:", printNodeError);
+          }
+        }
         
         // Enhanced error reporting for print jobs
         if (tcpError instanceof Error) {
@@ -746,6 +853,8 @@ PRINT 1
             toast.error(`Print timeout: Printer at ${networkPrinterIP}:${networkPrinterPort} may not support raw TCP. Try PrintNode instead.`);
           } else if (tcpError.message.includes('ECONNREFUSED')) {
             toast.error(`Connection refused: Check printer settings and enable "Raw TCP/JetDirect" mode on port ${networkPrinterPort}`);
+          } else {
+            toast.error(`Bridge connection failed: ${tcpError.message}. ${printNodeConnected ? 'PrintNode fallback also failed.' : 'Consider using PrintNode for reliable printing.'}`);
           }
         }
       }
@@ -862,11 +971,29 @@ PRINT 1
                         ))}
                       </SelectContent>
                     </Select>
-                    {selectedPrinterId && (
+                     {selectedPrinterId && (
                       <div className="mt-2 p-2 rounded bg-blue-100">
                         <span className="text-xs text-blue-800 font-medium">
                           Selected: {printers.find(p => p.id === selectedPrinterId)?.name}
                         </span>
+                        <div className="flex gap-2 mt-2">
+                          <Button 
+                            size="sm" 
+                            onClick={() => handlePrintNodePrint(true)}
+                            disabled={printLoading}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            {printLoading ? "Testing..." : "Test via PrintNode"}
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            onClick={() => handlePrintNodePrint(false)}
+                            disabled={printLoading}
+                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            {printLoading ? "Printing..." : "Print via PrintNode"}
+                          </Button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -911,6 +1038,15 @@ PRINT 1
                       >
                         {testPrintLoading ? "Testing..." : "Test TCP"}
                       </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleCheckTCP}
+                        disabled={testPrintLoading || bridgeStatus !== 'online'}
+                        className="flex-1"
+                      >
+                        Check TCP
+                      </Button>
                       {bridgeFlavor === 'full' && (
                         <Button 
                           size="sm" 
@@ -925,6 +1061,8 @@ PRINT 1
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Raw TCP for network printers (port 9100). IPP (port 631) won't work. <strong>PrintNode is recommended for reliability.</strong>
+                      <br />
+                      <span className="text-xs">Bridge URL: {BRIDGE}</span>
                     </p>
                   </div>
                   <div>
