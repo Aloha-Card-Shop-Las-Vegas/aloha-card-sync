@@ -203,6 +203,24 @@ export default function LabelDesigner() {
     }
   };
 
+  const addVerticalLine = () => {
+    if (!fabricCanvas) return;
+    const line = new Rect({
+      left: PX_WIDTH / 2 - 1,
+      top: 10,
+      width: 2,
+      height: PX_HEIGHT - 20,
+      fill: '#000000',
+      stroke: '#000000',
+      strokeWidth: 0,
+      selectable: true,
+      evented: true,
+    });
+    fabricCanvas.add(line);
+    fabricCanvas.setActiveObject(line);
+    toast.success("Vertical separator line added");
+  };
+
   const deleteSelected = () => {
     if (!fabricCanvas) return;
     const objs = fabricCanvas.getActiveObjects();
@@ -662,11 +680,13 @@ export default function LabelDesigner() {
                 <canvas ref={canvasRef} width={PX_WIDTH} height={PX_HEIGHT} aria-label="Label design canvas" />
               </div>
               <div className="flex flex-wrap gap-2 mt-4">
-                <Button onClick={() => addText(withCondition(title, condition))}>Add Title + Condition</Button>
+                <Button onClick={() => addText(title)}>Add Title</Button>
+                <Button onClick={() => addText(condMap[condition] || condition)}>Add Condition</Button>
                 <Button onClick={() => addText(lot)}>Add Lot</Button>
                 <Button onClick={() => addText(sku)}>Add SKU</Button>
                 <Button onClick={() => addText(price)}>Add Price</Button>
                 <Button variant="outline" onClick={addBarcode}>Add Barcode</Button>
+                <Button variant="outline" onClick={addVerticalLine}>Add Separator Line</Button>
                 <Button variant="outline" onClick={deleteSelected}>Delete Selected</Button>
                 <Button onClick={quickSaveTemplate}>Save Template</Button>
                 <Button variant="secondary" onClick={handleClear}>Clear</Button>
