@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { Canvas as FabricCanvas, Textbox, Image as FabricImage, Rect } from "fabric";
 import { supabase } from "@/integrations/supabase/client";
 import { printNodeService } from "@/lib/printNodeService";
+import { PrinterPanel } from "@/components/PrinterPanel";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -760,6 +761,8 @@ export default function LabelDesigner() {
                 )}
               </CardContent>
             </Card>
+
+            <PrinterPanel />
 
             <Card className="shadow-aloha">
               <CardHeader>
