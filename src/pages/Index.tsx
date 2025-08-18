@@ -12,6 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
+import { printNodeService } from "@/lib/printNodeService";
 
 
 type CardItem = {
@@ -60,6 +61,11 @@ const Index = () => {
   const [batch, setBatch] = useState<CardItem[]>([]);
   const [lookupCert, setLookupCert] = useState("");
   const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
+
+  // PrintNode state
+  const [printers, setPrinters] = useState<any[]>([]);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
+  const [printNodeConnected, setPrintNodeConnected] = useState(false);
 
   // New UI state for bulk actions
   const [printingAll, setPrintingAll] = useState(false);
@@ -174,7 +180,29 @@ const Index = () => {
       setBatch(mapped.filter((m) => !m.pushedAt));
     };
 
+    const loadPrintNode = async () => {
+      try {
+        const printerList = await printNodeService.getPrinters();
+        setPrinters(printerList);
+        setPrintNodeConnected(true);
+        
+        // Auto-select saved printer or first printer if available
+        const saved = localStorage.getItem('printnode-selected-printer');
+        if (saved && printerList.find(p => p.id === parseInt(saved))) {
+          setSelectedPrinterId(parseInt(saved));
+        } else if (printerList.length > 0) {
+          setSelectedPrinterId(printerList[0].id);
+        }
+        
+        console.log(`PrintNode connected - Found ${printerList.length} printer(s)`);
+      } catch (e) {
+        console.error("PrintNode connection failed:", e);
+        setPrintNodeConnected(false);
+      }
+    };
+
     loadBatch();
+    loadPrintNode();
   }, []);
 
   // Load categories and games for dropdown
@@ -538,78 +566,91 @@ const Index = () => {
     }
   };
 
-  // Isolated printing of barcode labels using hidden iframe
-  const printLabels = async (items: CardItem[]) => {
+  // PrintNode printing of barcode labels
+  const printNodeLabels = async (items: CardItem[]) => {
+    if (!selectedPrinterId) {
+      toast.error('No PrintNode printer selected');
+      return;
+    }
+
     try {
       const JsBarcode: any = (await import("jsbarcode")).default;
-      const images: string[] = [];
-      for (const it of items) {
-        const val = (it.sku || it.psaCert || "").trim();
+      const { jsPDF } = await import('jspdf');
+      
+      // Create multi-page PDF with one barcode per page (2x1 labels)
+      const doc = new jsPDF({
+        unit: 'in',
+        format: [2.0, 1.0], // 2x1 inch labels
+        orientation: 'landscape',
+        putOnlyUsedFonts: true,
+        compress: false
+      });
+
+      let isFirstPage = true;
+      let validItems = 0;
+
+      for (const item of items) {
+        const val = (item.sku || item.psaCert || "").trim();
         if (!val) continue;
-        const tmp = document.createElement("canvas");
-        JsBarcode(tmp, val, {
+
+        if (!isFirstPage) {
+          doc.addPage();
+        }
+        isFirstPage = false;
+        validItems++;
+
+        // Generate barcode
+        const canvas = document.createElement("canvas");
+        JsBarcode(canvas, val, {
           format: "CODE128",
           displayValue: true,
           fontSize: 14,
           lineColor: "#111827",
           margin: 8,
+          width: 2,
+          height: 40,
         });
-        images.push(tmp.toDataURL("image/png"));
+
+        const dataURL = canvas.toDataURL("image/png");
+        
+        // Add barcode centered on 2x1 label
+        doc.addImage(dataURL, 'PNG', 0.1, 0.2, 1.8, 0.6, undefined, 'FAST');
       }
-      if (images.length === 0) {
-        toast.error("No barcodes to print");
+
+      if (validItems === 0) {
+        toast.error("No valid barcodes to print");
         return;
       }
 
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      document.body.appendChild(iframe);
+      // Send to PrintNode
+      const pdfBase64 = doc.output('datauristring').split(',')[1];
+      const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
+        title: `Batch Labels (${validItems} items)`,
+        copies: 1
+      });
 
-      const doc = iframe.contentWindow?.document;
-      if (!doc) { iframe.remove(); return; }
-
-      const imgsHtml = images.map((src) => `<div class="label"><img src="${src}" alt="Barcode" /></div>`).join("");
-      const html = `<!doctype html><html><head><title>Print Labels</title><style>
-        @page { size: auto; margin: 6mm; }
-        html, body { height: 100%; }
-        body { margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; }
-        .label { page-break-inside: avoid; margin: 8px 0; }
-        .label img { width: 320px; }
-      </style></head><body>${imgsHtml}
-      <script>setTimeout(function(){ window.focus(); window.print(); }, 20);<\/script>
-      </body></html>`;
-
-      doc.open();
-      doc.write(html);
-      doc.close();
-
-      // Ensure we print the iframe content (not the main page)
-      iframe.onload = () => {
-        const win = iframe.contentWindow;
-        if (!win) return;
-        win.focus();
-        win.print();
-      };
-
-      const cleanup = () => setTimeout(() => iframe.remove(), 300);
-      iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
-      setTimeout(cleanup, 5000);
+      if (result.success) {
+        toast.success(`${validItems} labels sent to PrintNode printer (Job ID: ${result.jobId})`);
+      } else {
+        throw new Error(result.error || 'PrintNode print failed');
+      }
     } catch (e) {
       console.error(e);
-      toast.error("Failed to prepare labels for printing");
+      toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   };
 
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
+    
+    if (!printNodeConnected || !selectedPrinterId) {
+      toast.error('PrintNode not connected or no printer selected');
+      return;
+    }
+
     try {
       await markPrinted([b.id]);
-      await printLabels([b]);
+      await printNodeLabels([b]);
       toast.success(`Printed label for Lot ${b.lot || ""}`);
     } catch {
       toast.error("Failed to print");
@@ -652,10 +693,16 @@ const Index = () => {
       toast.info("Nothing to print");
       return;
     }
+    
+    if (!printNodeConnected || !selectedPrinterId) {
+      toast.error('PrintNode not connected or no printer selected');
+      return;
+    }
+    
     setPrintingAll(true);
     try {
       await markPrinted(ids);
-      await printLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
+      await printNodeLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
       toast.success("Printed all labels");
     } catch {
       toast.error("Failed to print all");
@@ -690,11 +737,17 @@ const Index = () => {
       toast.info("Nothing to process");
       return;
     }
+    
+    if (!printNodeConnected || !selectedPrinterId) {
+      toast.error('PrintNode not connected or no printer selected');
+      return;
+    }
+    
     setPushPrintAllRunning(true);
     try {
       await markPushed(ids); // Remove from queue only after push succeeds
       await markPrinted(ids); // Mark printed for those items as well
-      await printLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
+      await printNodeLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
       toast.success("Pushed and printed all");
     } catch {
       toast.error("Failed to push and print all");
