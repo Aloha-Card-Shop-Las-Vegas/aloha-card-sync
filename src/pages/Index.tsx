@@ -681,13 +681,16 @@ const Index = () => {
                     const imageObj = obj as any; // Fabric image object
                     if (imageObj.src && imageObj.src.includes('data:image')) {
                       barcodeUpdated = true;
-                      // Generate new barcode for this item using lot number
+                      // Generate new barcode for this item
                       const canvas = document.createElement('canvas');
                       canvas.width = 300;
                       canvas.height = 60;
                       
+                      // Use PSA cert for graded, SKU for raw
+                      const barcodeValue = isGraded ? (item.psaCert || item.sku || item.lot) : (item.sku || item.lot);
+                      
                       const { default: JsBarcode } = await import('jsbarcode');
-                      JsBarcode(canvas, val, {
+                      JsBarcode(canvas, barcodeValue, {
                         format: "CODE128",
                         displayValue: false,
                         fontSize: 12,

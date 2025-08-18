@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
         body = product.tcgplayer_data?.description || title;
         imageUrl = product.tcgplayer_data?.imageUrl || null;
         handle = `product-${productId}`;
-        tags = [setName, gameName, "single", item.lot_number].filter(Boolean);
+        tags = [setName, gameName, item.category, "single", "raw", item.lot_number].filter(Boolean);
         
         // Extract image URL from tcgplayer_data if available
         if (product.tcgplayer_data?.imageUrl) {
@@ -111,14 +111,14 @@ Deno.serve(async (req) => {
         title = item.sku;
         body = title;
         handle = `product-${productId}`;
-        tags = ["single", item.lot_number];
+        tags = [item.category, "single", "raw", item.lot_number].filter(Boolean);
       }
     } else {
       // Original logic for graded cards
       title = buildTitleFromParts(item.year, item.brand_title, item.card_number, item.subject, item.variant) || item.sku || item.lot_number;
       body = title;
       handle = item.sku || item.psa_cert || item.lot_number || "";
-      tags = [item.category, item.grade, item.year, item.lot_number].filter(Boolean);
+      tags = [item.category, item.grade, item.year, "graded", item.lot_number].filter(Boolean);
     }
     
     const price = item.price != null ? Number(item.price) : 0;
@@ -167,13 +167,14 @@ Deno.serve(async (req) => {
     let shopifyInventoryItemId = item.shopify_inventory_item_id as string | null;
 
     if (isRawSingle) {
-      // For raw singles, handle product/variant differently based on condition
+    // For raw singles, handle product/variant differently based on condition
       // First, look for existing product by handle
       try {
         const productData = await gql(
           `query($handle: String!) {
             product(handle: $handle) {
               id
+              tags
               variants(first: 10) {
                 edges {
                   node {
@@ -181,6 +182,7 @@ Deno.serve(async (req) => {
                     inventoryItem { id }
                     sku
                     option1
+                    barcode
                   }
                 }
               }
@@ -201,6 +203,21 @@ Deno.serve(async (req) => {
             shopifyVariantId = gidToId(existingVariant.node.id);
             shopifyInventoryItemId = gidToId(existingVariant.node.inventoryItem?.id);
           }
+          
+          // Merge tags with existing product tags
+          const existingTags = productData.product.tags || [];
+          const newTags = [...new Set([...existingTags, ...tags])];
+          
+          // Update product tags
+          await api(`/products/${shopifyProductId}.json`, {
+            method: "PUT",
+            body: JSON.stringify({
+              product: {
+                id: Number(shopifyProductId),
+                tags: newTags.join(", "),
+              },
+            }),
+          });
         }
       } catch (e) {
         console.warn("Product lookup by handle failed:", e);
@@ -215,6 +232,7 @@ Deno.serve(async (req) => {
               option1: condition,
               price: String(price),
               sku,
+              barcode: sku || item.lot_number,
               inventory_management: "shopify",
               requires_shipping: true,
               weight: weight,
@@ -234,6 +252,7 @@ Deno.serve(async (req) => {
               id: Number(shopifyVariantId),
               price: String(price),
               sku,
+              barcode: sku || item.lot_number,
               weight: weight,
               weight_unit: "oz",
             },
@@ -254,6 +273,7 @@ Deno.serve(async (req) => {
               option1: condition,
               price: String(price),
               sku,
+              barcode: sku || item.lot_number,
               inventory_management: "shopify",
               requires_shipping: true,
               weight: weight,
@@ -279,25 +299,74 @@ Deno.serve(async (req) => {
         shopifyInventoryItemId = String(variant.inventory_item_id);
       }
     } else {
-      // Original logic for graded cards - lookup by SKU
+      // Original logic for graded cards - lookup by PSA cert (barcode) first, then SKU
       if (!(shopifyVariantId && shopifyProductId && shopifyInventoryItemId)) {
         try {
-          const data = await gql(
-            `query($q: String!) {
-              productVariants(first: 1, query: $q) {
-                edges { node { id product { id } inventoryItem { id } } }
-              }
-            }`,
-            { q: `sku:"${String(sku).replace(/"/g, '\\"')}"` }
-          );
-          const edge = data?.productVariants?.edges?.[0];
-          if (edge?.node) {
-            shopifyProductId = gidToId(edge.node.product?.id);
-            shopifyVariantId = gidToId(edge.node.id);
-            shopifyInventoryItemId = gidToId(edge.node.inventoryItem?.id);
+          // Try PSA cert as barcode first
+          if (item.psa_cert) {
+            const data = await gql(
+              `query($q: String!) {
+                productVariants(first: 1, query: $q) {
+                  edges { node { id product { id tags } inventoryItem { id } } }
+                }
+              }`,
+              { q: `barcode:"${String(item.psa_cert).replace(/"/g, '\\"')}"` }
+            );
+            const edge = data?.productVariants?.edges?.[0];
+            if (edge?.node) {
+              shopifyProductId = gidToId(edge.node.product?.id);
+              shopifyVariantId = gidToId(edge.node.id);
+              shopifyInventoryItemId = gidToId(edge.node.inventoryItem?.id);
+              
+              // Merge tags for existing graded product
+              const existingTags = edge.node.product?.tags || [];
+              const newTags = [...new Set([...existingTags, ...tags])];
+              
+              await api(`/products/${shopifyProductId}.json`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  product: {
+                    id: Number(shopifyProductId),
+                    tags: newTags.join(", "),
+                  },
+                }),
+              });
+            }
+          }
+          
+          // Fallback to SKU lookup if PSA cert didn't work
+          if (!shopifyVariantId) {
+            const data = await gql(
+              `query($q: String!) {
+                productVariants(first: 1, query: $q) {
+                  edges { node { id product { id tags } inventoryItem { id } } }
+                }
+              }`,
+              { q: `sku:"${String(sku).replace(/"/g, '\\"')}"` }
+            );
+            const edge = data?.productVariants?.edges?.[0];
+            if (edge?.node) {
+              shopifyProductId = gidToId(edge.node.product?.id);
+              shopifyVariantId = gidToId(edge.node.id);
+              shopifyInventoryItemId = gidToId(edge.node.inventoryItem?.id);
+              
+              // Merge tags for existing graded product
+              const existingTags = edge.node.product?.tags || [];
+              const newTags = [...new Set([...existingTags, ...tags])];
+              
+              await api(`/products/${shopifyProductId}.json`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  product: {
+                    id: Number(shopifyProductId),
+                    tags: newTags.join(", "),
+                  },
+                }),
+              });
+            }
           }
         } catch (e) {
-          console.warn("SKU lookup via GraphQL failed; will create product", e);
+          console.warn("Graded card lookup via GraphQL failed; will create product", e);
         }
       }
 
@@ -305,7 +374,14 @@ Deno.serve(async (req) => {
         // Update existing variant
         await api(`/variants/${shopifyVariantId}.json`, {
           method: "PUT",
-          body: JSON.stringify({ variant: { id: Number(shopifyVariantId), price: String(price), sku } }),
+          body: JSON.stringify({ 
+            variant: { 
+              id: Number(shopifyVariantId), 
+              price: String(price), 
+              sku,
+              barcode: item.psa_cert || sku || item.lot_number
+            } 
+          }),
         });
       } else {
         // Create product + variant for graded cards
@@ -318,11 +394,12 @@ Deno.serve(async (req) => {
               handle,
               status: "active",
               tags: tags.join(", "),
-              product_type: "Trading Card",
+              product_type: "Graded Card",
               variants: [
                 {
                   price: String(price ?? 0),
                   sku,
+                  barcode: item.psa_cert || sku || item.lot_number,
                   inventory_management: "shopify",
                   requires_shipping: true,
                   weight: weight,
