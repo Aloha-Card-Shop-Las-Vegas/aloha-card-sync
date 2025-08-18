@@ -716,6 +716,9 @@ const Index = () => {
               });
             });
 
+            // Wait for canvas to fully render before exporting
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
             // Export canvas as image and add to PDF
             const dataURL = fabricCanvas.toDataURL({
               format: 'png',
