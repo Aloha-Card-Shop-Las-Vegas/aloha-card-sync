@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
         const setName = product.groups?.name || "";
         
         title = [product.name, gameName, setName].filter(Boolean).join(" - ");
-        body = product.tcgplayer_data?.description || title;
+        body = `${product.tcgplayer_data?.description || title}\n\nLot Number: ${item.lot_number}`;
         imageUrl = product.tcgplayer_data?.imageUrl || null;
         handle = `product-${productId}`;
         tags = [setName, gameName, "single"].filter(Boolean);
@@ -109,14 +109,14 @@ Deno.serve(async (req) => {
       } else {
         // Fallback if product not found
         title = item.sku;
-        body = title;
+        body = `${title}\n\nLot Number: ${item.lot_number}`;
         handle = `product-${productId}`;
         tags = ["single"];
       }
     } else {
       // Original logic for graded cards
       title = buildTitleFromParts(item.year, item.brand_title, item.card_number, item.subject, item.variant) || item.sku || item.lot_number;
-      body = title;
+      body = `${title}\n\nLot Number: ${item.lot_number}`;
       handle = item.sku || item.psa_cert || item.lot_number || "";
       tags = [item.category, item.grade, item.year].filter(Boolean);
     }
