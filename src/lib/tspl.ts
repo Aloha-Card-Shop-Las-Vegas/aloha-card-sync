@@ -103,7 +103,7 @@ export function labelDataToTSPL(data: {
   lot?: string;
   barcode?: string;
   condition?: string;
-}): string {
+}, tsplSettings?: { density?: number; speed?: number; gapInches?: number }): string {
   const textLines: TSPLOptions['textLines'] = [];
   
   if (data.title) {
@@ -126,7 +126,10 @@ export function labelDataToTSPL(data: {
     textLines.push({ text: `$${data.price}`, x: 300, y: 10, fontSize: 3 });
   }
 
-  const options: TSPLOptions = { textLines };
+  const options: TSPLOptions = { 
+    textLines,
+    ...tsplSettings
+  };
   
   if (data.barcode) {
     options.qrcode = {

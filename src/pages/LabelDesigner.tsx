@@ -72,17 +72,37 @@ export default function LabelDesigner() {
 
   // Bridge and Network Printer state
   const [bridgeStatus, setBridgeStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [bridgeFlavor, setBridgeFlavor] = useState<'minimal' | 'full' | null>(null);
   const [networkPrinterIP, setNetworkPrinterIP] = useState('192.168.0.248');
+  const [networkPrinterPort, setNetworkPrinterPort] = useState('9100');
   const [testPrintLoading, setTestPrintLoading] = useState(false);
+  
+  // Advanced TSPL settings
+  const [tsplDensity, setTsplDensity] = useState('10');
+  const [tsplSpeed, setTsplSpeed] = useState('4');
+  const [tsplGap, setTsplGap] = useState('0');
 
   // Load printer selection from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('printnode-selected-printer');
     if (saved) setSelectedPrinterId(parseInt(saved));
     
-    // Load saved network printer IP
+    // Load saved network printer settings
     const savedIP = localStorage.getItem('network-printer-ip');
     if (savedIP) setNetworkPrinterIP(savedIP);
+    
+    const savedPort = localStorage.getItem('network-printer-port');
+    if (savedPort) setNetworkPrinterPort(savedPort);
+    
+    // Load saved TSPL settings
+    const savedDensity = localStorage.getItem('tspl-density');
+    if (savedDensity) setTsplDensity(savedDensity);
+    
+    const savedSpeed = localStorage.getItem('tspl-speed');
+    if (savedSpeed) setTsplSpeed(savedSpeed);
+    
+    const savedGap = localStorage.getItem('tspl-gap');
+    if (savedGap) setTsplGap(savedGap);
   }, []);
 
   // Save printer selection to localStorage
@@ -92,10 +112,26 @@ export default function LabelDesigner() {
     }
   }, [selectedPrinterId]);
 
-  // Save network printer IP to localStorage
+  // Save network printer and TSPL settings to localStorage
   useEffect(() => {
     localStorage.setItem('network-printer-ip', networkPrinterIP);
   }, [networkPrinterIP]);
+  
+  useEffect(() => {
+    localStorage.setItem('network-printer-port', networkPrinterPort);
+  }, [networkPrinterPort]);
+  
+  useEffect(() => {
+    localStorage.setItem('tspl-density', tsplDensity);
+  }, [tsplDensity]);
+  
+  useEffect(() => {
+    localStorage.setItem('tspl-speed', tsplSpeed);
+  }, [tsplSpeed]);
+  
+  useEffect(() => {
+    localStorage.setItem('tspl-gap', tsplGap);
+  }, [tsplGap]);
   const [printerName, setPrinterName] = useState("");
   const labelSizeText = useMemo(() => `${LABEL_WIDTH_IN} in × ${LABEL_HEIGHT_IN} in`, []);
 
@@ -357,11 +393,15 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
       });
       if (response.ok) {
         setBridgeStatus('online');
+        const data = await response.json();
+        setBridgeFlavor(data.version === 'minimal' ? 'minimal' : 'full');
       } else {
         setBridgeStatus('offline');
+        setBridgeFlavor(null);
       }
     } catch (e) {
       setBridgeStatus('offline');
+      setBridgeFlavor(null);
     }
   };
 
@@ -382,31 +422,87 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
     setTestPrintLoading(true);
     try {
       const testTSPL = `SIZE 2,1
-GAP 0,0
+GAP ${tsplGap},0
+DENSITY ${tsplDensity}
+SPEED ${tsplSpeed}
 DIRECTION 1
 SET TEAR ON
 CLS
 TEXT 10,10,"3",0,1,1,"BRIDGE TEST"
-TEXT 10,40,"2",0,1,1,"IP: ${networkPrinterIP}"
+TEXT 10,40,"2",0,1,1,"IP: ${networkPrinterIP}:${networkPrinterPort}"
 TEXT 10,70,"2",0,1,1,"Status: OK"
 PRINT 1
 `;
 
-      const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=9100`, {
+      const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=${networkPrinterPort}`, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
-        body: testTSPL
+        body: testTSPL,
+        signal: AbortSignal.timeout(10000) // 10 second timeout for TCP
       });
 
       if (response.ok) {
-        toast.success(`Test sent to ${networkPrinterIP} via bridge`);
+        toast.success(`Test sent to ${networkPrinterIP}:${networkPrinterPort} via bridge`);
       } else {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `HTTP ${response.status}`);
       }
     } catch (e) {
       console.error("Bridge test failed:", e);
-      toast.error(`Bridge test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      
+      // Enhanced error handling
+      if (e instanceof Error) {
+        if (e.message.includes('timeout') || e.message.includes('ETIMEDOUT')) {
+          toast.error(`TCP timeout: Enable "Raw TCP/JetDirect" on port ${networkPrinterPort} or use PrintNode for reliable printing`);
+        } else if (e.message.includes('ECONNREFUSED')) {
+          toast.error(`Connection refused: Check if printer at ${networkPrinterIP}:${networkPrinterPort} accepts raw TCP connections`);
+        } else {
+          toast.error(`Bridge test failed: ${e.message}`);
+        }
+      } else {
+        toast.error('Bridge test failed: Unknown error');
+      }
+    } finally {
+      setTestPrintLoading(false);
+    }
+  };
+
+  const handleTestUSB = async () => {
+    if (bridgeFlavor !== 'full') {
+      toast.error('USB testing requires the full bridge. Run "npm start" in rollo-local-bridge/');
+      return;
+    }
+    
+    setTestPrintLoading(true);
+    try {
+      const testTSPL = `SIZE 2,1
+GAP ${tsplGap},0
+DENSITY ${tsplDensity}
+SPEED ${tsplSpeed}
+DIRECTION 1
+SET TEAR ON
+CLS
+TEXT 10,10,"3",0,1,1,"USB TEST"
+TEXT 10,40,"2",0,1,1,"Local Printer"
+TEXT 10,70,"2",0,1,1,"Status: OK"
+PRINT 1
+`;
+
+      const response = await fetch('http://127.0.0.1:17777/print', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: testTSPL
+      });
+
+      if (response.ok) {
+        toast.success('Test sent to USB printer via bridge');
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+    } catch (e) {
+      console.error("USB test failed:", e);
+      toast.error(`USB test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
       setTestPrintLoading(false);
     }
@@ -590,10 +686,17 @@ PRINT 1
       
       let tsplData: string;
       
-      // Generate TSPL with exact 2x1 inch dimensions
+      // Advanced TSPL settings
+      const tsplSettings = {
+        density: parseInt(tsplDensity) || 10,
+        speed: parseInt(tsplSpeed) || 4,
+        gapInches: parseFloat(tsplGap) || 0
+      };
+
+      // Generate TSPL with exact 2x1 inch dimensions and advanced settings
       if (fabricCanvas && fabricCanvas.getObjects().filter(obj => !(obj as any).excludeFromExport).length > 0) {
         // Use canvas content if available
-        tsplData = fabricToTSPL(fabricCanvas);
+        tsplData = fabricToTSPL(fabricCanvas, tsplSettings);
       } else {
         // Generate from form data with exact dimensions
         tsplData = labelDataToTSPL({
@@ -603,25 +706,35 @@ PRINT 1
           lot: isTest ? "TEST-LOT" : lot,
           barcode: isTest ? "123456789" : barcodeValue,
           condition: isTest ? "NM" : condition
-        });
+        }, tsplSettings);
       }
 
       // Try local bridge with network TCP first
       try {
-        const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=9100`, {
+        const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=${networkPrinterPort}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/plain',
           },
-          body: tsplData
+          body: tsplData,
+          signal: AbortSignal.timeout(15000) // 15 second timeout for actual print jobs
         });
         
         if (response.ok) {
-          toast.success(`${isTest ? 'Test' : 'Label'} sent to network printer ${networkPrinterIP} via bridge (2×1 exact)`);
+          toast.success(`${isTest ? 'Test' : 'Label'} sent to network printer ${networkPrinterIP}:${networkPrinterPort} via bridge (2×1 exact)`);
           return;
         }
       } catch (tcpError) {
         console.log("TCP via bridge failed, trying direct local printer:", tcpError);
+        
+        // Enhanced error reporting for print jobs
+        if (tcpError instanceof Error) {
+          if (tcpError.message.includes('timeout') || tcpError.message.includes('ETIMEDOUT')) {
+            toast.error(`Print timeout: Printer at ${networkPrinterIP}:${networkPrinterPort} may not support raw TCP. Try PrintNode instead.`);
+          } else if (tcpError.message.includes('ECONNREFUSED')) {
+            toast.error(`Connection refused: Check printer settings and enable "Raw TCP/JetDirect" mode on port ${networkPrinterPort}`);
+          }
+        }
       }
 
       // Try local bridge for direct USB printer
@@ -696,7 +809,9 @@ PRINT 1
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">Bridge:</span>
                     <Badge variant={bridgeStatus === 'online' ? 'default' : bridgeStatus === 'offline' ? 'destructive' : 'secondary'}>
-                      {bridgeStatus === 'online' ? 'Online' : bridgeStatus === 'offline' ? 'Offline' : 'Checking...'}
+                      {bridgeStatus === 'online' ? 
+                        `Online (${bridgeFlavor === 'full' ? 'Full' : 'Minimal'})` : 
+                        bridgeStatus === 'offline' ? 'Offline' : 'Checking...'}
                     </Badge>
                   </div>
                 </CardTitle>
@@ -753,26 +868,50 @@ PRINT 1
                 )}
                 <div className="space-y-3">
                   <div>
-                    <Label htmlFor="network-printer-ip">Network Printer IP</Label>
-                    <div className="flex gap-2 mt-1">
-                      <Input 
-                        id="network-printer-ip" 
-                        value={networkPrinterIP} 
-                        onChange={(e) => setNetworkPrinterIP(e.target.value)} 
-                        placeholder="e.g., 192.168.0.248" 
-                        className="flex-1"
-                      />
+                    <Label htmlFor="network-printer-ip">Network Printer Settings</Label>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <div>
+                        <Input 
+                          id="network-printer-ip" 
+                          value={networkPrinterIP} 
+                          onChange={(e) => setNetworkPrinterIP(e.target.value)} 
+                          placeholder="e.g., 192.168.0.248" 
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">IP Address</p>
+                      </div>
+                      <div>
+                        <Input 
+                          value={networkPrinterPort} 
+                          onChange={(e) => setNetworkPrinterPort(e.target.value)} 
+                          placeholder="9100" 
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">Port</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-2">
                       <Button 
                         size="sm" 
                         variant="outline" 
                         onClick={handleTestBridge}
                         disabled={testPrintLoading || bridgeStatus !== 'online'}
+                        className="flex-1"
                       >
-                        {testPrintLoading ? "Testing..." : "Test Bridge"}
+                        {testPrintLoading ? "Testing..." : "Test TCP"}
                       </Button>
+                      {bridgeFlavor === 'full' && (
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={handleTestUSB}
+                          disabled={testPrintLoading}
+                          className="flex-1"
+                        >
+                          Test USB
+                        </Button>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      IP address for network printing via local bridge. Port 9100 will be used automatically.
+                      Raw TCP for network printers (port 9100). IPP (port 631) won't work. <strong>PrintNode is recommended for reliability.</strong>
                     </p>
                   </div>
                   <div>
@@ -821,6 +960,48 @@ PRINT 1
                       <Input id="price" value={price} onChange={(e) => setPrice(e.target.value)} />
                     </div>
                   </div>
+                  {/* Advanced TSPL Settings */}
+                  <details className="border rounded-lg p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-foreground mb-2">
+                      Advanced TSPL Settings
+                    </summary>
+                    <div className="grid grid-cols-3 gap-2 mt-2">
+                      <div>
+                        <Label htmlFor="tspl-density" className="text-xs">Density (0-15)</Label>
+                        <Input 
+                          id="tspl-density"
+                          value={tsplDensity} 
+                          onChange={(e) => setTsplDensity(e.target.value)} 
+                          placeholder="10"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="tspl-speed" className="text-xs">Speed (2-8)</Label>
+                        <Input 
+                          id="tspl-speed"
+                          value={tsplSpeed} 
+                          onChange={(e) => setTsplSpeed(e.target.value)} 
+                          placeholder="4"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="tspl-gap" className="text-xs">Gap (inches)</Label>
+                        <Input 
+                          id="tspl-gap"
+                          value={tsplGap} 
+                          onChange={(e) => setTsplGap(e.target.value)} 
+                          placeholder="0"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Adjust print density, speed, and label gap for optimal output quality.
+                    </p>
+                  </details>
+                  
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button 
                       onClick={() => handleDirectPrint(false)} 

@@ -11,7 +11,7 @@ interface ExtendedFabricObject extends FabricObject {
 }
 
 // Convert Fabric.js canvas objects to TSPL
-export function fabricToTSPL(fabricCanvas: FabricCanvas): string {
+export function fabricToTSPL(fabricCanvas: FabricCanvas, tsplSettings?: { density?: number; speed?: number; gapInches?: number }): string {
   const objects = fabricCanvas.getObjects();
   const textLines: TSPLOptions['textLines'] = [];
   const lines: TSPLOptions['lines'] = [];
@@ -76,7 +76,8 @@ export function fabricToTSPL(fabricCanvas: FabricCanvas): string {
   return buildTSPL({
     textLines,
     qrcode,
-    lines
+    lines,
+    ...tsplSettings
   });
 }
 
