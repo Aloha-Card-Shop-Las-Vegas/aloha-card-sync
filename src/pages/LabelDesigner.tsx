@@ -394,35 +394,44 @@ export default function LabelDesigner() {
         const { jsPDF } = await import('jspdf');
         const doc = new jsPDF({
           unit: 'in',
-          format: [2, 1],
-          orientation: 'landscape'
+          format: [2, 1], // 2 inches wide, 1 inch tall
+          orientation: 'landscape',
+          putOnlyUsedFonts: true,
+          compress: true
         });
         
-        // Add the canvas image to PDF
-        doc.addImage(dataURL, 'PNG', 0, 0, 2, 1);
+        
+        // Add the canvas image to PDF, filling entire label
+        doc.addImage(dataURL, 'PNG', 0, 0, 2, 1, undefined, 'FAST');
         pdfBase64 = doc.output('datauristring').split(',')[1];
       } else {
         // Generate PDF from form data
         const { jsPDF } = await import('jspdf');
         const doc = new jsPDF({
           unit: 'in',
-          format: [2, 1],
-          orientation: 'landscape'
+          format: [2, 1], // 2 inches wide, 1 inch tall
+          orientation: 'landscape',
+          putOnlyUsedFonts: true,
+          compress: true
         });
 
-        // Add form data to PDF
-        doc.setFontSize(8);
-        const titleText = isTest ? "PRINTNODE TEST" : withCondition(title, condition);
+
+        // Add form data to PDF with proper sizing for 2x1 label
+        doc.setFontSize(10);
+        const titleText = isTest ? "TEST LABEL" : withCondition(title, condition);
         const skuText = isTest ? "TEST-001" : sku;
         const priceText = isTest ? "$99.99" : price;
         const lotText = isTest ? "TEST-LOT" : lot;
         const barcodeText = isTest ? "123456789" : barcodeValue;
 
-        if (titleText) doc.text(titleText, 0.1, 0.2);
-        if (skuText) doc.text(`SKU: ${skuText}`, 0.1, 0.4);
-        if (priceText) doc.text(`Price: ${priceText}`, 0.1, 0.6);
-        if (lotText) doc.text(`Lot: ${lotText}`, 1.0, 0.2);
-        if (barcodeText) doc.text(`Barcode: ${barcodeText}`, 1.0, 0.4);
+        // Left column
+        if (titleText) doc.text(titleText, 0.05, 0.2);
+        if (skuText) doc.text(`SKU: ${skuText}`, 0.05, 0.4);
+        if (priceText) doc.text(`Price: ${priceText}`, 0.05, 0.6);
+        
+        // Right column  
+        if (lotText) doc.text(`Lot: ${lotText}`, 1.1, 0.2);
+        if (barcodeText) doc.text(`Code: ${barcodeText}`, 1.1, 0.4);
 
         pdfBase64 = doc.output('datauristring').split(',')[1];
       }

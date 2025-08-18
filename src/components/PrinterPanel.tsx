@@ -108,14 +108,19 @@ export function PrinterPanel() {
   const generateTestPDF = (): string => {
     const doc = new jsPDF({
       unit: 'in',
-      format: [2, 1],
-      orientation: 'landscape'
+      format: [2, 1], // 2 inches wide, 1 inch tall
+      orientation: 'landscape',
+      putOnlyUsedFonts: true,
+      compress: true
     });
 
+    
+    doc.setFontSize(12);
+    doc.text('2x1" TEST LABEL', 0.1, 0.3);
     doc.setFontSize(10);
-    doc.text('PDF TEST LABEL', 0.1, 0.3);
-    doc.text('2x1 inch format', 0.1, 0.5);
-    doc.text(`Time: ${new Date().toLocaleTimeString()}`, 0.1, 0.7);
+    doc.text('Rollo Printer', 0.1, 0.5);
+    doc.setFontSize(8);
+    doc.text(`${new Date().toLocaleTimeString()}`, 0.1, 0.7);
 
     return doc.output('datauristring').split(',')[1]; // Get base64 part
   };
