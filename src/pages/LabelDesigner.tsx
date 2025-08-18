@@ -69,15 +69,6 @@ export default function LabelDesigner() {
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [printLoading, setPrintLoading] = useState(false);
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
-
-  // Bridge and Network Printer state
-  const [bridgeStatus, setBridgeStatus] = useState<'online' | 'offline' | 'checking'>('checking');
-  const [bridgeFlavor, setBridgeFlavor] = useState<'minimal' | 'full' | null>(null);
-  const [networkPrinterIP, setNetworkPrinterIP] = useState('192.168.0.248');
-  const [networkPrinterPort, setNetworkPrinterPort] = useState('9100');
-  const [testPrintLoading, setTestPrintLoading] = useState(false);
-  
-  const BRIDGE = 'http://127.0.0.1:17777';
   
   // Advanced TSPL settings
   const [tsplDensity, setTsplDensity] = useState('10');
@@ -88,13 +79,6 @@ export default function LabelDesigner() {
   useEffect(() => {
     const saved = localStorage.getItem('printnode-selected-printer');
     if (saved) setSelectedPrinterId(parseInt(saved));
-    
-    // Load saved network printer settings
-    const savedIP = localStorage.getItem('networkPrinterIP');
-    if (savedIP) setNetworkPrinterIP(savedIP);
-    
-    const savedPort = localStorage.getItem('networkPrinterPort');
-    if (savedPort) setNetworkPrinterPort(savedPort);
     
     // Load saved TSPL settings
     const savedDensity = localStorage.getItem('tspl-density');
@@ -107,21 +91,12 @@ export default function LabelDesigner() {
     if (savedGap) setTsplGap(savedGap);
   }, []);
 
-  // Save printer selection to localStorage
+  // Save printer selection and TSPL settings to localStorage
   useEffect(() => {
     if (selectedPrinterId) {
       localStorage.setItem('printnode-selected-printer', selectedPrinterId.toString());
     }
   }, [selectedPrinterId]);
-
-  // Save network printer and TSPL settings to localStorage
-  useEffect(() => {
-    localStorage.setItem('networkPrinterIP', networkPrinterIP);
-  }, [networkPrinterIP]);
-  
-  useEffect(() => {
-    localStorage.setItem('networkPrinterPort', networkPrinterPort);
-  }, [networkPrinterPort]);
   
   useEffect(() => {
     localStorage.setItem('tspl-density', tsplDensity);
@@ -134,6 +109,7 @@ export default function LabelDesigner() {
   useEffect(() => {
     localStorage.setItem('tspl-gap', tsplGap);
   }, [tsplGap]);
+
   const [printerName, setPrinterName] = useState("");
   const labelSizeText = useMemo(() => `${LABEL_WIDTH_IN} in × ${LABEL_HEIGHT_IN} in`, []);
 
@@ -141,7 +117,7 @@ export default function LabelDesigner() {
   const [title, setTitle] = useState("POKEMON GENGAR VMAX #020");
   const [lot, setLot] = useState("LOT-000001");
   const [price, setPrice] = useState("$1,000");
-const [sku, setSku] = useState("120979260");
+  const [sku, setSku] = useState("120979260");
   const [condition, setCondition] = useState("Near Mint");
 
   // Templates state
@@ -182,7 +158,6 @@ const [sku, setSku] = useState("120979260");
 
     canvas.add(border, titleBox, lotBox, priceBox);
     
-
     setFabricCanvas(canvas);
     toast.success("Label canvas ready. Drag elements to position.");
 
@@ -248,7 +223,8 @@ const [sku, setSku] = useState("120979260");
     fabricCanvas.discardActiveObject();
     fabricCanvas.requestRenderAll();
   };
-const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
+
+  const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
 
   // Templates: fetch, save, load, delete
   const fetchTemplates = async () => {
@@ -380,39 +356,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
 
     loadPrintNode();
     fetchTemplates();
-    checkBridgeStatus();
-    
-    // Set up bridge status polling
-    const bridgeInterval = setInterval(checkBridgeStatus, 10000); // Check every 10 seconds
-    return () => clearInterval(bridgeInterval);
   }, []);
-
-  const checkBridgeStatus = async () => {
-    setBridgeStatus('checking');
-    
-    // Try 127.0.0.1 first, fallback to localhost if CORS fails
-    const attempts = [BRIDGE, 'http://localhost:17777'];
-    
-    for (const url of attempts) {
-      try {
-        const response = await fetch(`${url}/`, { 
-          method: 'GET',
-          signal: AbortSignal.timeout(3000)
-        });
-        if (response.ok) {
-          setBridgeStatus('online');
-          const data = await response.json();
-          setBridgeFlavor(data.version === 'minimal' ? 'minimal' : 'full');
-          return;
-        }
-      } catch (e) {
-        // Continue to next attempt
-      }
-    }
-    
-    setBridgeStatus('offline');
-    setBridgeFlavor(null);
-  };
 
   const refreshPrinters = async () => {
     try {
@@ -424,142 +368,6 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
       console.error("Failed to refresh printers:", e);
       toast.error("Failed to refresh printers");
       setPrintNodeConnected(false);
-    }
-  };
-
-  const handleTestBridge = async () => {
-    setTestPrintLoading(true);
-    
-    // Trim and validate inputs
-    const ip = networkPrinterIP.trim();
-    const port = networkPrinterPort.trim();
-    
-    if (!ip || !port) {
-      toast.error('Enter valid Network Printer IP and Port');
-      setTestPrintLoading(false);
-      return;
-    }
-    
-    console.info('Bridge send', { ip, port, bridge: BRIDGE });
-    
-    try {
-      const testTSPL = `SIZE 2,1
-GAP 0,0
-DIRECTION 1
-CLS
-TEXT 20,20,"0",0,1,1,"WEB TCP OK"
-PRINT 1`;
-
-      const response = await fetch(`${BRIDGE}/rawtcp?ip=${ip}&port=${port}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: testTSPL,
-        signal: AbortSignal.timeout(10000)
-      });
-
-      if (response.ok) {
-        toast.success('Printed test via bridge.');
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        if (response.status === 504 && errorData.error?.includes('timeout')) {
-          toast.error('TCP timeout — enable Raw/JetDirect 9100 or check printer IP/power.');
-        } else {
-          toast.error(`Bridge error: ${errorData.error || `HTTP ${response.status}`}`);
-        }
-      }
-    } catch (e) {
-      console.error("Bridge test failed:", e);
-      
-      if (e instanceof Error && e.name === 'TypeError' && e.message.includes('fetch')) {
-        toast.error('Bridge unreachable / CORS. Ensure bridge is running and CORS is enabled.');
-      } else {
-        toast.error(`Bridge test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-      }
-    } finally {
-      setTestPrintLoading(false);
-    }
-  };
-
-  const handleCheckTCP = async () => {
-    setTestPrintLoading(true);
-    
-    // Trim and validate inputs
-    const ip = networkPrinterIP.trim();
-    const port = networkPrinterPort.trim();
-    
-    if (!ip || !port) {
-      toast.error('Enter valid Network Printer IP and Port');
-      setTestPrintLoading(false);
-      return;
-    }
-    
-    try {
-      const response = await fetch(`${BRIDGE}/check-tcp?ip=${ip}&port=${port}`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(10000)
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.ok) {
-          toast.success(`TCP connection to ${ip}:${port} successful`);
-        } else {
-          toast.error(`TCP connection failed: ${data.error}`);
-        }
-      } else {
-        toast.error(`Check failed: HTTP ${response.status}`);
-      }
-    } catch (e) {
-      console.error("TCP check failed:", e);
-      
-      if (e instanceof Error && e.name === 'TypeError' && e.message.includes('fetch')) {
-        toast.error('Bridge unreachable / CORS. Ensure bridge is running and CORS is enabled.');
-      } else {
-        toast.error(`TCP check failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-      }
-    } finally {
-      setTestPrintLoading(false);
-    }
-  };
-
-  const handleTestUSB = async () => {
-    if (bridgeFlavor !== 'full') {
-      toast.error('USB testing requires the full bridge. Run "npm start" in rollo-local-bridge/');
-      return;
-    }
-    
-    setTestPrintLoading(true);
-    try {
-      const testTSPL = `SIZE 2,1
-GAP ${tsplGap},0
-DENSITY ${tsplDensity}
-SPEED ${tsplSpeed}
-DIRECTION 1
-SET TEAR ON
-CLS
-TEXT 10,10,"3",0,1,1,"USB TEST"
-TEXT 10,40,"2",0,1,1,"Local Printer"
-TEXT 10,70,"2",0,1,1,"Status: OK"
-PRINT 1
-`;
-
-      const response = await fetch('http://127.0.0.1:17777/print', {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: testTSPL
-      });
-
-      if (response.ok) {
-        toast.success('Test sent to USB printer via bridge');
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-    } catch (e) {
-      console.error("USB test failed:", e);
-      toast.error(`USB test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    } finally {
-      setTestPrintLoading(false);
     }
   };
 
@@ -782,110 +590,6 @@ PRINT 1
     setTimeout(cleanup, 5000);
   };
 
-  // Direct print to Rollo with exact 2x1 dimensions
-  const handleDirectPrint = async (isTest = false) => {
-    setPrintLoading(true);
-    try {
-      // Import required functions
-      const { labelDataToTSPL } = await import("@/lib/tspl");
-      const { fabricToTSPL } = await import("@/lib/fabricToTspl");
-      
-      let tsplData: string;
-      
-      // Advanced TSPL settings
-      const tsplSettings = {
-        density: parseInt(tsplDensity) || 10,
-        speed: parseInt(tsplSpeed) || 4,
-        gapInches: parseFloat(tsplGap) || 0
-      };
-
-      // Generate TSPL with exact 2x1 inch dimensions and advanced settings
-      if (fabricCanvas && fabricCanvas.getObjects().filter(obj => !(obj as any).excludeFromExport).length > 0) {
-        // Use canvas content if available
-        tsplData = fabricToTSPL(fabricCanvas, tsplSettings);
-      } else {
-        // Generate from form data with exact dimensions
-        tsplData = labelDataToTSPL({
-          title: isTest ? "ROLLO TEST PRINT" : withCondition(title, condition),
-          sku: isTest ? "TEST-001" : sku,
-          price: isTest ? "$99.99" : price,
-          lot: isTest ? "TEST-LOT" : lot,
-          barcode: isTest ? "123456789" : barcodeValue,
-          condition: isTest ? "NM" : condition
-        }, tsplSettings);
-      }
-
-      // Try local bridge with network TCP first
-      try {
-        const response = await fetch(`${BRIDGE}/rawtcp?ip=${networkPrinterIP.trim()}&port=${networkPrinterPort.trim()}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'text/plain',
-          },
-          body: tsplData,
-          signal: AbortSignal.timeout(15000) // 15 second timeout for actual print jobs
-        });
-        
-        if (response.ok) {
-          toast.success(`${isTest ? 'Test' : 'Label'} sent to network printer ${networkPrinterIP}:${networkPrinterPort} via bridge (2×1 exact)`);
-          return;
-        }
-      } catch (tcpError) {
-        console.log("TCP via bridge failed, trying PrintNode fallback:", tcpError);
-        
-        // Auto-fallback to PrintNode if available
-        if (printNodeConnected && selectedPrinterId) {
-          try {
-            await printNodeService.printTSPL(tsplData, selectedPrinterId, {
-              title: isTest ? 'Test Label (Auto-fallback)' : 'Label Print (Auto-fallback)'
-            });
-            
-            toast.success(`${isTest ? 'Test' : 'Label'} sent via PrintNode (auto-fallback from bridge failure)`);
-            return;
-          } catch (printNodeError) {
-            console.log("PrintNode fallback also failed:", printNodeError);
-          }
-        }
-        
-        // Enhanced error reporting for print jobs
-        if (tcpError instanceof Error) {
-          if (tcpError.message.includes('timeout') || tcpError.message.includes('ETIMEDOUT')) {
-            toast.error(`Print timeout: Printer at ${networkPrinterIP}:${networkPrinterPort} may not support raw TCP. Try PrintNode instead.`);
-          } else if (tcpError.message.includes('ECONNREFUSED')) {
-            toast.error(`Connection refused: Check printer settings and enable "Raw TCP/JetDirect" mode on port ${networkPrinterPort}`);
-          } else {
-            toast.error(`Bridge connection failed: ${tcpError.message}. ${printNodeConnected ? 'PrintNode fallback also failed.' : 'Consider using PrintNode for reliable printing.'}`);
-          }
-        }
-      }
-
-      // Try local bridge for direct USB printer
-      try {
-        const response = await fetch('http://127.0.0.1:17777/print', {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: tsplData
-        });
-        
-        if (response.ok) {
-          toast.success(`${isTest ? 'Test' : 'Label'} sent to local USB printer (2×1 exact)`);
-          return;
-        }
-      } catch (localError) {
-        console.log("Local bridge failed:", localError);
-      }
-
-      // No fallback - show error
-      throw new Error("Unable to print - both network printer and local bridge failed. Check printer connections.");
-      
-    } catch (e) {
-      console.error("Direct print failed:", e);
-      toast.error(`Print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-    } finally {
-      setPrintLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
@@ -1014,157 +718,10 @@ PRINT 1
                         "No printers found. Install PrintNode client on your computer."}
                     </p>
                     <p className="text-xs text-red-600">
-                      PrintNode provides reliable cloud printing. Local bridge is available as fallback below.
+                      PrintNode provides reliable cloud printing. Browser print is available as fallback below.
                     </p>
                   </div>
                 )}
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-aloha">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  Local Bridge (Fallback)
-                  <Badge variant={bridgeStatus === 'online' ? 'default' : bridgeStatus === 'offline' ? 'destructive' : 'secondary'}>
-                    {bridgeStatus === 'online' ? 
-                      `Online (${bridgeFlavor === 'full' ? 'Full' : 'Minimal'})` : 
-                      bridgeStatus === 'offline' ? 'Offline' : 'Checking...'}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="mb-4 p-3 border rounded-lg bg-amber-50">
-                  <p className="text-sm text-amber-800 font-medium mb-1">Alternative Printing Method</p>
-                  <p className="text-xs text-amber-700">
-                    Use local bridge for direct network/USB printing. PrintNode is recommended for better reliability.
-                  </p>
-                </div>
-                
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="network-printer-ip">Network Printer Settings</Label>
-                    <div className="grid grid-cols-2 gap-2 mt-1">
-                      <div>
-                        <Input 
-                          id="network-printer-ip" 
-                          value={networkPrinterIP} 
-                          onChange={(e) => setNetworkPrinterIP(e.target.value)} 
-                          placeholder="e.g., 192.168.0.248" 
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">IP Address</p>
-                      </div>
-                      <div>
-                        <Input 
-                          value={networkPrinterPort} 
-                          onChange={(e) => setNetworkPrinterPort(e.target.value)} 
-                          placeholder="9100" 
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">Port</p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={handleTestBridge}
-                        disabled={testPrintLoading || bridgeStatus !== 'online'}
-                        className="flex-1"
-                      >
-                        {testPrintLoading ? "Testing..." : "Test TCP"}
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={handleCheckTCP}
-                        disabled={testPrintLoading || bridgeStatus !== 'online'}
-                        className="flex-1"
-                      >
-                        Check TCP
-                      </Button>
-                      {bridgeFlavor === 'full' && (
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={handleTestUSB}
-                          disabled={testPrintLoading}
-                          className="flex-1"
-                        >
-                          Test USB
-                        </Button>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Raw TCP for network printers (port 9100). IPP (port 631) won't work.
-                      <br />
-                      <span className="text-xs">Bridge URL: {BRIDGE}</span>
-                    </p>
-                  </div>
-                  <div>
-                    <Label htmlFor="printer">Printer</Label>
-                    <Input id="printer" value={printerName} onChange={(e) => setPrinterName(e.target.value)} placeholder="Select in system dialog (optional name)" />
-                    <p className="text-xs text-muted-foreground mt-1">Browsers can’t list printers. When you click Print, choose your printer in the system dialog.</p>
-                  </div>
-                  <div>
-                    <Label>Label Size</Label>
-                    <div className="mt-2">{labelSizeText}</div>
-                  </div>
-                  <div>
-                    <Label htmlFor="barcode">Barcode Value</Label>
-                    <Input id="barcode" value={barcodeValue} onChange={(e) => setBarcodeValue(e.target.value)} placeholder="e.g., 120979260" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="title">Title</Label>
-                      <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="condition">Condition</Label>
-                      <Select value={condition} onValueChange={setCondition}>
-                        <SelectTrigger id="condition">
-                          <SelectValue placeholder="Select condition" />
-                        </SelectTrigger>
-                        <SelectContent className="z-50">
-                          <SelectItem value="Near Mint">Near Mint (NM)</SelectItem>
-                          <SelectItem value="Lightly Played">Lightly Played (LP)</SelectItem>
-                          <SelectItem value="Moderately Played">Moderately Played (MP)</SelectItem>
-                          <SelectItem value="Heavily Played">Heavily Played (HP)</SelectItem>
-                          <SelectItem value="Damaged">Damaged</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="lot">Lot</Label>
-                      <Input id="lot" value={lot} onChange={(e) => setLot(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="sku">SKU</Label>
-                      <Input id="sku" value={sku} onChange={(e) => setSku(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="price">Price</Label>
-                      <Input id="price" value={price} onChange={(e) => setPrice(e.target.value)} />
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Button 
-                      onClick={() => handleDirectPrint(false)} 
-                      disabled={printLoading}
-                      variant="outline"
-                      className="border-amber-600 text-amber-700 hover:bg-amber-50"
-                    >
-                      {printLoading ? "Printing..." : "Print via Bridge"}
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => handleDirectPrint(true)}
-                      disabled={printLoading}
-                      className="border-amber-600 text-amber-700 hover:bg-amber-50"
-                    >
-                      Test Bridge
-                    </Button>
-                  </div>
-                </div>
               </CardContent>
             </Card>
 
@@ -1334,7 +891,7 @@ PRINT 1
                   <li>PrintNode provides reliable cloud printing to any connected printer</li>
                   <li>Set your printer media to 2×1 inches and zero margins for best results</li>
                   <li>Use thermal printer driver settings for optimal density</li>
-                  <li>Local bridge is available as fallback for network/USB printers</li>
+                  <li>Browser print is available as fallback if PrintNode is unavailable</li>
                 </ul>
               </CardContent>
             </Card>

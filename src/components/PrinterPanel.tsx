@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Printer, Wifi, WifiOff, TestTube, Cloud } from "lucide-react";
+import { Printer, Cloud, WifiOff, TestTube } from "lucide-react";
 import { toast } from "sonner";
 import { printNodeService } from "@/lib/printNodeService";
 import { buildSampleLabel } from "@/lib/tspl";
@@ -160,7 +160,7 @@ export function PrinterPanel() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Printer className="h-5 w-5" />
-          PrintNode Management
+          PrintNode Cloud Printing
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -169,9 +169,21 @@ export function PrinterPanel() {
           <span className="text-sm font-medium">PrintNode Status:</span>
           <Badge variant={printNodeOnline ? "default" : "destructive"} className="gap-1">
             {printNodeOnline ? <Cloud className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
-            {printNodeOnline ? "Online" : "Offline"}
+            {printNodeOnline ? "Connected" : "Not Connected"}
           </Badge>
         </div>
+
+        {!printNodeOnline && (
+          <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+            <div className="flex items-center gap-2 text-destructive font-medium text-sm mb-1">
+              <WifiOff className="h-4 w-4" />
+              PrintNode Not Available
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Check your PrintNode API key configuration in Supabase secrets.
+            </p>
+          </div>
+        )}
 
         {/* Workstation ID */}
         <div className="text-xs text-muted-foreground">
@@ -230,12 +242,12 @@ export function PrinterPanel() {
           disabled={!printNodeOnline || !selectedPrinter || testPrinting}
         >
           <TestTube className="h-4 w-4" />
-          {testPrinting ? "Testing..." : "Smoke Test"}
+          {testPrinting ? "Testing..." : "Test Print"}
         </Button>
 
         {/* PrintNode Info */}
         <div className="text-xs text-muted-foreground pt-2 border-t">
-          PrintNode Cloud Service
+          PrintNode provides reliable cloud printing.
           <br />
           {printers.length > 0 && `${printers.length} printer(s) available`}
         </div>
