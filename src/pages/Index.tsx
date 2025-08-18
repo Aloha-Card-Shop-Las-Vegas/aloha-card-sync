@@ -617,7 +617,7 @@ const Index = () => {
       let lastUsedTemplate: any = null;
 
       for (const item of items) {
-        const val = (item.lot || "").trim();
+        const val = (item.sku || item.lot || "").trim();
         if (!val) continue;
 
         if (!isFirstPage) {
@@ -687,7 +687,7 @@ const Index = () => {
                       canvas.height = 60;
                       
                       const { default: JsBarcode } = await import('jsbarcode');
-                      JsBarcode(canvas, item.lot, {
+                      JsBarcode(canvas, val, {
                         format: "CODE128",
                         displayValue: false,
                         fontSize: 12,
