@@ -649,32 +649,69 @@ const Index = () => {
             });
 
             // Load template and populate with item data
-            await new Promise<void>((resolve) => {
-              fabricCanvas.loadFromJSON(templateToUse.canvas, () => {
+            await new Promise<void>(async (resolve) => {
+              fabricCanvas.loadFromJSON(templateToUse.canvas, async () => {
                 // Update text objects with item data
                 const objects = fabricCanvas.getObjects();
-                objects.forEach((obj: any) => {
+                let barcodeUpdated = false;
+                
+                for (const obj of objects) {
                   if (obj.type === 'textbox' || obj.type === 'text') {
-                    const text = obj.text?.toLowerCase() || '';
+                    const textObj = obj as any; // Fabric text object
+                    const text = textObj.text?.toLowerCase() || '';
                     
                     // Replace template placeholders with actual item data
-                    if (text.includes('lot') && item.lot) {
-                      obj.set('text', item.lot);
-                    } else if (text.includes('sku') && item.sku) {
-                      obj.set('text', `SKU: ${item.sku}`);
-                    } else if (text.includes('price') && item.price) {
-                      obj.set('text', item.price);
-                    } else if (text.includes('grade') && item.grade) {
-                      obj.set('text', item.grade);
-                    } else if (text.includes('cert') && item.psaCert) {
-                      obj.set('text', item.psaCert);
-                    } else if (text.includes('title') && item.title) {
-                      obj.set('text', item.title);
+                    if (text.includes('lot') || text.includes('000')) {
+                      textObj.set('text', item.lot);
+                    } else if (text.includes('sku') || text.includes('120979260')) {
+                      textObj.set('text', item.sku || '');
+                    } else if (text.includes('price') || text.includes('$')) {
+                      textObj.set('text', item.price ? `$${item.price}` : '');
+                    } else if (text.includes('grade') || text.includes('nm')) {
+                      textObj.set('text', item.grade || item.variant || '');
+                    } else if (text.includes('cert') || text.includes('psa')) {
+                      textObj.set('text', item.psaCert || '');
+                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('title')) {
+                      textObj.set('text', item.title || '');
                     }
                   }
-                });
+                  
+                  // Handle barcode images - replace src with new barcode
+                  if (obj.type === 'image') {
+                    const imageObj = obj as any; // Fabric image object
+                    if (imageObj.src && imageObj.src.includes('data:image')) {
+                      barcodeUpdated = true;
+                      // Generate new barcode for this item
+                      const canvas = document.createElement('canvas');
+                      canvas.width = 300;
+                      canvas.height = 60;
+                      
+                      const { default: JsBarcode } = await import('jsbarcode');
+                      JsBarcode(canvas, item.lot, {
+                        format: "CODE128",
+                        displayValue: false,
+                        fontSize: 12,
+                        lineColor: "#000000",
+                        margin: 0,
+                        width: 1,
+                        height: 40,
+                      });
+                      
+                      await new Promise<void>((resolveBarcode) => {
+                        imageObj.setSrc(canvas.toDataURL(), () => {
+                          fabricCanvas.renderAll();
+                          resolveBarcode();
+                        });
+                      });
+                    }
+                  }
+                }
                 
-                fabricCanvas.renderAll();
+                // If no barcode was found in template, render normally
+                if (!barcodeUpdated) {
+                  fabricCanvas.renderAll();
+                }
+                
                 resolve();
               });
             });
