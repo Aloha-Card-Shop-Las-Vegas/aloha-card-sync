@@ -394,29 +394,33 @@ export default function LabelDesigner() {
         const { jsPDF } = await import('jspdf');
         const doc = new jsPDF({
           unit: 'in',
-          format: [2, 1], // 2 inches wide, 1 inch tall
+          format: [2.0, 1.0], // Exact 2.0" x 1.0"
           orientation: 'landscape',
           putOnlyUsedFonts: true,
-          compress: true
+          compress: false // Better printer compatibility
         });
         
-        
-        // Add the canvas image to PDF, filling entire label
-        doc.addImage(dataURL, 'PNG', 0, 0, 2, 1, undefined, 'FAST');
+        // Add the canvas image to PDF, filling entire label exactly
+        doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
         pdfBase64 = doc.output('datauristring').split(',')[1];
       } else {
         // Generate PDF from form data
         const { jsPDF } = await import('jspdf');
         const doc = new jsPDF({
           unit: 'in',
-          format: [2, 1], // 2 inches wide, 1 inch tall
+          format: [2.0, 1.0], // Exact 2.0" x 1.0"
           orientation: 'landscape',
           putOnlyUsedFonts: true,
-          compress: true
+          compress: false // Better printer compatibility
         });
 
-
-        // Add form data to PDF with proper sizing for 2x1 label
+        // Add form data to PDF with proper sizing and border
+        // Add a subtle border to help with label cutting
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.01);
+        doc.rect(0.02, 0.02, 1.96, 0.96);
+        
+        doc.setTextColor(0, 0, 0);
         doc.setFontSize(10);
         const titleText = isTest ? "TEST LABEL" : withCondition(title, condition);
         const skuText = isTest ? "TEST-001" : sku;
@@ -425,13 +429,13 @@ export default function LabelDesigner() {
         const barcodeText = isTest ? "123456789" : barcodeValue;
 
         // Left column
-        if (titleText) doc.text(titleText, 0.05, 0.2);
-        if (skuText) doc.text(`SKU: ${skuText}`, 0.05, 0.4);
-        if (priceText) doc.text(`Price: ${priceText}`, 0.05, 0.6);
+        if (titleText) doc.text(titleText, 0.05, 0.25);
+        if (skuText) doc.text(`SKU: ${skuText}`, 0.05, 0.45);
+        if (priceText) doc.text(`Price: ${priceText}`, 0.05, 0.65);
         
         // Right column  
-        if (lotText) doc.text(`Lot: ${lotText}`, 1.1, 0.2);
-        if (barcodeText) doc.text(`Code: ${barcodeText}`, 1.1, 0.4);
+        if (lotText) doc.text(`Lot: ${lotText}`, 1.1, 0.25);
+        if (barcodeText) doc.text(`Code: ${barcodeText}`, 1.1, 0.45);
 
         pdfBase64 = doc.output('datauristring').split(',')[1];
       }

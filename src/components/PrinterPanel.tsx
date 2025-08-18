@@ -108,21 +108,26 @@ export function PrinterPanel() {
   const generateTestPDF = (): string => {
     const doc = new jsPDF({
       unit: 'in',
-      format: [2, 1], // 2 inches wide, 1 inch tall
+      format: [2.0, 1.0], // Exact 2.0" x 1.0" 
       orientation: 'landscape',
       putOnlyUsedFonts: true,
-      compress: true
+      compress: false // Don't compress for better printer compatibility
     });
 
+    // Add a thin border to help visualize label boundaries
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.01);
+    doc.rect(0.02, 0.02, 1.96, 0.96);
     
+    doc.setTextColor(0, 0, 0);
     doc.setFontSize(12);
-    doc.text('2x1" TEST LABEL', 0.1, 0.3);
+    doc.text('2x1" TEST', 0.1, 0.3);
     doc.setFontSize(10);
-    doc.text('Rollo Printer', 0.1, 0.5);
+    doc.text('Rollo Label', 0.1, 0.5);
     doc.setFontSize(8);
     doc.text(`${new Date().toLocaleTimeString()}`, 0.1, 0.7);
 
-    return doc.output('datauristring').split(',')[1]; // Get base64 part
+    return doc.output('datauristring').split(',')[1];
   };
 
   const runPDFTest = async () => {
