@@ -626,8 +626,116 @@ const Index = () => {
         isFirstPage = false;
         validItems++;
 
-        // Always use simple barcode with lot number (consistent for graded and raw)
-        await addSimpleBarcode(doc, val);
+        // Determine card type and select appropriate template
+        const isGraded = !!(item.psaCert && item.grade && item.grade !== 'Raw');
+        const templateToUse = isGraded ? 
+          (defaultTemplates.graded || defaultTemplates.general) : 
+          (defaultTemplates.raw || defaultTemplates.general);
+        
+        lastUsedTemplate = templateToUse;
+
+        if (templateToUse && templateToUse.canvas) {
+          // Use appropriate template
+          try {
+            // Create temporary canvas to render template
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 300; // 2in at 150 DPI
+            tempCanvas.height = 150; // 1in at 150 DPI
+            
+            const fabricCanvas = new FabricCanvas(tempCanvas, {
+              width: 300,
+              height: 150,
+              backgroundColor: "#ffffff",
+            });
+
+            // Load template and populate with item data
+            await new Promise<void>(async (resolve) => {
+              fabricCanvas.loadFromJSON(templateToUse.canvas, async () => {
+                // Update text objects with item data
+                const objects = fabricCanvas.getObjects();
+                let barcodeUpdated = false;
+                
+                for (const obj of objects) {
+                  if (obj.type === 'textbox' || obj.type === 'text') {
+                    const textObj = obj as any; // Fabric text object
+                    const text = textObj.text?.toLowerCase() || '';
+                    
+                    // Replace template placeholders with actual item data
+                    if (text.includes('lot') || text.includes('000001')) {
+                      textObj.set('text', item.lot);
+                    } else if (text.includes('sku') || text.includes('120979260')) {
+                      textObj.set('text', item.sku || '');
+                    } else if (text.includes('price') || text.includes('$1,000') || text.includes('$')) {
+                      textObj.set('text', item.price ? `$${item.price}` : '');
+                    } else if (text.includes('grade') || text.includes('nm') || text.includes('near mint')) {
+                      textObj.set('text', item.grade || item.variant || '');
+                    } else if (text.includes('cert') || text.includes('psa')) {
+                      textObj.set('text', item.psaCert || '');
+                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || text.includes('#020')) {
+                      textObj.set('text', item.title || '');
+                    }
+                  }
+                  
+                  // Handle barcode images - replace src with new barcode
+                  if (obj.type === 'image') {
+                    const imageObj = obj as any; // Fabric image object
+                    if (imageObj.src && imageObj.src.includes('data:image')) {
+                      barcodeUpdated = true;
+                      // Generate new barcode for this item using lot number
+                      const canvas = document.createElement('canvas');
+                      canvas.width = 300;
+                      canvas.height = 60;
+                      
+                      const { default: JsBarcode } = await import('jsbarcode');
+                      JsBarcode(canvas, item.lot, {
+                        format: "CODE128",
+                        displayValue: false,
+                        fontSize: 12,
+                        lineColor: "#000000",
+                        background: "#FFFFFF",
+                        margin: 0,
+                        width: 2,
+                        height: 40,
+                      });
+                      
+                      await new Promise<void>((resolveBarcode) => {
+                        imageObj.setSrc(canvas.toDataURL(), () => {
+                          fabricCanvas.renderAll();
+                          resolveBarcode();
+                        });
+                      });
+                    }
+                  }
+                }
+                
+                // If no barcode was found in template, render normally
+                if (!barcodeUpdated) {
+                  fabricCanvas.renderAll();
+                }
+                
+                resolve();
+              });
+            });
+
+            // Export canvas as image and add to PDF
+            const dataURL = fabricCanvas.toDataURL({
+              format: 'png',
+              quality: 1,
+              multiplier: 2
+            });
+            
+            doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
+            fabricCanvas.dispose();
+            
+          } catch (e) {
+            console.error('Error using template, falling back to barcode:', e);
+            // Fallback to simple barcode
+            await addSimpleBarcode(doc, val);
+          }
+        } else {
+          // No template - use simple barcode
+          await addSimpleBarcode(doc, val);
+        }
       }
 
       if (validItems === 0) {
