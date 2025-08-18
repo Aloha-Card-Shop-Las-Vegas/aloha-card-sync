@@ -66,6 +66,7 @@ const Index = () => {
   const [printers, setPrinters] = useState<any[]>([]);
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
+  const [defaultTemplate, setDefaultTemplate] = useState<any>(null);
 
   // New UI state for bulk actions
   const [printingAll, setPrintingAll] = useState(false);
@@ -201,8 +202,32 @@ const Index = () => {
       }
     };
 
+    const loadDefaultTemplate = async () => {
+      const defaultTemplateId = localStorage.getItem('default-template-id');
+      if (defaultTemplateId) {
+        try {
+          const { data, error } = await supabase
+            .from('label_templates')
+            .select('*')
+            .eq('id', defaultTemplateId)
+            .single();
+          
+          if (error) {
+            console.error('Failed to load default template:', error);
+            return;
+          }
+          
+          setDefaultTemplate(data);
+          console.log('Loaded default template for batch printing:', data.name);
+        } catch (e) {
+          console.error('Error loading default template:', e);
+        }
+      }
+    };
+
     loadBatch();
     loadPrintNode();
+    loadDefaultTemplate();
   }, []);
 
   // Load categories and games for dropdown
@@ -566,7 +591,7 @@ const Index = () => {
     }
   };
 
-  // PrintNode printing of barcode labels
+  // PrintNode printing using default template or simple barcode
   const printNodeLabels = async (items: CardItem[]) => {
     if (!selectedPrinterId) {
       toast.error('No PrintNode printer selected');
@@ -574,10 +599,10 @@ const Index = () => {
     }
 
     try {
-      const JsBarcode: any = (await import("jsbarcode")).default;
       const { jsPDF } = await import('jspdf');
+      const { Canvas: FabricCanvas } = await import('fabric');
       
-      // Create multi-page PDF with one barcode per page (2x1 labels)
+      // Create multi-page PDF with one label per page (2x1 labels)
       const doc = new jsPDF({
         unit: 'in',
         format: [2.0, 1.0], // 2x1 inch labels
@@ -599,22 +624,68 @@ const Index = () => {
         isFirstPage = false;
         validItems++;
 
-        // Generate barcode
-        const canvas = document.createElement("canvas");
-        JsBarcode(canvas, val, {
-          format: "CODE128",
-          displayValue: true,
-          fontSize: 14,
-          lineColor: "#111827",
-          margin: 8,
-          width: 2,
-          height: 40,
-        });
+        if (defaultTemplate && defaultTemplate.canvas) {
+          // Use default template
+          try {
+            // Create temporary canvas to render template
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 300; // 2in at 150 DPI
+            tempCanvas.height = 150; // 1in at 150 DPI
+            
+            const fabricCanvas = new FabricCanvas(tempCanvas, {
+              width: 300,
+              height: 150,
+              backgroundColor: "#ffffff",
+            });
 
-        const dataURL = canvas.toDataURL("image/png");
-        
-        // Add barcode centered on 2x1 label
-        doc.addImage(dataURL, 'PNG', 0.1, 0.2, 1.8, 0.6, undefined, 'FAST');
+            // Load template and populate with item data
+            await new Promise<void>((resolve) => {
+              fabricCanvas.loadFromJSON(defaultTemplate.canvas, () => {
+                // Update text objects with item data
+                const objects = fabricCanvas.getObjects();
+                objects.forEach((obj: any) => {
+                  if (obj.type === 'textbox' || obj.type === 'text') {
+                    const text = obj.text?.toLowerCase() || '';
+                    
+                    // Replace template placeholders with actual item data
+                    if (text.includes('lot') && item.lot) {
+                      obj.set('text', item.lot);
+                    } else if (text.includes('sku') && item.sku) {
+                      obj.set('text', `SKU: ${item.sku}`);
+                    } else if (text.includes('price') && item.price) {
+                      obj.set('text', item.price);
+                    } else if (text.includes('grade') && item.grade) {
+                      obj.set('text', item.grade);
+                    } else if (text.includes('cert') && item.psaCert) {
+                      obj.set('text', item.psaCert);
+                    }
+                  }
+                });
+                
+                fabricCanvas.renderAll();
+                resolve();
+              });
+            });
+
+            // Export canvas as image and add to PDF
+            const dataURL = fabricCanvas.toDataURL({
+              format: 'png',
+              quality: 1,
+              multiplier: 2
+            });
+            
+            doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
+            fabricCanvas.dispose();
+            
+          } catch (e) {
+            console.error('Error using template, falling back to barcode:', e);
+            // Fallback to simple barcode
+            await addSimpleBarcode(doc, val);
+          }
+        } else {
+          // No template - use simple barcode
+          await addSimpleBarcode(doc, val);
+        }
       }
 
       if (validItems === 0) {
@@ -625,7 +696,7 @@ const Index = () => {
       // Send to PrintNode
       const pdfBase64 = doc.output('datauristring').split(',')[1];
       const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
-        title: `Batch Labels (${validItems} items)`,
+        title: `Batch Labels (${validItems} items)${defaultTemplate ? ` - ${defaultTemplate.name}` : ''}`,
         copies: 1
       });
 
@@ -638,6 +709,24 @@ const Index = () => {
       console.error(e);
       toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
+  };
+
+  // Helper function for simple barcode fallback
+  const addSimpleBarcode = async (doc: any, val: string) => {
+    const JsBarcode: any = (await import("jsbarcode")).default;
+    const canvas = document.createElement("canvas");
+    JsBarcode(canvas, val, {
+      format: "CODE128",
+      displayValue: true,
+      fontSize: 14,
+      lineColor: "#111827",
+      margin: 8,
+      width: 2,
+      height: 40,
+    });
+
+    const dataURL = canvas.toDataURL("image/png");
+    doc.addImage(dataURL, 'PNG', 0.1, 0.2, 1.8, 0.6, undefined, 'FAST');
   };
 
   const handlePrintRow = async (b: CardItem) => {
