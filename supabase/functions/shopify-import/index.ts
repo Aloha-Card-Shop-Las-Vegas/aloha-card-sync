@@ -57,7 +57,70 @@ Deno.serve(async (req) => {
     if (itemErr) throw itemErr;
     if (!item) throw new Error("Item not found");
 
-    const title = buildTitleFromParts(item.year, item.brand_title, item.card_number, item.subject, item.variant) || item.sku || item.lot_number;
+    // Check if this is a raw single by parsing SKU
+    const isRawSingle = item.sku && /^\d+/.test(item.sku) && !item.grade;
+    
+    let title: string;
+    let body: string;
+    let imageUrl: string | null = null;
+    let handle: string;
+    let tags: string[] = [];
+    let weight = 1; // Default 1 oz
+    let condition = "NM"; // Default condition
+    let productId: string | null = null;
+    
+    if (isRawSingle && item.sku) {
+      // Parse SKU for raw singles: productId + printing + condition
+      const skuParts = item.sku.split(/[-_\s]+/);
+      productId = skuParts[0];
+      const printing = skuParts[1] || "";
+      condition = skuParts[2] || "NM";
+      
+      // Fetch product details from database
+      const { data: product } = await supabase
+        .from("products")
+        .select(`
+          name,
+          tcgplayer_data,
+          group_id,
+          groups (
+            name,
+            category_id,
+            categories (name)
+          )
+        `)
+        .eq("id", productId)
+        .maybeSingle();
+        
+      if (product) {
+        const gameName = product.groups?.categories?.name || "TCG";
+        const setName = product.groups?.name || "";
+        
+        title = [product.name, gameName, setName].filter(Boolean).join(" - ");
+        body = product.tcgplayer_data?.description || title;
+        imageUrl = product.tcgplayer_data?.imageUrl || null;
+        handle = `product-${productId}`;
+        tags = [setName, gameName, "single"].filter(Boolean);
+        
+        // Extract image URL from tcgplayer_data if available
+        if (product.tcgplayer_data?.imageUrl) {
+          imageUrl = product.tcgplayer_data.imageUrl;
+        }
+      } else {
+        // Fallback if product not found
+        title = item.sku;
+        body = title;
+        handle = `product-${productId}`;
+        tags = ["single"];
+      }
+    } else {
+      // Original logic for graded cards
+      title = buildTitleFromParts(item.year, item.brand_title, item.card_number, item.subject, item.variant) || item.sku || item.lot_number;
+      body = title;
+      handle = item.sku || item.psa_cert || item.lot_number || "";
+      tags = [item.category, item.grade, item.year].filter(Boolean);
+    }
+    
     const price = item.price != null ? Number(item.price) : 0;
     const sku = item.sku || item.psa_cert || item.lot_number;
     const quantity = item.quantity ?? 1;
@@ -99,81 +162,194 @@ Deno.serve(async (req) => {
 
     const gidToId = (gid: string | null | undefined) => gid ? gid.split("/").pop() || "" : "";
 
-    let productId = item.shopify_product_id as string | null;
-    let variantId = item.shopify_variant_id as string | null;
-    let inventoryItemId = item.shopify_inventory_item_id as string | null;
+    let shopifyProductId = item.shopify_product_id as string | null;
+    let shopifyVariantId = item.shopify_variant_id as string | null;
+    let shopifyInventoryItemId = item.shopify_inventory_item_id as string | null;
 
-    // If we don't have IDs yet, try to find an existing variant by SKU via GraphQL
-    if (!(variantId && productId && inventoryItemId)) {
+    if (isRawSingle) {
+      // For raw singles, handle product/variant differently based on condition
+      // First, look for existing product by handle
       try {
-        const data = await gql(
-          `query($q: String!) {\n            productVariants(first: 1, query: $q) {\n              edges { node { id product { id } inventoryItem { id } } }\n            }\n          }`,
-          { q: `sku:\"${String(sku).replace(/"/g, '\\"')}\"` }
+        const productData = await gql(
+          `query($handle: String!) {
+            product(handle: $handle) {
+              id
+              variants(first: 10) {
+                edges {
+                  node {
+                    id
+                    inventoryItem { id }
+                    sku
+                    option1
+                  }
+                }
+              }
+            }
+          }`,
+          { handle }
         );
-        const edge = data?.productVariants?.edges?.[0];
-        if (edge?.node) {
-          productId = gidToId(edge.node.product?.id);
-          variantId = gidToId(edge.node.id);
-          inventoryItemId = gidToId(edge.node.inventoryItem?.id);
-          // Persist Shopify IDs for future updates
-          await supabase
-            .from("intake_items")
-            .update({
-              shopify_product_id: productId,
-              shopify_variant_id: variantId,
-              shopify_inventory_item_id: inventoryItemId,
-            })
-            .eq("id", itemId);
+        
+        if (productData?.product) {
+          shopifyProductId = gidToId(productData.product.id);
+          
+          // Look for existing variant with this condition
+          const existingVariant = productData.product.variants.edges.find(
+            (edge: any) => edge.node.option1 === condition
+          );
+          
+          if (existingVariant) {
+            shopifyVariantId = gidToId(existingVariant.node.id);
+            shopifyInventoryItemId = gidToId(existingVariant.node.inventoryItem?.id);
+          }
         }
       } catch (e) {
-        console.warn("SKU lookup via GraphQL failed; will create product", e);
+        console.warn("Product lookup by handle failed:", e);
+      }
+      
+      if (shopifyProductId && !shopifyVariantId) {
+        // Product exists but variant for this condition doesn't - create variant
+        const newVariant = await api(`/products/${shopifyProductId}/variants.json`, {
+          method: "POST",
+          body: JSON.stringify({
+            variant: {
+              option1: condition,
+              price: String(price),
+              sku,
+              inventory_management: "shopify",
+              requires_shipping: true,
+              weight: weight,
+              weight_unit: "oz",
+            },
+          }),
+        });
+        
+        shopifyVariantId = String(newVariant.variant.id);
+        shopifyInventoryItemId = String(newVariant.variant.inventory_item_id);
+      } else if (shopifyVariantId) {
+        // Update existing variant
+        await api(`/variants/${shopifyVariantId}.json`, {
+          method: "PUT",
+          body: JSON.stringify({
+            variant: {
+              id: Number(shopifyVariantId),
+              price: String(price),
+              sku,
+              weight: weight,
+              weight_unit: "oz",
+            },
+          }),
+        });
+      } else {
+        // Create new product with first variant
+        const productPayload: any = {
+          title,
+          body_html: body,
+          handle,
+          status: "active",
+          tags: tags.join(", "),
+          product_type: "Trading Card",
+          options: [{ name: "Condition" }],
+          variants: [
+            {
+              option1: condition,
+              price: String(price),
+              sku,
+              inventory_management: "shopify",
+              requires_shipping: true,
+              weight: weight,
+              weight_unit: "oz",
+            },
+          ],
+        };
+        
+        // Add image if available
+        if (imageUrl) {
+          productPayload.images = [{ src: imageUrl }];
+        }
+        
+        const created = await api(`/products.json`, {
+          method: "POST",
+          body: JSON.stringify({ product: productPayload }),
+        });
+
+        const prod = created.product;
+        const variant = prod.variants?.[0];
+        shopifyProductId = String(prod.id);
+        shopifyVariantId = String(variant.id);
+        shopifyInventoryItemId = String(variant.inventory_item_id);
+      }
+    } else {
+      // Original logic for graded cards - lookup by SKU
+      if (!(shopifyVariantId && shopifyProductId && shopifyInventoryItemId)) {
+        try {
+          const data = await gql(
+            `query($q: String!) {
+              productVariants(first: 1, query: $q) {
+                edges { node { id product { id } inventoryItem { id } } }
+              }
+            }`,
+            { q: `sku:"${String(sku).replace(/"/g, '\\"')}"` }
+          );
+          const edge = data?.productVariants?.edges?.[0];
+          if (edge?.node) {
+            shopifyProductId = gidToId(edge.node.product?.id);
+            shopifyVariantId = gidToId(edge.node.id);
+            shopifyInventoryItemId = gidToId(edge.node.inventoryItem?.id);
+          }
+        } catch (e) {
+          console.warn("SKU lookup via GraphQL failed; will create product", e);
+        }
+      }
+
+      if (shopifyVariantId && shopifyProductId && shopifyInventoryItemId) {
+        // Update existing variant
+        await api(`/variants/${shopifyVariantId}.json`, {
+          method: "PUT",
+          body: JSON.stringify({ variant: { id: Number(shopifyVariantId), price: String(price), sku } }),
+        });
+      } else {
+        // Create product + variant for graded cards
+        const created = await api(`/products.json`, {
+          method: "POST",
+          body: JSON.stringify({
+            product: {
+              title,
+              body_html: body,
+              handle,
+              status: "active",
+              tags: tags.join(", "),
+              product_type: "Trading Card",
+              variants: [
+                {
+                  price: String(price ?? 0),
+                  sku,
+                  inventory_management: "shopify",
+                  requires_shipping: true,
+                  weight: weight,
+                  weight_unit: "oz",
+                },
+              ],
+            },
+          }),
+        });
+
+        const prod = created.product;
+        const variant = prod.variants?.[0];
+        shopifyProductId = String(prod.id);
+        shopifyVariantId = String(variant.id);
+        shopifyInventoryItemId = String(variant.inventory_item_id);
       }
     }
 
-    if (variantId && productId && inventoryItemId) {
-      // Update existing variant price and SKU if changed
-      await api(`/variants/${variantId}.json`, {
-        method: "PUT",
-        body: JSON.stringify({ variant: { id: Number(variantId), price: String(price), sku } }),
-      });
-    } else {
-      // Create product + variant
-      const created = await api(`/products.json`, {
-        method: "POST",
-        body: JSON.stringify({
-          product: {
-            title,
-            status: "active",
-            tags: [item.category, item.grade, item.year].filter(Boolean).join(", "),
-            product_type: item.category || undefined,
-            variants: [
-              {
-                price: String(price ?? 0),
-                sku,
-                inventory_management: "shopify",
-                requires_shipping: true,
-              },
-            ],
-          },
-        }),
-      });
-
-      const prod = created.product;
-      const variant = prod.variants?.[0];
-      productId = String(prod.id);
-      variantId = String(variant.id);
-      inventoryItemId = String(variant.inventory_item_id);
-
-      // Persist Shopify IDs
-      await supabase
-        .from("intake_items")
-        .update({
-          shopify_product_id: productId,
-          shopify_variant_id: variantId,
-          shopify_inventory_item_id: inventoryItemId,
-        })
-        .eq("id", itemId);
-    }
+    // Persist Shopify IDs
+    await supabase
+      .from("intake_items")
+      .update({
+        shopify_product_id: shopifyProductId,
+        shopify_variant_id: shopifyVariantId,
+        shopify_inventory_item_id: shopifyInventoryItemId,
+      })
+      .eq("id", itemId);
 
     // Ensure we have a location to set inventory
     const locs = await api(`/locations.json`);
@@ -185,7 +361,7 @@ Deno.serve(async (req) => {
       method: "POST",
       body: JSON.stringify({
         location_id: Number(locationId),
-        inventory_item_id: Number(inventoryItemId!),
+        inventory_item_id: Number(shopifyInventoryItemId!),
         available: Number(quantity ?? 1),
       }),
     });
@@ -198,7 +374,7 @@ Deno.serve(async (req) => {
     if (upErr) throw upErr;
 
     return new Response(
-      JSON.stringify({ ok: true, productId, variantId, inventoryItemId }),
+      JSON.stringify({ ok: true, productId: shopifyProductId, variantId: shopifyVariantId, inventoryItemId: shopifyInventoryItemId }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {
