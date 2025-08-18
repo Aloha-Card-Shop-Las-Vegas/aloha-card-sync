@@ -16,6 +16,7 @@ Deno.serve(async (req) => {
     const PRINTNODE_API_KEY = Deno.env.get('PRINTNODE_API_KEY')
     
     console.log('Environment check - PRINTNODE_API_KEY exists:', !!PRINTNODE_API_KEY)
+    console.log('Raw API key (first 10 chars):', PRINTNODE_API_KEY ? PRINTNODE_API_KEY.substring(0, 10) + '...' : 'null')
     
     if (!PRINTNODE_API_KEY) {
       console.error('PRINTNODE_API_KEY environment variable not found')
