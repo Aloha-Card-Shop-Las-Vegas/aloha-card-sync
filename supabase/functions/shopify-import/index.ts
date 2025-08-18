@@ -351,9 +351,18 @@ Deno.serve(async (req) => {
       })
       .eq("id", itemId);
 
-    // Ensure we have a location to set inventory
+    // Find the "Aloha Card Shop" location or use first available
     const locs = await api(`/locations.json`);
-    const locationId = String(locs.locations?.[0]?.id);
+    let targetLocation = locs.locations?.find((loc: any) => 
+      loc.name?.toLowerCase().includes('aloha card shop')
+    );
+    
+    // If Aloha Card Shop not found, use the first location as fallback
+    if (!targetLocation) {
+      targetLocation = locs.locations?.[0];
+    }
+    
+    const locationId = String(targetLocation?.id);
     if (!locationId) throw new Error("No Shopify locations found");
 
     // Set inventory to our quantity
