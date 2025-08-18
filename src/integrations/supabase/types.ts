@@ -158,6 +158,7 @@ export type Database = {
           data: Json | null
           id: string
           name: string
+          template_type: string | null
           updated_at: string
         }
         Insert: {
@@ -166,6 +167,7 @@ export type Database = {
           data?: Json | null
           id?: string
           name: string
+          template_type?: string | null
           updated_at?: string
         }
         Update: {
@@ -174,6 +176,7 @@ export type Database = {
           data?: Json | null
           id?: string
           name?: string
+          template_type?: string | null
           updated_at?: string
         }
         Relationships: []

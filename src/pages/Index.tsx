@@ -66,7 +66,7 @@ const Index = () => {
   const [printers, setPrinters] = useState<any[]>([]);
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
-  const [defaultTemplate, setDefaultTemplate] = useState<any>(null);
+  const [defaultTemplates, setDefaultTemplates] = useState<{graded?: any, raw?: any, general?: any}>({});
 
   // New UI state for bulk actions
   const [printingAll, setPrintingAll] = useState(false);
@@ -202,32 +202,33 @@ const Index = () => {
       }
     };
 
-    const loadDefaultTemplate = async () => {
-      const defaultTemplateId = localStorage.getItem('default-template-id');
-      if (defaultTemplateId) {
-        try {
-          const { data, error } = await supabase
-            .from('label_templates')
-            .select('*')
-            .eq('id', defaultTemplateId)
-            .single();
-          
-          if (error) {
-            console.error('Failed to load default template:', error);
-            return;
-          }
-          
-          setDefaultTemplate(data);
-          console.log('Loaded default template for batch printing:', data.name);
-        } catch (e) {
-          console.error('Error loading default template:', e);
+    const loadDefaultTemplates = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('label_templates')
+          .select('*')
+          .in('template_type', ['graded', 'raw', 'general']);
+        
+        if (error) {
+          console.error('Failed to load templates:', error);
+          return;
         }
+        
+        const templates: any = {};
+        (data || []).forEach((template: any) => {
+          templates[template.template_type] = template;
+        });
+        
+        setDefaultTemplates(templates);
+        console.log('Loaded templates for batch printing:', templates);
+      } catch (e) {
+        console.error('Error loading templates:', e);
       }
     };
 
     loadBatch();
     loadPrintNode();
-    loadDefaultTemplate();
+    loadDefaultTemplates();
   }, []);
 
   // Load categories and games for dropdown
@@ -613,6 +614,7 @@ const Index = () => {
 
       let isFirstPage = true;
       let validItems = 0;
+      let lastUsedTemplate: any = null;
 
       for (const item of items) {
         const val = (item.sku || item.psaCert || "").trim();
@@ -624,8 +626,16 @@ const Index = () => {
         isFirstPage = false;
         validItems++;
 
-        if (defaultTemplate && defaultTemplate.canvas) {
-          // Use default template
+        // Determine card type and select appropriate template
+        const isGraded = !!(item.psaCert && item.grade && item.grade !== 'Raw');
+        const templateToUse = isGraded ? 
+          (defaultTemplates.graded || defaultTemplates.general) : 
+          (defaultTemplates.raw || defaultTemplates.general);
+        
+        lastUsedTemplate = templateToUse;
+
+        if (templateToUse && templateToUse.canvas) {
+          // Use appropriate template
           try {
             // Create temporary canvas to render template
             const tempCanvas = document.createElement('canvas');
@@ -640,7 +650,7 @@ const Index = () => {
 
             // Load template and populate with item data
             await new Promise<void>((resolve) => {
-              fabricCanvas.loadFromJSON(defaultTemplate.canvas, () => {
+              fabricCanvas.loadFromJSON(templateToUse.canvas, () => {
                 // Update text objects with item data
                 const objects = fabricCanvas.getObjects();
                 objects.forEach((obj: any) => {
@@ -658,6 +668,8 @@ const Index = () => {
                       obj.set('text', item.grade);
                     } else if (text.includes('cert') && item.psaCert) {
                       obj.set('text', item.psaCert);
+                    } else if (text.includes('title') && item.title) {
+                      obj.set('text', item.title);
                     }
                   }
                 });
@@ -696,7 +708,7 @@ const Index = () => {
       // Send to PrintNode
       const pdfBase64 = doc.output('datauristring').split(',')[1];
       const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
-        title: `Batch Labels (${validItems} items)${defaultTemplate ? ` - ${defaultTemplate.name}` : ''}`,
+        title: `Batch Labels (${validItems} items)${lastUsedTemplate ? ` - ${lastUsedTemplate.name}` : ''}`,
         copies: 1
       });
 

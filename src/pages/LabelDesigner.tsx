@@ -76,6 +76,7 @@ export default function LabelDesigner() {
   const [tsplSpeed, setTsplSpeed] = useState('4');
   const [tsplGap, setTsplGap] = useState('0');
   const [selectedFontFamily, setSelectedFontFamily] = useState('Roboto Condensed');
+  const [templateType, setTemplateType] = useState<'general' | 'graded' | 'raw'>('general');
 
   // Load printer selection from localStorage
   useEffect(() => {
@@ -303,6 +304,7 @@ export default function LabelDesigner() {
     }
     const payload = {
       name,
+      template_type: templateType,
       canvas: fabricCanvas.toJSON(),
       data: {
         barcodeValue,
@@ -1056,6 +1058,16 @@ export default function LabelDesigner() {
                     <Label htmlFor="tplName">New template name</Label>
                     <div className="flex gap-2 mt-2">
                       <Input id="tplName" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g., 2×1: Pokemon NM" />
+                      <Select value={templateType} onValueChange={(value) => setTemplateType(value as 'general' | 'graded' | 'raw')}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="general">General</SelectItem>
+                          <SelectItem value="graded">Graded</SelectItem>
+                          <SelectItem value="raw">Raw</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <Button onClick={() => saveTemplate()}>Save</Button>
                     </div>
                   </div>
