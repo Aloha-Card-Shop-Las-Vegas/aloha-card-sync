@@ -14,8 +14,10 @@ Deno.serve(async (req) => {
   try {
     const PRINTNODE_API_KEY = Deno.env.get('PRINTNODE_API_KEY')
     
+    console.log('PrintNode API key check:', PRINTNODE_API_KEY ? 'Found' : 'Not found')
+    
     if (!PRINTNODE_API_KEY) {
-      throw new Error('PrintNode API key not configured')
+      throw new Error('PrintNode API key not configured in environment')
     }
 
     return new Response(
