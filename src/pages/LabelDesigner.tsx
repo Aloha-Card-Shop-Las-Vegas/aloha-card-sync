@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { Canvas as FabricCanvas, Textbox, Image as FabricImage, Rect } from "fabric";
@@ -69,10 +70,19 @@ export default function LabelDesigner() {
   const [printLoading, setPrintLoading] = useState(false);
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
 
+  // Bridge and Network Printer state
+  const [bridgeStatus, setBridgeStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [networkPrinterIP, setNetworkPrinterIP] = useState('192.168.0.248');
+  const [testPrintLoading, setTestPrintLoading] = useState(false);
+
   // Load printer selection from localStorage
   useEffect(() => {
     const saved = localStorage.getItem('printnode-selected-printer');
     if (saved) setSelectedPrinterId(parseInt(saved));
+    
+    // Load saved network printer IP
+    const savedIP = localStorage.getItem('network-printer-ip');
+    if (savedIP) setNetworkPrinterIP(savedIP);
   }, []);
 
   // Save printer selection to localStorage
@@ -81,6 +91,11 @@ export default function LabelDesigner() {
       localStorage.setItem('printnode-selected-printer', selectedPrinterId.toString());
     }
   }, [selectedPrinterId]);
+
+  // Save network printer IP to localStorage
+  useEffect(() => {
+    localStorage.setItem('network-printer-ip', networkPrinterIP);
+  }, [networkPrinterIP]);
   const [printerName, setPrinterName] = useState("");
   const labelSizeText = useMemo(() => `${LABEL_WIDTH_IN} in × ${LABEL_HEIGHT_IN} in`, []);
 
@@ -327,7 +342,28 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
 
     loadPrintNode();
     fetchTemplates();
+    checkBridgeStatus();
+    
+    // Set up bridge status polling
+    const bridgeInterval = setInterval(checkBridgeStatus, 10000); // Check every 10 seconds
+    return () => clearInterval(bridgeInterval);
   }, []);
+
+  const checkBridgeStatus = async () => {
+    try {
+      const response = await fetch('http://127.0.0.1:17777/', { 
+        method: 'GET',
+        signal: AbortSignal.timeout(3000) // 3 second timeout
+      });
+      if (response.ok) {
+        setBridgeStatus('online');
+      } else {
+        setBridgeStatus('offline');
+      }
+    } catch (e) {
+      setBridgeStatus('offline');
+    }
+  };
 
   const refreshPrinters = async () => {
     try {
@@ -339,6 +375,40 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
       console.error("Failed to refresh printers:", e);
       toast.error("Failed to refresh printers");
       setPrintNodeConnected(false);
+    }
+  };
+
+  const handleTestBridge = async () => {
+    setTestPrintLoading(true);
+    try {
+      const testTSPL = `SIZE 2,1
+GAP 0,0
+DIRECTION 1
+SET TEAR ON
+CLS
+TEXT 10,10,"3",0,1,1,"BRIDGE TEST"
+TEXT 10,40,"2",0,1,1,"IP: ${networkPrinterIP}"
+TEXT 10,70,"2",0,1,1,"Status: OK"
+PRINT 1
+`;
+
+      const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=9100`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: testTSPL
+      });
+
+      if (response.ok) {
+        toast.success(`Test sent to ${networkPrinterIP} via bridge`);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+    } catch (e) {
+      console.error("Bridge test failed:", e);
+      toast.error(`Bridge test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    } finally {
+      setTestPrintLoading(false);
     }
   };
 
@@ -538,7 +608,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
 
       // Try local bridge with network TCP first
       try {
-        const response = await fetch('http://127.0.0.1:17777/rawtcp?ip=192.168.0.248&port=9100', {
+        const response = await fetch(`http://127.0.0.1:17777/rawtcp?ip=${networkPrinterIP}&port=9100`, {
           method: 'POST',
           headers: {
             'Content-Type': 'text/plain',
@@ -547,7 +617,7 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
         });
         
         if (response.ok) {
-          toast.success(`${isTest ? 'Test' : 'Label'} sent to network printer via bridge (2×1 exact)`);
+          toast.success(`${isTest ? 'Test' : 'Label'} sent to network printer ${networkPrinterIP} via bridge (2×1 exact)`);
           return;
         }
       } catch (tcpError) {
@@ -621,7 +691,15 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
           <div className="space-y-6">
             <Card className="shadow-aloha">
               <CardHeader>
-                <CardTitle>Printer Options</CardTitle>
+                <CardTitle className="flex items-center justify-between">
+                  Printer Options
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Bridge:</span>
+                    <Badge variant={bridgeStatus === 'online' ? 'default' : bridgeStatus === 'offline' ? 'destructive' : 'secondary'}>
+                      {bridgeStatus === 'online' ? 'Online' : bridgeStatus === 'offline' ? 'Offline' : 'Checking...'}
+                    </Badge>
+                  </div>
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {printNodeConnected && printers.length > 0 && (
@@ -674,6 +752,29 @@ const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format
                   </div>
                 )}
                 <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="network-printer-ip">Network Printer IP</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input 
+                        id="network-printer-ip" 
+                        value={networkPrinterIP} 
+                        onChange={(e) => setNetworkPrinterIP(e.target.value)} 
+                        placeholder="e.g., 192.168.0.248" 
+                        className="flex-1"
+                      />
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleTestBridge}
+                        disabled={testPrintLoading || bridgeStatus !== 'online'}
+                      >
+                        {testPrintLoading ? "Testing..." : "Test Bridge"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      IP address for network printing via local bridge. Port 9100 will be used automatically.
+                    </p>
+                  </div>
                   <div>
                     <Label htmlFor="printer">Printer</Label>
                     <Input id="printer" value={printerName} onChange={(e) => setPrinterName(e.target.value)} placeholder="Select in system dialog (optional name)" />
