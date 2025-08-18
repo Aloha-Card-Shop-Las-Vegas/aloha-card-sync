@@ -892,7 +892,7 @@ PRINT 1
         <div className="container mx-auto px-6 py-8 flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground">Label Designer</h1>
-            <p className="text-muted-foreground mt-2">Design 2×1 inch labels. Direct printing available with PrintNode cloud printing.</p>
+            <p className="text-muted-foreground mt-2">Design 2×1 inch labels with PrintNode cloud printing. PrintNode provides reliable printing to any connected printer.</p>
           </div>
           <Link to="/">
             <Button variant="secondary">Back to Dashboard</Button>
@@ -927,85 +927,119 @@ PRINT 1
             <Card className="shadow-aloha">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  Printer Options
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Bridge:</span>
-                    <Badge variant={bridgeStatus === 'online' ? 'default' : bridgeStatus === 'offline' ? 'destructive' : 'secondary'}>
-                      {bridgeStatus === 'online' ? 
-                        `Online (${bridgeFlavor === 'full' ? 'Full' : 'Minimal'})` : 
-                        bridgeStatus === 'offline' ? 'Offline' : 'Checking...'}
+                  PrintNode Cloud Printing
+                  {printNodeConnected ? (
+                    <Badge variant="default" className="bg-green-600">
+                      Connected ({printers.length} printer{printers.length !== 1 ? 's' : ''})
                     </Badge>
-                  </div>
+                  ) : (
+                    <Badge variant="destructive">Not Connected</Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {printNodeConnected && printers.length > 0 && (
-                  <div className="mb-4 p-3 border rounded-lg bg-blue-50">
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm font-medium text-blue-800">PrintNode Connected</Label>
-                      <div className="h-2 w-2 rounded-full bg-blue-500" />
-                    </div>
-                    <p className="text-xs text-blue-700 mb-2">
-                      Found {printers.length} printer(s) - Cloud printing available
-                    </p>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Label htmlFor="printnode-printer" className="text-xs text-blue-800">Select Printer</Label>
-                      <Button 
-                        size="sm" 
-                        variant="ghost" 
-                        onClick={refreshPrinters}
-                        className="h-6 px-2 text-xs text-blue-700 hover:bg-blue-100"
-                      >
-                        Refresh
-                      </Button>
-                    </div>
-                    <Select value={selectedPrinterId?.toString() || ""} onValueChange={(value) => setSelectedPrinterId(parseInt(value))}>
-                      <SelectTrigger id="printnode-printer" className="h-8 text-xs border-blue-200">
-                        <SelectValue placeholder="Choose printer" />
-                      </SelectTrigger>
-                      <SelectContent className="z-[100]">
-                        {printers.map((printer) => (
-                          <SelectItem key={printer.id} value={printer.id.toString()} className="text-xs">
-                            {printer.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                     {selectedPrinterId && (
-                      <div className="mt-2 p-2 rounded bg-blue-100">
-                        <span className="text-xs text-blue-800 font-medium">
-                          Selected: {printers.find(p => p.id === selectedPrinterId)?.name}
-                        </span>
-                        <div className="flex gap-2 mt-2">
-                          <Button 
-                            size="sm" 
-                            onClick={() => handlePrintNodePrint(true)}
-                            disabled={printLoading}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            {printLoading ? "Testing..." : "Test via PrintNode"}
-                          </Button>
-                          <Button 
-                            size="sm" 
-                            onClick={() => handlePrintNodePrint(false)}
-                            disabled={printLoading}
-                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            {printLoading ? "Printing..." : "Print via PrintNode"}
-                          </Button>
-                        </div>
+                {printNodeConnected && printers.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="p-3 border rounded-lg bg-green-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-medium text-green-800">✓ PrintNode Ready</Label>
+                        <div className="h-2 w-2 rounded-full bg-green-500" />
                       </div>
-                    )}
+                      <p className="text-xs text-green-700 mb-3">
+                        Reliable cloud printing to {printers.length} available printer{printers.length !== 1 ? 's' : ''}
+                      </p>
+                      
+                      <div className="flex items-center gap-2 mb-2">
+                        <Label htmlFor="printnode-printer" className="text-sm font-medium">Select Printer</Label>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          onClick={refreshPrinters}
+                          className="h-6 px-2 text-xs text-green-700 hover:bg-green-100"
+                        >
+                          Refresh
+                        </Button>
+                      </div>
+                      
+                      <Select value={selectedPrinterId?.toString() || ""} onValueChange={(value) => setSelectedPrinterId(parseInt(value))}>
+                        <SelectTrigger id="printnode-printer" className="border-green-200">
+                          <SelectValue placeholder="Choose your printer" />
+                        </SelectTrigger>
+                        <SelectContent className="z-[100]">
+                          {printers.map((printer) => (
+                            <SelectItem key={printer.id} value={printer.id.toString()}>
+                              {printer.name} {printer.state === 'online' ? '🟢' : '🔴'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      
+                      {selectedPrinterId && (
+                        <div className="mt-3 p-3 rounded bg-green-100">
+                          <div className="text-sm text-green-800 font-medium mb-2">
+                            Selected: {printers.find(p => p.id === selectedPrinterId)?.name}
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handlePrintNodePrint(true)}
+                              disabled={printLoading}
+                              variant="outline"
+                              className="flex-1 border-green-600 text-green-700 hover:bg-green-50"
+                            >
+                              {printLoading ? "Testing..." : "Test Print"}
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              onClick={() => handlePrintNodePrint(false)}
+                              disabled={printLoading}
+                              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              {printLoading ? "Printing..." : "Print Label"}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                
-                {!printNodeConnected && (
-                  <div className="mb-4 p-3 border rounded-lg bg-orange-50">
-                    <p className="text-sm text-orange-700">
-                      PrintNode not connected. Check your API key configuration.
+                ) : (
+                  <div className="p-3 border rounded-lg bg-red-50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="h-2 w-2 rounded-full bg-red-500" />
+                      <Label className="text-sm font-medium text-red-800">PrintNode Not Available</Label>
+                    </div>
+                    <p className="text-sm text-red-700 mb-2">
+                      {!printNodeConnected ? 
+                        "Check your PrintNode API key configuration in Supabase secrets." :
+                        "No printers found. Install PrintNode client on your computer."}
+                    </p>
+                    <p className="text-xs text-red-600">
+                      PrintNode provides reliable cloud printing. Local bridge is available as fallback below.
                     </p>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  Local Bridge (Fallback)
+                  <Badge variant={bridgeStatus === 'online' ? 'default' : bridgeStatus === 'offline' ? 'destructive' : 'secondary'}>
+                    {bridgeStatus === 'online' ? 
+                      `Online (${bridgeFlavor === 'full' ? 'Full' : 'Minimal'})` : 
+                      bridgeStatus === 'offline' ? 'Offline' : 'Checking...'}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 p-3 border rounded-lg bg-amber-50">
+                  <p className="text-sm text-amber-800 font-medium mb-1">Alternative Printing Method</p>
+                  <p className="text-xs text-amber-700">
+                    Use local bridge for direct network/USB printing. PrintNode is recommended for better reliability.
+                  </p>
+                </div>
+                
                 <div className="space-y-3">
                   <div>
                     <Label htmlFor="network-printer-ip">Network Printer Settings</Label>
@@ -1060,7 +1094,7 @@ PRINT 1
                       )}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Raw TCP for network printers (port 9100). IPP (port 631) won't work. <strong>PrintNode is recommended for reliability.</strong>
+                      Raw TCP for network printers (port 9100). IPP (port 631) won't work.
                       <br />
                       <span className="text-xs">Bridge URL: {BRIDGE}</span>
                     </p>
@@ -1111,65 +1145,141 @@ PRINT 1
                       <Input id="price" value={price} onChange={(e) => setPrice(e.target.value)} />
                     </div>
                   </div>
-                  {/* Advanced TSPL Settings */}
-                  <details className="border rounded-lg p-3">
-                    <summary className="cursor-pointer text-sm font-medium text-foreground mb-2">
-                      Advanced TSPL Settings
-                    </summary>
-                    <div className="grid grid-cols-3 gap-2 mt-2">
-                      <div>
-                        <Label htmlFor="tspl-density" className="text-xs">Density (0-15)</Label>
-                        <Input 
-                          id="tspl-density"
-                          value={tsplDensity} 
-                          onChange={(e) => setTsplDensity(e.target.value)} 
-                          placeholder="10"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="tspl-speed" className="text-xs">Speed (2-8)</Label>
-                        <Input 
-                          id="tspl-speed"
-                          value={tsplSpeed} 
-                          onChange={(e) => setTsplSpeed(e.target.value)} 
-                          placeholder="4"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="tspl-gap" className="text-xs">Gap (inches)</Label>
-                        <Input 
-                          id="tspl-gap"
-                          value={tsplGap} 
-                          onChange={(e) => setTsplGap(e.target.value)} 
-                          placeholder="0"
-                          className="h-8 text-xs"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Adjust print density, speed, and label gap for optimal output quality.
-                    </p>
-                  </details>
                   
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button 
                       onClick={() => handleDirectPrint(false)} 
                       disabled={printLoading}
-                      className="bg-green-600 hover:bg-green-700"
+                      variant="outline"
+                      className="border-amber-600 text-amber-700 hover:bg-amber-50"
                     >
-                      {printLoading ? "Printing..." : "Print to Rollo (2×1 exact)"}
+                      {printLoading ? "Printing..." : "Print via Bridge"}
                     </Button>
                     <Button 
                       variant="outline" 
                       onClick={() => handleDirectPrint(true)}
                       disabled={printLoading}
+                      className="border-amber-600 text-amber-700 hover:bg-amber-50"
                     >
-                      Test Print
+                      Test Bridge
                     </Button>
-                    <Button variant="outline" onClick={handleDownload}>Download PNG</Button>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Browser Print</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="browser-printer">Printer Name (Optional)</Label>
+                    <Input id="browser-printer" value={printerName} onChange={(e) => setPrinterName(e.target.value)} placeholder="Select in system dialog" />
+                    <p className="text-xs text-muted-foreground mt-1">Browsers can't list printers. When you click Print, choose your printer in the system dialog.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={handleDownload}>Download PNG</Button>
+                    <Button variant="outline" onClick={handlePrint}>Browser Print</Button>
+                    <Button variant="outline" onClick={handleTestPrint}>Test Print</Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Label Data</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div>
+                    <Label>Label Size</Label>
+                    <div className="mt-2 font-mono text-sm">{labelSizeText}</div>
+                  </div>
+                  <div>
+                    <Label htmlFor="barcode">Barcode Value</Label>
+                    <Input id="barcode" value={barcodeValue} onChange={(e) => setBarcodeValue(e.target.value)} placeholder="e.g., 120979260" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label htmlFor="title">Title</Label>
+                      <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="condition">Condition</Label>
+                      <Select value={condition} onValueChange={setCondition}>
+                        <SelectTrigger id="condition">
+                          <SelectValue placeholder="Select condition" />
+                        </SelectTrigger>
+                        <SelectContent className="z-50">
+                          <SelectItem value="Near Mint">Near Mint (NM)</SelectItem>
+                          <SelectItem value="Lightly Played">Lightly Played (LP)</SelectItem>
+                          <SelectItem value="Moderately Played">Moderately Played (MP)</SelectItem>
+                          <SelectItem value="Heavily Played">Heavily Played (HP)</SelectItem>
+                          <SelectItem value="Damaged">Damaged</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label htmlFor="lot">Lot</Label>
+                      <Input id="lot" value={lot} onChange={(e) => setLot(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="sku">SKU</Label>
+                      <Input id="sku" value={sku} onChange={(e) => setSku(e.target.value)} />
+                    </div>
+                    <div>
+                      <Label htmlFor="price">Price</Label>
+                      <Input id="price" value={price} onChange={(e) => setPrice(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Advanced TSPL Settings</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <Label htmlFor="tspl-density" className="text-sm">Density (0-15)</Label>
+                      <Input 
+                        id="tspl-density"
+                        value={tsplDensity} 
+                        onChange={(e) => setTsplDensity(e.target.value)} 
+                        placeholder="10"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="tspl-speed" className="text-sm">Speed (2-8)</Label>
+                      <Input 
+                        id="tspl-speed"
+                        value={tsplSpeed} 
+                        onChange={(e) => setTsplSpeed(e.target.value)} 
+                        placeholder="4"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="tspl-gap" className="text-sm">Gap (inches)</Label>
+                      <Input 
+                        id="tspl-gap"
+                        value={tsplGap} 
+                        onChange={(e) => setTsplGap(e.target.value)} 
+                        placeholder="0"
+                        className="mt-1"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Adjust print density, speed, and label gap for optimal output quality.
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -1221,9 +1331,10 @@ PRINT 1
               </CardHeader>
               <CardContent>
                 <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                  <li>Set your printer media to 2×1 inches and zero margins.</li>
-                  <li>Disable page headers/footers in the print dialog.</li>
-                  <li>Use thermal printer driver settings for best density.</li>
+                  <li>PrintNode provides reliable cloud printing to any connected printer</li>
+                  <li>Set your printer media to 2×1 inches and zero margins for best results</li>
+                  <li>Use thermal printer driver settings for optimal density</li>
+                  <li>Local bridge is available as fallback for network/USB printers</li>
                 </ul>
               </CardContent>
             </Card>
