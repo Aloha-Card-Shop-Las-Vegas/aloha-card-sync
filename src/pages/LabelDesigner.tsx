@@ -334,7 +334,15 @@ export default function LabelDesigner() {
       borderRef.current = border;
       fabricCanvas.add(border);
       fabricCanvas.renderAll();
+      toast.success(`Template "${tpl.name}" loaded`);
     });
+  };
+
+  const handleTemplateSelect = (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (templateId) {
+      loadTemplate(templateId);
+    }
   };
 
   const deleteTemplate = async (id: string) => {
@@ -927,10 +935,7 @@ export default function LabelDesigner() {
                     <Label htmlFor="tplSelect">Load template</Label>
                     <Select
                       value={selectedTemplateId}
-                      onValueChange={(v) => {
-                        setSelectedTemplateId(v);
-                        loadTemplate(v);
-                      }}
+                      onValueChange={handleTemplateSelect}
                     >
                       <SelectTrigger id="tplSelect">
                         <SelectValue placeholder={templates.length ? `Choose (${templates.length})` : "No templates yet"} />
