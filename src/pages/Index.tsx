@@ -708,10 +708,9 @@ const Index = () => {
                   }
                 }
                 
-                // If no barcode was found in template, render normally
-                if (!barcodeUpdated) {
-                  fabricCanvas.renderAll();
-                }
+                // Always force render after loading and updating
+                fabricCanvas.renderAll();
+                fabricCanvas.requestRenderAll();
                 
                 resolve();
               });

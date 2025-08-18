@@ -350,7 +350,6 @@ export default function LabelDesigner() {
     // Reset canvas then load objects
     fabricCanvas.clear();
     fabricCanvas.backgroundColor = '#ffffff';
-    fabricCanvas.renderAll();
 
     fabricCanvas.loadFromJSON(tpl.canvas, () => {
       // Re-add non-exported border outline
@@ -371,7 +370,11 @@ export default function LabelDesigner() {
       });
       borderRef.current = border;
       fabricCanvas.add(border);
+      
+      // Force render after everything is loaded
       fabricCanvas.renderAll();
+      fabricCanvas.requestRenderAll();
+      
       toast.success(`Template "${tpl.name}" loaded`);
     });
   };
