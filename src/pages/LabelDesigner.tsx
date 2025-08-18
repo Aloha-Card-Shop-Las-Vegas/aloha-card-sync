@@ -91,6 +91,10 @@ export default function LabelDesigner() {
     
     const savedGap = localStorage.getItem('tspl-gap');
     if (savedGap) setTsplGap(savedGap);
+    
+    // Load default template ID
+    const savedDefaultTemplate = localStorage.getItem('default-template-id');
+    if (savedDefaultTemplate) setDefaultTemplateId(savedDefaultTemplate);
   }, []);
 
   // Save printer selection and TSPL settings to localStorage
@@ -126,6 +130,7 @@ export default function LabelDesigner() {
   const [templateName, setTemplateName] = useState("");
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [defaultTemplateId, setDefaultTemplateId] = useState("");
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -376,6 +381,18 @@ export default function LabelDesigner() {
     }
   };
 
+  const setAsDefaultTemplate = (id: string) => {
+    setDefaultTemplateId(id);
+    localStorage.setItem('default-template-id', id);
+    toast.success('Default template set');
+  };
+
+  const clearDefaultTemplate = () => {
+    setDefaultTemplateId('');
+    localStorage.removeItem('default-template-id');
+    toast.success('Default template cleared');
+  };
+
   const deleteTemplate = async (id: string) => {
     const { error } = await supabase.from('label_templates').delete().eq('id', id);
     if (error) {
@@ -384,6 +401,7 @@ export default function LabelDesigner() {
     } else {
       toast.success('Template deleted');
       if (selectedTemplateId === id) setSelectedTemplateId('');
+      if (defaultTemplateId === id) clearDefaultTemplate();
       fetchTemplates();
     }
   };
@@ -414,6 +432,17 @@ export default function LabelDesigner() {
 
     loadPrintNode();
     fetchTemplates();
+  }, []);
+
+  // Auto-load default template after templates are fetched
+  useEffect(() => {
+    if (templates.length > 0 && defaultTemplateId && fabricCanvas) {
+      const defaultTemplate = templates.find(t => t.id === defaultTemplateId);
+      if (defaultTemplate) {
+        loadTemplate(defaultTemplateId);
+        setSelectedTemplateId(defaultTemplateId);
+      }
+    }
   }, []);
 
   const refreshPrinters = async () => {
@@ -1039,17 +1068,24 @@ export default function LabelDesigner() {
                       <SelectTrigger id="tplSelect">
                         <SelectValue placeholder={templates.length ? `Choose (${templates.length})` : "No templates yet"} />
                       </SelectTrigger>
-                      <SelectContent className="z-50">
-                        {templates.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedTemplateId && (
-                      <div className="mt-2">
-                        <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete Selected</Button>
-                      </div>
-                    )}
+                       <SelectContent className="z-50">
+                         {templates.map((t) => (
+                           <SelectItem key={t.id} value={t.id}>
+                             {t.name} {defaultTemplateId === t.id && "⭐"}
+                           </SelectItem>
+                         ))}
+                       </SelectContent>
+                     </Select>
+                     {selectedTemplateId && (
+                       <div className="mt-2 flex gap-2">
+                         <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete</Button>
+                         {defaultTemplateId !== selectedTemplateId ? (
+                           <Button variant="outline" onClick={() => setAsDefaultTemplate(selectedTemplateId)}>Set as Default</Button>
+                         ) : (
+                           <Button variant="outline" onClick={clearDefaultTemplate}>Clear Default</Button>
+                         )}
+                       </div>
+                     )}
                   </div>
                 </div>
               </CardContent>
