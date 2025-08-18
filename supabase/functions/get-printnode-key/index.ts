@@ -12,16 +12,23 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Get the API key from environment variables
     const PRINTNODE_API_KEY = Deno.env.get('PRINTNODE_API_KEY')
     
-    console.log('PrintNode API key check:', PRINTNODE_API_KEY ? 'Found' : 'Not found')
+    console.log('Environment check - PRINTNODE_API_KEY exists:', !!PRINTNODE_API_KEY)
     
     if (!PRINTNODE_API_KEY) {
-      throw new Error('PrintNode API key not configured in environment')
+      console.error('PRINTNODE_API_KEY environment variable not found')
+      throw new Error('PrintNode API key not configured')
     }
 
+    console.log('Successfully retrieved PrintNode API key')
+
     return new Response(
-      JSON.stringify({ apiKey: PRINTNODE_API_KEY }),
+      JSON.stringify({ 
+        apiKey: PRINTNODE_API_KEY,
+        success: true 
+      }),
       { 
         headers: { 
           ...corsHeaders, 
@@ -34,7 +41,8 @@ Deno.serve(async (req) => {
     console.error('Get PrintNode key error:', error)
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Failed to get API key' 
+        error: error.message || 'Failed to get API key',
+        success: false
       }),
       { 
         status: 500,
