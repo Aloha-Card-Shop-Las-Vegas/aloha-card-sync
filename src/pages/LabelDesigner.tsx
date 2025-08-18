@@ -398,7 +398,14 @@ export default function LabelDesigner() {
           format: [2.0, 1.0], // Exact 2.0" x 1.0"
           orientation: 'landscape',
           putOnlyUsedFonts: true,
-          compress: false // Better printer compatibility
+          compress: false
+        });
+
+        // Set PDF metadata for single label
+        doc.setProperties({
+          title: 'Single Label Print',
+          subject: 'Label Print',
+          creator: 'Label Designer'
         });
         
         // Add the canvas image to PDF, filling entire label exactly
@@ -412,15 +419,17 @@ export default function LabelDesigner() {
           format: [2.0, 1.0], // Exact 2.0" x 1.0"
           orientation: 'landscape',
           putOnlyUsedFonts: true,
-          compress: false // Better printer compatibility
+          compress: false
         });
 
-        // Add form data to PDF with proper sizing and border
-        // Add a subtle border to help with label cutting
-        doc.setDrawColor(200, 200, 200);
-        doc.setLineWidth(0.01);
-        doc.rect(0.02, 0.02, 1.96, 0.96);
-        
+        // Set PDF metadata for single label
+        doc.setProperties({
+          title: 'Single Label Print',
+          subject: 'Label Print',
+          creator: 'Label Designer'
+        });
+
+        // Add form data to PDF - no border to avoid cutting issues
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(10);
         const titleText = isTest ? "TEST LABEL" : withCondition(title, condition);
@@ -442,7 +451,8 @@ export default function LabelDesigner() {
       }
 
       const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
-        title: isTest ? 'Test Label' : 'Label Print'
+        title: isTest ? 'Test Label' : 'Label Print',
+        copies: 1
       });
 
       if (result.success) {

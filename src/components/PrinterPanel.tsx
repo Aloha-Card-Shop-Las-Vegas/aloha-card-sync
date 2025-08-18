@@ -111,14 +111,16 @@ export function PrinterPanel() {
       format: [2.0, 1.0], // Exact 2.0" x 1.0" 
       orientation: 'landscape',
       putOnlyUsedFonts: true,
-      compress: false // Don't compress for better printer compatibility
+      compress: false
     });
 
-    // Add a thin border to help visualize label boundaries
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.01);
-    doc.rect(0.02, 0.02, 1.96, 0.96);
-    
+    // Set PDF metadata for single label
+    doc.setProperties({
+      title: 'Single Label Print',
+      subject: 'Test Label',
+      creator: 'Label Designer'
+    });
+
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(12);
     doc.text('2x1" TEST', 0.1, 0.3);
@@ -142,7 +144,7 @@ export function PrinterPanel() {
       const result = await printNodeService.printPDF(
         pdfBase64,
         selectedPrinter.id,
-        { title: `PDF Test - ${new Date().toLocaleTimeString()}` }
+        { title: `PDF Test - ${new Date().toLocaleTimeString()}`, copies: 1 }
       );
 
       if (result.success) {
