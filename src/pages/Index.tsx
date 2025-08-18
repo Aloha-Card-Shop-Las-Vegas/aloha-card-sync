@@ -617,7 +617,7 @@ const Index = () => {
       let lastUsedTemplate: any = null;
 
       for (const item of items) {
-        const val = (item.sku || item.psaCert || "").trim();
+        const val = (item.lot || "").trim();
         if (!val) continue;
 
         if (!isFirstPage) {
