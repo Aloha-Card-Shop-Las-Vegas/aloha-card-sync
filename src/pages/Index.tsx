@@ -628,10 +628,14 @@ const Index = () => {
 
         // Determine card type and select appropriate template
         const isGraded = !!(item.psaCert && item.grade && item.grade !== 'Raw');
+        
+        // For graded cards, use general template as default (not graded-specific template)
+        // For raw cards, prefer raw template, fallback to general
         const templateToUse = isGraded ? 
-          (defaultTemplates.graded || defaultTemplates.general) : 
+          defaultTemplates.general : 
           (defaultTemplates.raw || defaultTemplates.general);
         
+        console.log(`Item ${item.lot}: isGraded=${isGraded}, templateType=${templateToUse?.template_type}, templateName=${templateToUse?.name}`);
         lastUsedTemplate = templateToUse;
 
         if (templateToUse && templateToUse.canvas) {
