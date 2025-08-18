@@ -69,42 +69,6 @@ class PrintNodeService {
     return this.makeRequest<PrintNodePrinter[]>('/printers');
   }
 
-  async printTSPL(
-    tspl: string, 
-    printerId: number, 
-    options: PrintJobOptions = {}
-  ): Promise<PrintJobResult> {
-    try {
-      // Convert TSPL string to base64, handling UTF-8 characters properly
-      const base64Content = btoa(unescape(encodeURIComponent(tspl)));
-      
-      const printJob = {
-        printerId,
-        title: options.title || 'Label Print',
-        contentType: 'raw_base64',
-        content: base64Content,
-        source: 'web-app',
-        ...(options.copies && { qty: options.copies })
-      };
-
-      const result = await this.makeRequest<PrintNodeJob>('/printjobs', {
-        method: 'POST',
-        body: JSON.stringify(printJob),
-      });
-
-      return {
-        jobId: result.id,
-        success: true
-      };
-    } catch (error) {
-      return {
-        jobId: -1,
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
-    }
-  }
-
   async printPDF(
     pdfBase64: string,
     printerId: number,
@@ -113,7 +77,7 @@ class PrintNodeService {
     try {
       const printJob = {
         printerId,
-        title: options.title || 'Label Print (PDF)',
+        title: options.title || 'Label Print',
         contentType: 'pdf_base64',
         content: pdfBase64,
         source: 'web-app',
@@ -136,19 +100,6 @@ class PrintNodeService {
         error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
-  }
-
-  async testMinimalTSPL(printerId: number): Promise<PrintJobResult> {
-    const minimalTSPL = `SIZE 2.0,1.0
-GAP 0.1,0
-DIRECTION 1
-CLS
-TEXT 10,10,"3",0,1,1,"TSPL TEST"
-TEXT 10,40,"2",0,1,1,"Minimal Command"
-PRINT 1,1
-`;
-    
-    return this.printTSPL(minimalTSPL, printerId, { title: 'Minimal TSPL Test' });
   }
 
   async getJobStatus(jobId: number): Promise<PrintNodeJob> {

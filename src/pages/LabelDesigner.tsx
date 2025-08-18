@@ -379,40 +379,63 @@ export default function LabelDesigner() {
 
     setPrintLoading(true);
     try {
-      // Import required functions
-      const { labelDataToTSPL } = await import("@/lib/tspl");
-      const { fabricToTSPL } = await import("@/lib/fabricToTspl");
+      // Generate PDF from canvas or form data
+      let pdfBase64: string;
       
-      let tsplData: string;
-      
-      // Advanced TSPL settings
-      const tsplSettings = {
-        density: parseInt(tsplDensity) || 10,
-        speed: parseInt(tsplSpeed) || 4,
-        gapInches: parseFloat(tsplGap) || 0
-      };
-
-      // Generate TSPL with exact 2x1 inch dimensions and advanced settings
       if (fabricCanvas && fabricCanvas.getObjects().filter(obj => !(obj as any).excludeFromExport).length > 0) {
-        // Use canvas content if available
-        tsplData = fabricToTSPL(fabricCanvas, tsplSettings);
+        // Use canvas content - export as image and convert to PDF
+        const dataURL = fabricCanvas.toDataURL({
+          format: 'png',
+          quality: 1,
+          multiplier: 2 // High resolution
+        });
+        
+        // Create PDF with canvas image
+        const { jsPDF } = await import('jspdf');
+        const doc = new jsPDF({
+          unit: 'in',
+          format: [2, 1],
+          orientation: 'landscape'
+        });
+        
+        // Add the canvas image to PDF
+        doc.addImage(dataURL, 'PNG', 0, 0, 2, 1);
+        pdfBase64 = doc.output('datauristring').split(',')[1];
       } else {
-        // Generate from form data with exact dimensions
-        tsplData = labelDataToTSPL({
-          title: isTest ? "PRINTNODE TEST" : withCondition(title, condition),
-          sku: isTest ? "TEST-001" : sku,
-          price: isTest ? "$99.99" : price,
-          lot: isTest ? "TEST-LOT" : lot,
-          barcode: isTest ? "123456789" : barcodeValue,
-          condition: isTest ? "NM" : condition
-        }, tsplSettings);
+        // Generate PDF from form data
+        const { jsPDF } = await import('jspdf');
+        const doc = new jsPDF({
+          unit: 'in',
+          format: [2, 1],
+          orientation: 'landscape'
+        });
+
+        // Add form data to PDF
+        doc.setFontSize(8);
+        const titleText = isTest ? "PRINTNODE TEST" : withCondition(title, condition);
+        const skuText = isTest ? "TEST-001" : sku;
+        const priceText = isTest ? "$99.99" : price;
+        const lotText = isTest ? "TEST-LOT" : lot;
+        const barcodeText = isTest ? "123456789" : barcodeValue;
+
+        if (titleText) doc.text(titleText, 0.1, 0.2);
+        if (skuText) doc.text(`SKU: ${skuText}`, 0.1, 0.4);
+        if (priceText) doc.text(`Price: ${priceText}`, 0.1, 0.6);
+        if (lotText) doc.text(`Lot: ${lotText}`, 1.0, 0.2);
+        if (barcodeText) doc.text(`Barcode: ${barcodeText}`, 1.0, 0.4);
+
+        pdfBase64 = doc.output('datauristring').split(',')[1];
       }
 
-      await printNodeService.printTSPL(tsplData, selectedPrinterId, {
+      const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
         title: isTest ? 'Test Label' : 'Label Print'
       });
 
-      toast.success(`${isTest ? 'Test' : 'Label'} sent to PrintNode printer successfully`);
+      if (result.success) {
+        toast.success(`${isTest ? 'Test' : 'Label'} sent to PrintNode printer successfully (Job ID: ${result.jobId})`);
+      } else {
+        throw new Error(result.error || 'Print failed');
+      }
       
     } catch (e) {
       console.error("PrintNode print failed:", e);

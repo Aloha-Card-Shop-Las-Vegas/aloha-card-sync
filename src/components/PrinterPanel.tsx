@@ -4,10 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Printer, Cloud, WifiOff, TestTube, FileText, Zap } from "lucide-react";
+import { Printer, Cloud, WifiOff, TestTube, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { printNodeService } from "@/lib/printNodeService";
-import { buildSampleLabel } from "@/lib/tspl";
 import { supabase } from "@/integrations/supabase/client";
 import jsPDF from 'jspdf';
 
@@ -24,8 +23,6 @@ export function PrinterPanel() {
   const [loading, setLoading] = useState<boolean>(false);
   const [testPrinting, setTestPrinting] = useState<boolean>(false);
   const [testingPDF, setTestingPDF] = useState<boolean>(false);
-  const [testingRAW, setTestingRAW] = useState<boolean>(false);
-  const [printMode, setPrintMode] = useState<'pdf' | 'tspl'>('pdf');
 
   useEffect(() => {
     loadPrinterSettings();
@@ -66,12 +63,6 @@ export function PrinterPanel() {
           name: settings.selected_printer_name
         });
       }
-
-      // Load print mode preference
-      const savedMode = localStorage.getItem(`printMode_${id}`);
-      if (savedMode === 'pdf' || savedMode === 'tspl') {
-        setPrintMode(savedMode);
-      }
     } catch (error) {
       console.error('Failed to load printer settings:', error);
     }
@@ -89,9 +80,6 @@ export function PrinterPanel() {
           selected_printer_name: selectedPrinter.name,
           use_printnode: true,
         });
-
-      // Save print mode preference
-      localStorage.setItem(`printMode_${workstationId}`, printMode);
         
       toast.success("Printer settings saved");
     } catch (error) {
@@ -160,29 +148,6 @@ export function PrinterPanel() {
     }
   };
 
-  const runRawTSPLTest = async () => {
-    if (!selectedPrinter) {
-      toast.error("No printer selected");
-      return;
-    }
-
-    setTestingRAW(true);
-    try {
-      const result = await printNodeService.testMinimalTSPL(selectedPrinter.id);
-
-      if (result.success) {
-        toast.success(`RAW TSPL Test Sent - Job ID: ${result.jobId}`);
-      } else {
-        throw new Error(result.error || 'RAW TSPL print failed');
-      }
-    } catch (error) {
-      console.error('RAW TSPL test error:', error);
-      toast.error(error instanceof Error ? error.message : "RAW TSPL test failed");
-    } finally {
-      setTestingRAW(false);
-    }
-  };
-
   const runSmokeTest = async () => {
     if (!selectedPrinter) {
       toast.error("No printer selected");
@@ -199,7 +164,7 @@ export function PrinterPanel() {
           workstation_id: workstationId,
           printer_name: selectedPrinter.name,
           printer_id: selectedPrinter.id,
-          tspl_code: `Test print job - ${new Date().toISOString()}`,
+          tspl_code: `PDF print job - ${new Date().toISOString()}`,
           status: 'queued'
         })
         .select()
@@ -207,22 +172,13 @@ export function PrinterPanel() {
 
       if (!printJob) throw new Error('Failed to create print job record');
 
-      // Send based on selected mode
-      let result;
-      if (printMode === 'pdf') {
-        const pdfBase64 = generateTestPDF();
-        result = await printNodeService.printPDF(
-          pdfBase64,
-          selectedPrinter.id,
-          { title: `Test Print - ${new Date().toLocaleTimeString()}` }
-        );
-      } else {
-        const testTSPL = buildSampleLabel();
-        result = await printNodeService.printTSPL(testTSPL, selectedPrinter.id, {
-          title: 'Smoke Test Label',
-          copies: 1
-        });
-      }
+      // Generate and send PDF
+      const pdfBase64 = generateTestPDF();
+      const result = await printNodeService.printPDF(
+        pdfBase64,
+        selectedPrinter.id,
+        { title: `Test Print - ${new Date().toLocaleTimeString()}` }
+      );
 
       if (result.success) {
         // Update print job with PrintNode job ID
@@ -234,7 +190,7 @@ export function PrinterPanel() {
           })
           .eq('id', printJob.id);
 
-        toast.success(`${printMode.toUpperCase()} Test Sent - Job ID: ${result.jobId}`);
+        toast.success(`PDF Test Sent - Job ID: ${result.jobId}`);
       } else {
         throw new Error(result.error || 'Print failed');
       }
@@ -329,45 +285,20 @@ export function PrinterPanel() {
 
         <Separator className="my-4" />
 
-        {/* Print Mode Selection */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Print Mode:</label>
-          <Select value={printMode} onValueChange={(value: 'pdf' | 'tspl') => setPrintMode(value)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pdf">PDF (Recommended for Rollo)</SelectItem>
-              <SelectItem value="tspl">RAW TSPL (TSC/Zebra)</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Test Printing */}
         <div className="space-y-3">
           <label className="text-sm font-medium">Test Printing:</label>
           
-          <div className="grid grid-cols-2 gap-2">
-            <Button 
-              variant="outline"
-              size="sm"
-              onClick={runPDFTest} 
-              disabled={!printNodeOnline || !selectedPrinter || testingPDF}
-            >
-              <FileText className="w-4 h-4 mr-1" />
-              {testingPDF ? "Testing..." : "Test PDF"}
-            </Button>
-            
-            <Button 
-              variant="outline"
-              size="sm"
-              onClick={runRawTSPLTest} 
-              disabled={!printNodeOnline || !selectedPrinter || testingRAW}
-            >
-              <Zap className="w-4 h-4 mr-1" />
-              {testingRAW ? "Testing..." : "Test RAW"}
-            </Button>
-          </div>
+          <Button 
+            variant="outline"
+            size="sm"
+            onClick={runPDFTest} 
+            disabled={!printNodeOnline || !selectedPrinter || testingPDF}
+            className="w-full"
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            {testingPDF ? "Testing..." : "Quick PDF Test"}
+          </Button>
 
           <Button 
             className="w-full gap-2" 
@@ -375,13 +306,13 @@ export function PrinterPanel() {
             disabled={!printNodeOnline || !selectedPrinter || testPrinting}
           >
             <TestTube className="h-4 w-4" />
-            {testPrinting ? "Testing..." : `Test Print (${printMode.toUpperCase()})`}
+            {testPrinting ? "Testing..." : "Full Test Print"}
           </Button>
         </div>
 
         {/* PrintNode Info */}
         <div className="text-xs text-muted-foreground pt-2 border-t">
-          PrintNode provides reliable cloud printing.
+          Optimized for Rollo label printers using PDF format.
           <br />
           {printers.length > 0 && `${printers.length} printer(s) available`}
         </div>
