@@ -658,7 +658,7 @@ const Index = () => {
             // Load template and populate with item data
             await new Promise<void>(async (resolve) => {
               fabricCanvas.loadFromJSON(templateToUse.canvas, async () => {
-                console.log('=== DEBUGGING CARD DATA ===');
+                console.log('=== COMPLETE LABEL REBUILD ===');
                 console.log('Item data:', {
                   lot: item.lot,
                   sku: item.sku,
@@ -672,15 +672,18 @@ const Index = () => {
                   price: item.price
                 });
 
-                // Remove background image if it exists (common issue with templates)
+                // STEP 1: Remove background image completely
                 if (fabricCanvas.backgroundImage) {
                   console.log('Removing background image from template');
                   fabricCanvas.backgroundImage = null;
                   fabricCanvas.renderAll();
                 }
 
+                // STEP 2: Clear ALL existing objects (images, text, groups - everything)
                 const objects = fabricCanvas.getObjects();
-                console.log(`Found ${objects.length} objects in template`);
+                console.log(`Clearing ${objects.length} existing objects from template`);
+                fabricCanvas.clear();
+                fabricCanvas.backgroundColor = '#FFFFFF';
                 
                 // Build the card title from available data
                 const cardTitle = [
@@ -691,82 +694,109 @@ const Index = () => {
                   item.variant
                 ].filter(Boolean).join(' ');
                 console.log('Built card title:', cardTitle);
+                
+                // STEP 3: Rebuild label completely with actual data
 
-                // If template has no objects, build label dynamically
-                if (objects.length === 0) {
-                  console.log('No objects in template - building dynamic label');
-                  
-                  // Add card title
-                  const titleText = new Textbox(cardTitle, {
+                // Always rebuild label with actual data (ignore template objects)
+                console.log('Building complete label with actual data');
+                
+                const isGraded = item.grade && item.grade.trim() !== '';
+                
+                // Add card title (with grade if applicable)
+                const titleText = isGraded ? 
+                  `${cardTitle} • ${item.grade}` : 
+                  cardTitle;
+                
+                // Auto-shrink font for long titles
+                let titleSize = titleText.length > 30 ? 11 : titleText.length > 20 ? 12 : 14;
+                
+                const titleObj = new Textbox(titleText, {
+                  left: 10,
+                  top: 8,
+                  width: 280,
+                  fontSize: titleSize,
+                  fontFamily: 'Arial',
+                  fill: '#000000',
+                  fontWeight: 'bold',
+                  textAlign: 'left'
+                });
+                fabricCanvas.add(titleObj);
+                
+                // Add lot number
+                if (item.lot) {
+                  const lotObj = new Textbox(`LOT: ${item.lot}`, {
                     left: 10,
-                    top: 10,
-                    width: 200,
-                    fontSize: 12,
-                    fontFamily: 'Arial',
-                    fill: '#000000'
-                  });
-                  fabricCanvas.add(titleText);
-                  
-                  // Add lot number
-                  if (item.lot) {
-                    const lotText = new Textbox(`LOT: ${item.lot}`, {
-                      left: 10,
-                      top: 35,
-                      width: 150,
-                      fontSize: 10,
-                      fontFamily: 'Arial',
-                      fill: '#000000'
-                    });
-                    fabricCanvas.add(lotText);
-                  }
-                  
-                  // Add price
-                  if (item.price) {
-                    const priceText = new Textbox(`$${item.price}`, {
-                      left: 200,
-                      top: 10,
-                      width: 90,
-                      fontSize: 14,
-                      fontFamily: 'Arial',
-                      fill: '#000000',
-                      textAlign: 'right'
-                    });
-                    fabricCanvas.add(priceText);
-                  }
-                  
-                  // Generate and add barcode
-                  const barcodeValue = item.sku || item.psaCert || item.lot || 'NO-CODE';
-                  console.log('Using barcode value:', barcodeValue);
-                  
-                  const canvas = document.createElement('canvas');
-                  canvas.width = 200;
-                  canvas.height = 50;
-                  
-                  const { default: JsBarcode } = await import('jsbarcode');
-                  JsBarcode(canvas, barcodeValue, {
-                    format: "CODE128",
-                    displayValue: false,
+                    top: 30,
+                    width: 150,
                     fontSize: 10,
-                    lineColor: "#000000",
-                    background: "#FFFFFF",
-                    margin: 0,
-                    width: 2,
-                    height: 30,
+                    fontFamily: 'Arial',
+                    fill: '#000000',
+                    textAlign: 'left'
                   });
-                  
-                  const barcodeImage = new FabricImage(canvas.toDataURL(), {
-                    left: 10,
-                    top: 90,
-                    scaleX: 0.8,
-                    scaleY: 0.8
-                  });
-                  
-                  fabricCanvas.add(barcodeImage);
-                  fabricCanvas.renderAll();
-                  
-                  resolve();
-                  return;
+                  fabricCanvas.add(lotObj);
                 }
+                
+                // Add price (right aligned)
+                if (item.price && parseFloat(item.price) > 0) {
+                  const priceObj = new Textbox(`$${item.price}`, {
+                    left: 200,
+                    top: 8,
+                    width: 90,
+                    fontSize: 16,
+                    fontFamily: 'Arial',
+                    fill: '#000000',
+                    fontWeight: 'bold',
+                    textAlign: 'right'
+                  });
+                  fabricCanvas.add(priceObj);
+                }
+                
+                // Add SKU (if available and not graded)
+                if (!isGraded && item.sku) {
+                  const skuObj = new Textbox(`SKU: ${item.sku}`, {
+                    left: 180,
+                    top: 30,
+                    width: 110,
+                    fontSize: 9,
+                    fontFamily: 'Arial',
+                    fill: '#000000',
+                    textAlign: 'right'
+                  });
+                  fabricCanvas.add(skuObj);
+                }
+                
+                // Generate barcode - ALWAYS prioritize SKU
+                const barcodeValue = item.sku || item.psaCert || item.lot || 'NO-CODE';
+                console.log('Generating barcode for:', barcodeValue);
+                
+                const canvas = document.createElement('canvas');
+                canvas.width = 280;
+                canvas.height = 60;
+                
+                const { default: JsBarcode } = await import('jsbarcode');
+                JsBarcode(canvas, barcodeValue, {
+                  format: "CODE128",
+                  displayValue: true,
+                  fontSize: 9,
+                  lineColor: "#000000",
+                  background: "#FFFFFF",
+                  margin: 2,
+                  width: 2,
+                  height: 35,
+                });
+                
+                const barcodeImage = new FabricImage(canvas.toDataURL(), {
+                  left: 10,
+                  top: 75,
+                  scaleX: 0.9,
+                  scaleY: 0.9
+                });
+                
+                fabricCanvas.add(barcodeImage);
+                console.log('Label rebuilt with actual data');
+                
+                fabricCanvas.renderAll();
+                resolve();
                 
                 let barcodeUpdated = false;
                 
