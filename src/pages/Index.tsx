@@ -996,20 +996,36 @@ const Index = () => {
     doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
   };
 
+  // Track printing to prevent double prints
+  const [currentlyPrinting, setCurrentlyPrinting] = useState<Set<string>>(new Set());
+
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
+    
+    // Prevent double printing
+    if (currentlyPrinting.has(b.id)) {
+      console.log('Already printing this item, skipping:', b.id);
+      return;
+    }
     
     if (!printNodeConnected || !selectedPrinterId) {
       toast.error('PrintNode not connected or no printer selected');
       return;
     }
 
+    setCurrentlyPrinting(prev => new Set([...prev, b.id!]));
     try {
       await markPrinted([b.id]);
       await printNodeLabels([b]);
       toast.success(`Printed label for Lot ${b.lot || ""}`);
     } catch {
       toast.error("Failed to print");
+    } finally {
+      setCurrentlyPrinting(prev => {
+        const next = new Set(prev);
+        next.delete(b.id!);
+        return next;
+      });
     }
   };
   const handlePushRow = async (b: CardItem) => {
