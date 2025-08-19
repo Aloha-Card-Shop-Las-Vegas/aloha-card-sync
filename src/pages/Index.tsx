@@ -662,15 +662,32 @@ const Index = () => {
                 const objects = fabricCanvas.getObjects();
                 let barcodeUpdated = false;
                 
+                console.log('=== DEBUGGING CARD DATA ===');
+                console.log('Item data:', {
+                  lot: item.lot,
+                  sku: item.sku,
+                  psaCert: item.psaCert,
+                  grade: item.grade,
+                  year: item.year,
+                  brandTitle: item.brandTitle,
+                  subject: item.subject,
+                  cardNumber: item.cardNumber,
+                  variant: item.variant,
+                  price: item.price
+                });
+                
+                console.log(`Found ${objects.length} objects in template`);
+                
                 for (const obj of objects) {
                   // Normalize object type to lowercase for comparison
                   const objType = obj.type?.toLowerCase() || '';
-                  console.log('Processing object:', { type: obj.type, objType });
+                  console.log('Processing object:', { type: obj.type, objType, hasText: !!(obj as any).text });
                   
                   if (objType === 'textbox' || objType === 'text') {
                     const textObj = obj as any; // Fabric text object
-                    const text = textObj.text?.toLowerCase() || '';
-                    console.log('Found text object:', { originalText: textObj.text, lowerText: text });
+                    const originalText = textObj.text || '';
+                    const text = originalText.toLowerCase();
+                    console.log('Found text object:', { originalText, lowerText: text });
                     
                     // Build the card title from available data
                     const cardTitle = [
@@ -689,21 +706,27 @@ const Index = () => {
                                            text.includes('• nm') || text.includes('•') || 
                                            (text.length > 20 && (text.includes('near mint') || text.includes('nm')));
                     
-                    console.log('Is main title field?', isMainTitleField);
+                    console.log('Is main title field?', isMainTitleField, 'for text:', text);
+                    
+                    let replaced = false;
                     
                     // Replace template placeholders with actual item data
                     if (text.includes('lot') || text.includes('000001')) {
                       console.log('Replacing lot number');
                       textObj.set('text', item.lot || '');
+                      replaced = true;
                     } else if (text.includes('sku') || text.includes('120979260')) {
                       console.log('Replacing SKU');
                       textObj.set('text', item.sku || '');
+                      replaced = true;
                     } else if (text.includes('price') || text.includes('$1,000') || text.includes('$') || text.includes('1,000')) {
                       console.log('Replacing price');
                       textObj.set('text', item.price ? `$${item.price}` : '');
+                      replaced = true;
                     } else if (text.includes('cert') || text.includes('psa')) {
                       console.log('Replacing cert');
                       textObj.set('text', item.psaCert || '');
+                      replaced = true;
                     } else if (isMainTitleField) {
                       // This is the main card title - completely replace with actual card info
                       const fullTitle = isGraded ? 
@@ -711,12 +734,18 @@ const Index = () => {
                         cardTitle;
                       console.log('Replacing main title with:', fullTitle);
                       textObj.set('text', fullTitle);
+                      replaced = true;
                     } else if (text.includes('grade') || (text.includes('nm') && text.length < 10)) {
                       // This is a standalone grade/condition field
                       console.log('Replacing grade field');
                       textObj.set('text', item.grade || item.variant || '');
-                    } else {
+                      replaced = true;
+                    }
+                    
+                    if (!replaced) {
                       console.log('No replacement made for text:', text);
+                    } else {
+                      console.log('Text replaced! New value:', textObj.text);
                     }
                   }
                   
