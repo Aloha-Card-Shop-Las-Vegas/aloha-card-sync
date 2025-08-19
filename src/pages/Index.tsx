@@ -848,27 +848,27 @@ const Index = () => {
   };
 
   const handlePushAndPrintAll = async () => {
-    const ids = batch.map((b) => b.id!).filter(Boolean);
-    if (ids.length === 0) {
-      toast.info("Nothing to process");
-      return;
-    }
-    
-    if (!printNodeConnected || !selectedPrinterId) {
-      toast.error('PrintNode not connected or no printer selected');
-      return;
-    }
-    
+    const items = batch.filter(i => i.id) as CardItem[];
+    const ids = items.map(i => i.id!) as string[];
+    if (ids.length === 0) { toast.info('Nothing to process'); return; }
+    if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
+
+    if (!acquireGlobalLock()) return;
     setPushPrintAllRunning(true);
     try {
-      await markPushed(ids); // Remove from queue only after push succeeds
-      await markPrinted(ids); // Mark printed for those items as well
-      await printNodeLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
-      toast.success("Pushed and printed all");
-    } catch {
-      toast.error("Failed to push and print all");
+      // Push stays first
+      await Promise.all(ids.map((id) => supabase.functions.invoke("shopify-import", { body: { itemId: id } })));
+      await markPushed(ids);
+
+      // Then print
+      const ok = await printNodeLabels(items);
+      if (ok) await markPrinted(ids);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to push and print all');
     } finally {
       setPushPrintAllRunning(false);
+      releaseGlobalLock();
     }
   };
 
@@ -1002,13 +1002,13 @@ const Index = () => {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>Batch Queue ({batch.length})</CardTitle>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={handlePrintAll} disabled={printingAll || batch.length === 0}>
+                  <Button variant="outline" onClick={handlePrintAll} disabled={jobInFlight || printingAll || batch.length === 0}>
                     {printingAll ? "Printing…" : "Print All"}
                   </Button>
                   <Button variant="outline" onClick={handlePushAll} disabled={pushingAll || batch.length === 0}>
                     {pushingAll ? "Pushing…" : "Push All"}
                   </Button>
-                  <Button onClick={handlePushAndPrintAll} disabled={pushPrintAllRunning || batch.length === 0}>
+                  <Button onClick={handlePushAndPrintAll} disabled={jobInFlight || pushPrintAllRunning || batch.length === 0}>
                     {pushPrintAllRunning ? "Processing…" : "Push & Print All"}
                   </Button>
                 </div>
@@ -1064,7 +1064,9 @@ const Index = () => {
                                   <Button
                                     size="sm"
                                     variant={b.printedAt ? "outline" : "default"}
-                                    onClick={() => handlePrintRow(b)}
+                                    onClick={(e) => { e.stopPropagation(); handlePrintRow(b); }}
+                                    disabled={jobInFlight || printingIdsRef.current.has(b.id!)}
+                                    title={jobInFlight || printingIdsRef.current.has(b.id!) ? "Print in progress…" : undefined}
                                     className={b.printedAt ? "border-orange-600 text-orange-600 hover:bg-orange-50" : ""}
                                   >
                                     {b.printedAt ? "Reprint" : "Print"}
