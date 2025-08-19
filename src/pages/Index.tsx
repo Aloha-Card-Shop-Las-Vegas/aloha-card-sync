@@ -721,9 +721,10 @@ const Index = () => {
                   }
                   
                   // Handle barcode images - replace src with new barcode
-                  if (obj.type === 'image') {
+                  if (objType === 'image') {
                     const imageObj = obj as any; // Fabric image object
-                    if (imageObj.src && imageObj.src.includes('data:image')) {
+                    const hasDataSrc = (imageObj.src && typeof imageObj.src === 'string' && imageObj.src.includes('data:image'));
+                    if (hasDataSrc || true) {
                       barcodeUpdated = true;
                       // Generate new barcode for this item
                       const canvas = document.createElement('canvas');
