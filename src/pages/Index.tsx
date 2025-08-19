@@ -598,7 +598,13 @@ const Index = () => {
 
   // PrintNode printing using default template or simple barcode
   const printNodeLabels = async (items: CardItem[]) => {
+    console.log('=== printNodeLabels CALLED ===');
+    console.log('Items to print:', items.length);
+    console.log('Selected printer ID:', selectedPrinterId);
+    console.log('PrintNode connected:', printNodeConnected);
+    
     if (!selectedPrinterId) {
+      console.error('No PrintNode printer selected');
       toast.error('No PrintNode printer selected');
       return;
     }
@@ -938,11 +944,17 @@ const Index = () => {
       }
 
       // Send to PrintNode
+      console.log('=== SENDING TO PRINTNODE ===');
       const pdfBase64 = doc.output('datauristring').split(',')[1];
+      console.log('PDF base64 length:', pdfBase64.length);
+      console.log('Sending to printer ID:', selectedPrinterId);
+      
       const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
         title: `Batch Labels (${validItems} items)${lastUsedTemplate ? ` - ${lastUsedTemplate.name}` : ''}`,
         copies: 1
       });
+      
+      console.log('PrintNode result:', result);
 
       if (result.success) {
         toast.success(`${validItems} labels sent to PrintNode printer (Job ID: ${result.jobId})`);
