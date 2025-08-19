@@ -66,7 +66,7 @@ const Index = () => {
   const [printers, setPrinters] = useState<any[]>([]);
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
-  const [defaultTemplates, setDefaultTemplates] = useState<{graded?: any, raw?: any, general?: any}>({});
+  const [defaultTemplates, setDefaultTemplates] = useState<{graded?: any, raw?: any}>({});
 
   // New UI state for bulk actions
   const [printingAll, setPrintingAll] = useState(false);
@@ -207,7 +207,7 @@ const Index = () => {
         const { data, error } = await supabase
           .from('label_templates')
           .select('*')
-          .in('template_type', ['graded', 'raw', 'general']);
+          .in('template_type', ['graded', 'raw']);
         
         if (error) {
           console.error('Failed to load templates:', error);
@@ -629,11 +629,10 @@ const Index = () => {
         // Determine card type and select appropriate template
         const isGraded = !!(item.psaCert && item.grade && item.grade !== 'Raw');
         
-        // For graded cards, use general template as default (not graded-specific template)
-        // For raw cards, prefer raw template, fallback to general
+        // Use appropriate template based on card type
         const templateToUse = isGraded ? 
-          defaultTemplates.general : 
-          (defaultTemplates.raw || defaultTemplates.general);
+          defaultTemplates.graded : 
+          defaultTemplates.raw;
         
         console.log(`Item ${item.lot}: isGraded=${isGraded}, templateType=${templateToUse?.template_type}, templateName=${templateToUse?.name}`);
         lastUsedTemplate = templateToUse;
