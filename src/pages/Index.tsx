@@ -654,7 +654,7 @@ const Index = () => {
     };
   }
 
-  // PrintNode printing using default template or simple barcode
+  // PrintNode printing using database templates
   const printNodeLabels = async (items: CardItem[]): Promise<boolean> => {
     if (!selectedPrinterId) {
       toast.error('No PrintNode printer selected');
@@ -662,23 +662,35 @@ const Index = () => {
     }
 
     try {
+      // Load the default template from database
+      const { data: templates, error } = await supabase
+        .from('label_templates')
+        .select('*')
+        .eq('is_default', true)
+        .limit(1);
+
+      if (error) {
+        console.error('Failed to load template:', error);
+        toast.error('Failed to load label template');
+        return false;
+      }
+
+      const template = templates?.[0];
+      if (!template) {
+        toast.error('No default template found. Please set a default template in Label Designer.');
+        return false;
+      }
+
       const { jsPDF } = await import('jspdf');
       
       // Create multi-page PDF with one label per page (2x1 labels)
-      const doc = new jsPDF({
-        unit: 'in',
-        format: [2.0, 1.0], // 2x1 inch labels
-        orientation: 'landscape',
-        putOnlyUsedFonts: true,
-        compress: false
-      });
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'in', format: [2, 1] });
 
       let isFirstPage = true;
       let validItems = 0;
 
       for (const item of items) {
-        const val = (item.sku || item.psaCert || item.lot || "").trim();
-        if (!val) continue;
+        if (!item.id) continue;
 
         if (!isFirstPage) {
           doc.addPage();
@@ -686,42 +698,37 @@ const Index = () => {
         isFirstPage = false;
         validItems++;
 
-        // Use rich label layout with item details
-        await drawRichLabel(doc, item);
+        // Use template-based rendering
+        await renderLabelFromTemplate(doc, template, item);
       }
 
       if (validItems === 0) {
-        toast.error("No valid barcodes to print");
+        toast.error("No valid items to print");
         return false;
       }
 
       // Guard against double export/POST with once()
       const finishAndSend = once(async () => {
-        const base64 = doc.output('datauristring').split(',')[1];
-        const correlationId = `idx-${Date.now()}-${items.map(i => i.id).join(',')}`;
-        const pages = (doc as any).getNumberOfPages?.() ?? items.length;
-
-        console.log('=== SENDING TO PRINTNODE ===', {
-          correlationId,
-          printerId: selectedPrinterId,
-          pages,
-          itemIds: items.map(i => i.id),
+        const pdfBlob = doc.output('blob');
+        const reader = new FileReader();
+        
+        return new Promise<boolean>((resolve) => {
+          reader.onload = async () => {
+            try {
+              const base64 = (reader.result as string).split(',')[1];
+              await printNodeService.printPDF(base64, selectedPrinterId!, {
+                title: `Label Print ${new Date().toLocaleTimeString()}`,
+                copies: 1
+              });
+              resolve(true);
+            } catch (e) {
+              console.error('PrintNode error:', e);
+              toast.error('PrintNode request failed');
+              resolve(false);
+            }
+          };
+          reader.readAsDataURL(pdfBlob);
         });
-
-        const result = await printNodeService.printPDF(base64, selectedPrinterId!, {
-          title: `Label Print · ${correlationId}`,
-          copies: 1,
-        });
-
-        console.log('PrintNode result:', result, { correlationId });
-
-        if (result.success) {
-          toast.success(`${pages} label(s) sent (Job ID: ${result.jobId})`);
-          return true;
-        } else {
-          toast.error(result.error || 'PrintNode print failed');
-          return false;
-        }
       });
 
       const ok = await finishAndSend();
@@ -733,81 +740,95 @@ const Index = () => {
     }
   };
 
-  // Helper function to draw rich label with item details
-  const drawRichLabel = async (doc: any, item: CardItem) => {
-    const JsBarcode: any = (await import("jsbarcode")).default;
-    
-    // Create small barcode canvas (about 1/3 of label width)
-    const barcodeCanvas = document.createElement("canvas");
-    barcodeCanvas.width = 100;
-    barcodeCanvas.height = 50;
+  // Helper function to render label from database template
+  const renderLabelFromTemplate = async (doc: any, template: any, item: CardItem) => {
+    const canvasData = template.canvas;
+    if (!canvasData || !canvasData.objects) {
+      // Fallback to simple layout if template is corrupted
+      await drawSimpleFallback(doc, item);
+      return;
+    }
 
-    const barcodeData = item.sku || item.id || 'NO-SKU';
-    JsBarcode(barcodeCanvas, barcodeData, {
+    // Process template objects and render to PDF
+    for (const obj of canvasData.objects) {
+      if (obj.excludeFromExport || obj.name === 'border') continue;
+
+      // Convert fabric coordinates to PDF coordinates (fabric uses pixels, PDF uses inches)
+      const pdfX = (obj.left || 0) / 203; // Convert pixels to inches at 203 DPI
+      const pdfY = (obj.top || 0) / 203;
+
+      if (obj.type === 'textbox' || obj.type === 'text') {
+        let text = obj.text || '';
+        
+        // Replace template variables with actual item data
+        text = text.replace(/\{title\}/g, item.title || '');
+        text = text.replace(/\{price\}/g, item.price ? `$${item.price}` : '');
+        text = text.replace(/\{sku\}/g, item.sku || '');
+        text = text.replace(/\{lot\}/g, item.lot || '');
+        text = text.replace(/\{grade\}/g, item.grade || '');
+        text = text.replace(/\{condition\}/g, item.grade || '');
+
+        doc.setFontSize((obj.fontSize || 12) * 0.75); // Scale down font for PDF
+        doc.setFont('helvetica', obj.fontWeight === 'bold' ? 'bold' : 'normal');
+        doc.text(text, pdfX, pdfY + 0.1); // Offset Y slightly for proper positioning
+      } else if (obj.type === 'image' && obj.meta?.type === 'barcode') {
+        // Generate barcode for this specific item
+        const barcodeData = item.sku || item.id || 'NO-SKU';
+        await addBarcodeToPosition(doc, barcodeData, pdfX, pdfY, (obj.width || 100) / 203, (obj.height || 50) / 203);
+      } else if (obj.type === 'rect') {
+        // Draw rectangle/line
+        const width = (obj.width || 1) / 203;
+        const height = (obj.height || 1) / 203;
+        doc.setFillColor(obj.fill || '#000000');
+        doc.rect(pdfX, pdfY, width, height, 'F');
+      }
+    }
+  };
+
+  // Helper to add barcode at specific position
+  const addBarcodeToPosition = async (doc: any, data: string, x: number, y: number, width: number, height: number) => {
+    const JsBarcode: any = (await import("jsbarcode")).default;
+    const canvas = document.createElement("canvas");
+    canvas.width = width * 203; // Convert back to pixels for canvas
+    canvas.height = height * 203;
+
+    JsBarcode(canvas, data, {
       format: "CODE128",
       displayValue: false,
       width: 1,
-      height: 40,
+      height: canvas.height * 0.8,
       margin: 2,
     });
 
-    // Add title (truncated to fit)
-    const title = item.title || 'Unknown Item';
-    const truncatedTitle = title.length > 25 ? title.substring(0, 25) + '...' : title;
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
-    doc.text(truncatedTitle, 0.05, 0.15); // Top left
-
-    // Add price (top right)
-    if (item.price) {
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`$${item.price}`, 1.5, 0.15, { align: 'right' });
-    }
-
-    // Add SKU/LOT info (second line)
-    doc.setFontSize(6);
-    doc.setFont('helvetica', 'normal');
-    let detailLine = '';
-    if (item.sku) detailLine += `SKU: ${item.sku}`;
-    if (item.lot && item.sku) detailLine += ` | LOT: ${item.lot}`;
-    else if (item.lot) detailLine += `LOT: ${item.lot}`;
-    if (detailLine) {
-      doc.text(detailLine, 0.05, 0.3);
-    }
-
-    // Add condition/grade (third line if present)
-    if (item.grade) {
-      doc.setFontSize(6);
-      doc.text(`Grade: ${item.grade}`, 0.05, 0.45);
-    }
-
-    // Add barcode (bottom right area)
-    const barcodeImgData = barcodeCanvas.toDataURL("image/png");
-    doc.addImage(barcodeImgData, "PNG", 1.2, 0.5, 0.75, 0.4); // Small barcode in bottom right
+    const imgData = canvas.toDataURL("image/png");
+    doc.addImage(imgData, "PNG", x, y, width, height);
   };
 
-  // Helper function for simple barcode fallback
-  const addSimpleBarcode = async (doc: any, val: string) => {
-    const JsBarcode: any = (await import("jsbarcode")).default;
-    const canvas = document.createElement("canvas");
-    // Match label pixel size at 150 DPI (2in x 1in)
-    canvas.width = 300;
-    canvas.height = 150;
-
-    JsBarcode(canvas, val, {
-      format: "CODE128",
-      displayValue: false,
-      lineColor: "#000000",
-      background: "#FFFFFF",
-      margin: 0,
-      width: 3,   // Thicker bars for thermal printers
-      height: 110,
-    });
-
-    const dataURL = canvas.toDataURL("image/png");
-    // Fill the whole label for maximum contrast
-    doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
+  // Simple fallback if template is missing or corrupted
+  const drawSimpleFallback = async (doc: any, item: CardItem) => {
+    // Title
+    if (item.title) {
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'bold');
+      doc.text(item.title.substring(0, 25), 0.05, 0.15);
+    }
+    
+    // Price
+    if (item.price) {
+      doc.setFontSize(12);
+      doc.text(`$${item.price}`, 1.5, 0.15, { align: 'right' });
+    }
+    
+    // SKU/LOT
+    doc.setFontSize(6);
+    let details = '';
+    if (item.sku) details += `SKU: ${item.sku}`;
+    if (item.lot) details += (details ? ' | ' : '') + `LOT: ${item.lot}`;
+    if (details) doc.text(details, 0.05, 0.3);
+    
+    // Barcode
+    const barcodeData = item.sku || item.id || 'NO-SKU';
+    await addBarcodeToPosition(doc, barcodeData, 1.2, 0.5, 0.75, 0.4);
   };
 
   const handlePrintRow = async (b: CardItem) => {
