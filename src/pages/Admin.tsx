@@ -40,6 +40,9 @@ export default function Admin() {
   const [qty, setQty] = useState<number>(1);
   const [recent, setRecent] = useState<any[]>([]);
   const [loadingRecent, setLoadingRecent] = useState(false);
+  const [mappings, setMappings] = useState<any[]>([]);
+  const [loadingMappings, setLoadingMappings] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<any[]>([]);
 
   const loadStatus = async () => {
     setLoadingStatus(true);
@@ -73,9 +76,42 @@ export default function Admin() {
     }
   };
 
+  const loadMappings = async () => {
+    setLoadingMappings(true);
+    try {
+      // Get recent intake items with their Shopify mapping data
+      const { data: intakeData, error: intakeError } = await supabase
+        .from("intake_items")
+        .select("id, lot_number, sku, shopify_product_id, shopify_variant_id, shopify_inventory_item_id, pushed_at, brand_title, price, quantity")
+        .not("shopify_product_id", "is", null)
+        .order("updated_at", { ascending: false })
+        .limit(20);
+      
+      if (intakeError) throw intakeError;
+      
+      // Get product sync status
+      const { data: syncData, error: syncError } = await supabase
+        .from("product_sync_status")
+        .select("*")
+        .order("last_sync_at", { ascending: false })
+        .limit(10);
+      
+      if (syncError) throw syncError;
+      
+      setMappings(intakeData || []);
+      setSyncStatus(syncData || []);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load mappings");
+    } finally {
+      setLoadingMappings(false);
+    }
+  };
+
   useEffect(() => {
     loadStatus();
     loadRecent();
+    loadMappings();
   }, []);
 
   const handlePush = async (id: string) => {
@@ -119,7 +155,7 @@ export default function Admin() {
           </div>
           <div className="flex gap-2">
             <Link to="/"><Button variant="secondary">Back</Button></Link>
-            <Button variant="outline" onClick={() => { loadStatus(); loadRecent(); }}>Refresh</Button>
+            <Button variant="outline" onClick={() => { loadStatus(); loadRecent(); loadMappings(); }}>Refresh</Button>
           </div>
         </div>
       </header>
@@ -192,6 +228,111 @@ export default function Admin() {
                   {recent.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-center text-muted-foreground">{loadingRecent ? "Loading…" : "No items"}</TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-aloha lg:col-span-2">
+          <CardHeader><CardTitle>Shopify Product Mappings</CardTitle></CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Lot #</TableHead>
+                    <TableHead>Brand/Title</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Shopify Product ID</TableHead>
+                    <TableHead>Variant ID</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Pushed</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {mappings.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-mono text-xs">{item.lot_number}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{item.brand_title || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{item.sku || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{item.shopify_product_id || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{item.shopify_variant_id || "—"}</TableCell>
+                      <TableCell>{item.price ? `$${Number(item.price).toLocaleString()}` : "—"}</TableCell>
+                      <TableCell>{item.quantity || 0}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                          item.pushed_at 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {item.pushed_at ? 'Yes' : 'No'}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {mappings.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center text-muted-foreground">
+                        {loadingMappings ? "Loading mappings..." : "No Shopify mappings found"}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-aloha lg:col-span-2">
+          <CardHeader><CardTitle>Product Sync Status</CardTitle></CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Product ID</TableHead>
+                    <TableHead>Shopify ID</TableHead>
+                    <TableHead>Sync Status</TableHead>
+                    <TableHead>Last Sync</TableHead>
+                    <TableHead>Error Message</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {syncStatus.map((sync) => (
+                    <TableRow key={sync.id}>
+                      <TableCell className="font-mono text-xs">{sync.product_id || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{sync.shopify_id || "—"}</TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                          sync.sync_status === 'completed' 
+                            ? 'bg-green-100 text-green-800'
+                            : sync.sync_status === 'failed'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {sync.sync_status || 'pending'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {sync.last_sync_at 
+                          ? new Date(sync.last_sync_at).toLocaleString()
+                          : "Never"
+                        }
+                      </TableCell>
+                      <TableCell className="max-w-[300px] truncate text-xs text-red-600">
+                        {sync.error_message || "—"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {syncStatus.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                        {loadingMappings ? "Loading sync status..." : "No sync records found"}
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
