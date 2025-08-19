@@ -654,7 +654,7 @@ const Index = () => {
     };
   }
 
-  // PrintNode printing using database templates
+  // PrintNode printing using database templates with Fabric canvas rendering
   const printNodeLabels = async (items: CardItem[]): Promise<boolean> => {
     if (!selectedPrinterId) {
       toast.error('No PrintNode printer selected');
@@ -682,6 +682,7 @@ const Index = () => {
       }
 
       const { jsPDF } = await import('jspdf');
+      const { Canvas: FabricCanvas } = await import('fabric');
       
       // Create multi-page PDF with one label per page (2x1 labels)
       const doc = new jsPDF({ orientation: 'landscape', unit: 'in', format: [2, 1] });
@@ -698,8 +699,8 @@ const Index = () => {
         isFirstPage = false;
         validItems++;
 
-        // Use template-based rendering
-        await renderLabelFromTemplate(doc, template, item);
+        // Use offscreen Fabric canvas for proper template rendering
+        await renderLabelWithFabric(doc, template, item);
       }
 
       if (validItems === 0) {
@@ -740,49 +741,115 @@ const Index = () => {
     }
   };
 
-  // Helper function to render label from database template
-  const renderLabelFromTemplate = async (doc: any, template: any, item: CardItem) => {
-    const canvasData = template.canvas;
-    if (!canvasData || !canvasData.objects) {
-      // Fallback to simple layout if template is corrupted
-      await drawSimpleFallback(doc, item);
-      return;
-    }
-
-    // Process template objects and render to PDF
-    for (const obj of canvasData.objects) {
-      if (obj.excludeFromExport || obj.name === 'border') continue;
-
-      // Convert fabric coordinates to PDF coordinates (fabric uses pixels, PDF uses inches)
-      const pdfX = (obj.left || 0) / 203; // Convert pixels to inches at 203 DPI
-      const pdfY = (obj.top || 0) / 203;
-
-      if (obj.type === 'textbox' || obj.type === 'text') {
-        let text = obj.text || '';
-        
-        // Replace template variables with actual item data
-        text = text.replace(/\{title\}/g, item.title || '');
-        text = text.replace(/\{price\}/g, item.price ? `$${item.price}` : '');
-        text = text.replace(/\{sku\}/g, item.sku || '');
-        text = text.replace(/\{lot\}/g, item.lot || '');
-        text = text.replace(/\{grade\}/g, item.grade || '');
-        text = text.replace(/\{condition\}/g, item.grade || '');
-
-        doc.setFontSize((obj.fontSize || 12) * 0.75); // Scale down font for PDF
-        doc.setFont('helvetica', obj.fontWeight === 'bold' ? 'bold' : 'normal');
-        doc.text(text, pdfX, pdfY + 0.1); // Offset Y slightly for proper positioning
-      } else if (obj.type === 'image' && obj.meta?.type === 'barcode') {
-        // Generate barcode for this specific item
-        const barcodeData = item.sku || item.id || 'NO-SKU';
-        await addBarcodeToPosition(doc, barcodeData, pdfX, pdfY, (obj.width || 100) / 203, (obj.height || 50) / 203);
-      } else if (obj.type === 'rect') {
-        // Draw rectangle/line
-        const width = (obj.width || 1) / 203;
-        const height = (obj.height || 1) / 203;
-        doc.setFillColor(obj.fill || '#000000');
-        doc.rect(pdfX, pdfY, width, height, 'F');
+  // Helper function to render label using offscreen Fabric canvas
+  const renderLabelWithFabric = async (doc: any, template: any, item: CardItem) => {
+    try {
+      const canvasData = template.canvas;
+      if (!canvasData) {
+        console.warn('Template missing canvas data, using fallback');
+        await drawSimpleFallback(doc, item);
+        return;
       }
+
+      const { Canvas: FabricCanvas } = await import('fabric');
+      
+      // Create offscreen canvas with label dimensions (2x1 inch at 203 DPI)
+      const offscreenCanvas = document.createElement('canvas');
+      offscreenCanvas.width = 406; // 2 inches * 203 DPI
+      offscreenCanvas.height = 203; // 1 inch * 203 DPI
+      
+      const fabricCanvas = new FabricCanvas(offscreenCanvas, {
+        width: 406,
+        height: 203,
+        backgroundColor: '#ffffff'
+      });
+
+      // Load template data into canvas
+      await new Promise<void>((resolve, reject) => {
+        fabricCanvas.loadFromJSON(canvasData, async () => {
+          try {
+            // Process all objects to replace variables and generate barcodes
+            const objects = fabricCanvas.getObjects();
+            
+            for (const obj of objects) {
+              // Skip border or excluded objects
+              if ((obj as any).excludeFromExport || (obj as any).name === 'border') {
+                obj.visible = false;
+                continue;
+              }
+
+              // Handle text objects with variable replacement
+              if (obj.type === 'textbox' || obj.type === 'text') {
+                let text = (obj as any).text || '';
+                
+                // Replace template variables with actual item data
+                text = text.replace(/\{title\}/g, item.title || '');
+                text = text.replace(/\{price\}/g, item.price ? `$${item.price}` : '');
+                text = text.replace(/\{sku\}/g, item.sku || '');
+                text = text.replace(/\{lot\}/g, item.lot || '');
+                text = text.replace(/\{grade\}/g, item.grade || '');
+                text = text.replace(/\{condition\}/g, item.grade || '');
+                
+                (obj as any).text = text;
+              }
+              
+              // Handle barcode images
+              else if (obj.type === 'image' && (obj as any).meta?.type === 'barcode') {
+                const barcodeData = item.sku || item.id || 'NO-SKU';
+                const barcodeImage = await generateBarcodeImage(barcodeData, obj.width || 100, obj.height || 50);
+                (obj as any).setSrc(barcodeImage, () => {
+                  fabricCanvas.renderAll();
+                });
+              }
+            }
+            
+            fabricCanvas.renderAll();
+            
+            // Wait a moment for rendering to complete
+            setTimeout(() => {
+              // Convert canvas to image and add to PDF
+              const imageData = fabricCanvas.toDataURL({
+                format: 'png',
+                quality: 1,
+                multiplier: 1
+              });
+              
+              // Add image to PDF (2x1 inch)
+              doc.addImage(imageData, 'PNG', 0, 0, 2, 1);
+              
+              fabricCanvas.dispose();
+              resolve();
+            }, 100);
+            
+          } catch (error) {
+            console.error('Error processing template objects:', error);
+            reject(error);
+          }
+        });
+      });
+
+    } catch (error) {
+      console.error('Fabric rendering error:', error);
+      await drawSimpleFallback(doc, item);
     }
+  };
+
+  // Helper to generate barcode image
+  const generateBarcodeImage = async (data: string, width: number, height: number): Promise<string> => {
+    const JsBarcode: any = (await import("jsbarcode")).default;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    JsBarcode(canvas, data, {
+      format: "CODE128",
+      displayValue: false,
+      width: 1,
+      height: height * 0.8,
+      margin: 2,
+    });
+
+    return canvas.toDataURL("image/png");
   };
 
   // Helper to add barcode at specific position
