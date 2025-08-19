@@ -678,6 +678,16 @@ const Index = () => {
                 
                 console.log(`Found ${objects.length} objects in template`);
                 
+                // Build the card title from available data
+                const cardTitle = [
+                  item.year,
+                  item.brandTitle,
+                  item.subject,
+                  item.cardNumber ? `#${item.cardNumber}` : '',
+                  item.variant
+                ].filter(Boolean).join(' ');
+                console.log('Built card title:', cardTitle);
+                
                 for (const obj of objects) {
                   // Normalize object type to lowercase for comparison
                   const objType = obj.type?.toLowerCase() || '';
@@ -689,63 +699,55 @@ const Index = () => {
                     const text = originalText.toLowerCase();
                     console.log('Found text object:', { originalText, lowerText: text });
                     
-                    // Build the card title from available data
-                    const cardTitle = [
-                      item.year,
-                      item.brandTitle,
-                      item.subject,
-                      item.cardNumber ? `#${item.cardNumber}` : '',
-                      item.variant
-                    ].filter(Boolean).join(' ');
-                    console.log('Built card title:', cardTitle);
-                    
-                    // Check if this is the main title field (contains template data)
-                    const isMainTitleField = text.includes('pokemon') || text.includes('gengar') || 
-                                           text.includes('vmax') || text.includes('#020') || 
-                                           text.includes('card') || text.includes('title') ||
-                                           text.includes('• nm') || text.includes('•') || 
-                                           (text.length > 20 && (text.includes('near mint') || text.includes('nm')));
-                    
-                    console.log('Is main title field?', isMainTitleField, 'for text:', text);
-                    
+                    let newText = '';
                     let replaced = false;
                     
-                    // Replace template placeholders with actual item data
-                    if (text.includes('lot') || text.includes('000001')) {
-                      console.log('Replacing lot number');
-                      textObj.set('text', item.lot || '');
+                    // Direct replacement based on exact template content
+                    if (originalText === '$1,000' || originalText === '$1000') {
+                      newText = item.price ? `$${item.price}` : '$0';
                       replaced = true;
-                    } else if (text.includes('sku') || text.includes('120979260')) {
-                      console.log('Replacing SKU');
-                      textObj.set('text', item.sku || '');
-                      replaced = true;
-                    } else if (text.includes('price') || text.includes('$1,000') || text.includes('$') || text.includes('1,000')) {
-                      console.log('Replacing price');
-                      textObj.set('text', item.price ? `$${item.price}` : '');
-                      replaced = true;
-                    } else if (text.includes('cert') || text.includes('psa')) {
-                      console.log('Replacing cert');
-                      textObj.set('text', item.psaCert || '');
-                      replaced = true;
-                    } else if (isMainTitleField) {
-                      // This is the main card title - completely replace with actual card info
-                      const fullTitle = isGraded ? 
+                      console.log('EXACT MATCH: Replacing price $1,000');
+                    } else if (originalText === 'POKEMON GENGAR VMAX #020 • NM') {
+                      newText = isGraded ? 
                         `${cardTitle} • ${item.grade || 'GRADED'}` : 
                         cardTitle;
-                      console.log('Replacing main title with:', fullTitle);
-                      textObj.set('text', fullTitle);
                       replaced = true;
-                    } else if (text.includes('grade') || (text.includes('nm') && text.length < 10)) {
-                      // This is a standalone grade/condition field
-                      console.log('Replacing grade field');
-                      textObj.set('text', item.grade || item.variant || '');
+                      console.log('EXACT MATCH: Replacing main title');
+                    } else if (originalText === 'NM' && originalText.length === 2) {
+                      newText = item.grade || item.variant || 'NM';
                       replaced = true;
+                      console.log('EXACT MATCH: Replacing condition NM');
+                    } else if (text.includes('1,000') || text.includes('$1,000')) {
+                      newText = item.price ? `$${item.price}` : '$0';
+                      replaced = true;
+                      console.log('PARTIAL MATCH: Replacing price field');
+                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || text.includes('#020')) {
+                      newText = isGraded ? 
+                        `${cardTitle} • ${item.grade || 'GRADED'}` : 
+                        cardTitle;
+                      replaced = true;
+                      console.log('PARTIAL MATCH: Replacing title field');
+                    } else if (text.includes('lot') || text.includes('000001')) {
+                      newText = item.lot || '';
+                      replaced = true;
+                      console.log('PARTIAL MATCH: Replacing lot field');
+                    } else if (text.includes('sku') || text.includes('120979260')) {
+                      newText = item.sku || '';
+                      replaced = true;
+                      console.log('PARTIAL MATCH: Replacing SKU field');
+                    } else if (text.includes('cert') || text.includes('psa')) {
+                      newText = item.psaCert || '';
+                      replaced = true;
+                      console.log('PARTIAL MATCH: Replacing cert field');
                     }
                     
-                    if (!replaced) {
-                      console.log('No replacement made for text:', text);
+                    if (replaced) {
+                      console.log(`Updating text from "${originalText}" to "${newText}"`);
+                      textObj.set('text', newText);
+                      textObj.set('dirty', true);
+                      fabricCanvas.renderAll();
                     } else {
-                      console.log('Text replaced! New value:', textObj.text);
+                      console.log('No replacement made for text:', originalText);
                     }
                   }
                   
