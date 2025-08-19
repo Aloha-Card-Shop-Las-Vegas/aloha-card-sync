@@ -328,6 +328,43 @@ export default function LabelDesigner() {
     }
   };
 
+  const updateTemplate = async () => {
+    if (!fabricCanvas || !selectedTemplateId) return;
+    
+    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+    if (!selectedTemplate) {
+      toast.error('No template selected');
+      return;
+    }
+
+    const payload = {
+      canvas: fabricCanvas.toJSON(),
+      data: {
+        barcodeValue,
+        title,
+        lot,
+        price,
+        sku,
+        condition,
+        size: { widthIn: LABEL_WIDTH_IN, heightIn: LABEL_HEIGHT_IN, dpi: PREVIEW_DPI },
+      },
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+      .from('label_templates')
+      .update(payload)
+      .eq('id', selectedTemplateId);
+      
+    if (error) {
+      console.error(error);
+      toast.error('Update failed');
+    } else {
+      toast.success(`Template "${selectedTemplate.name}" updated`);
+      fetchTemplates();
+    }
+  };
+
   const quickSaveTemplate = async () => {
     const name = window.prompt('Template name');
     if (!name) return;
@@ -1091,16 +1128,17 @@ export default function LabelDesigner() {
                          ))}
                        </SelectContent>
                      </Select>
-                     {selectedTemplateId && (
-                       <div className="mt-2 flex gap-2">
-                         <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete</Button>
-                         {defaultTemplateId !== selectedTemplateId ? (
-                           <Button variant="outline" onClick={() => setAsDefaultTemplate(selectedTemplateId)}>Set as Default</Button>
-                         ) : (
-                           <Button variant="outline" onClick={clearDefaultTemplate}>Clear Default</Button>
-                         )}
-                       </div>
-                     )}
+                      {selectedTemplateId && (
+                        <div className="mt-2 flex gap-2 flex-wrap">
+                          <Button variant="default" onClick={updateTemplate}>Update Template</Button>
+                          <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete</Button>
+                          {defaultTemplateId !== selectedTemplateId ? (
+                            <Button variant="outline" onClick={() => setAsDefaultTemplate(selectedTemplateId)}>Set as Default</Button>
+                          ) : (
+                            <Button variant="outline" onClick={clearDefaultTemplate}>Clear Default</Button>
+                          )}
+                        </div>
+                      )}
                   </div>
                 </div>
               </CardContent>
