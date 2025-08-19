@@ -791,12 +791,18 @@ const Index = () => {
                   height: 35,
                 });
                 
-                const barcodeImage = new FabricImage(canvas.toDataURL(), {
+                // Create an HTMLImageElement for Fabric v6 compatibility
+                const imgEl = new Image();
+                imgEl.src = canvas.toDataURL();
+                try { await imgEl.decode(); } catch {}
+
+                const barcodeImage = new FabricImage(imgEl, {
                   left: 10,
                   top: 75,
-                  scaleX: 0.9,
-                  scaleY: 0.9
                 });
+                // Scale to fit area ~280x60 with slight padding
+                const scale = Math.min(280 / (imgEl.width || 280), 60 / (imgEl.height || 60)) * 0.9;
+                barcodeImage.set({ scaleX: scale, scaleY: scale });
                 
                 fabricCanvas.add(barcodeImage);
                 console.log('Label rebuilt with actual data');
