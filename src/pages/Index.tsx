@@ -207,7 +207,8 @@ const Index = () => {
         const { data, error } = await supabase
           .from('label_templates')
           .select('*')
-          .in('template_type', ['graded', 'raw']);
+          .in('template_type', ['graded', 'raw'])
+          .order('is_default', { ascending: false });
         
         if (error) {
           console.error('Failed to load templates:', error);
@@ -216,7 +217,10 @@ const Index = () => {
         
         const templates: any = {};
         (data || []).forEach((template: any) => {
-          templates[template.template_type] = template;
+          // Use the first template (which will be default due to ordering) or the first one found
+          if (!templates[template.template_type]) {
+            templates[template.template_type] = template;
+          }
         });
         
         setDefaultTemplates(templates);

@@ -52,6 +52,8 @@ const withCondition = (base: string, condition: string) => {
 type LabelTemplate = {
   id: string;
   name: string;
+  template_type: 'graded' | 'raw';
+  is_default: boolean;
   canvas: any;
   data: any;
   created_at?: string;
@@ -94,9 +96,8 @@ export default function LabelDesigner() {
     const savedGap = localStorage.getItem('tspl-gap');
     if (savedGap) setTsplGap(savedGap);
     
-    // Load default template ID
-    const savedDefaultTemplate = localStorage.getItem('default-template-id');
-    if (savedDefaultTemplate) setDefaultTemplateId(savedDefaultTemplate);
+    // Remove old localStorage default template handling
+    localStorage.removeItem('default-template-id');
   }, []);
 
   // Save printer selection and TSPL settings to localStorage
@@ -132,7 +133,6 @@ export default function LabelDesigner() {
   const [templateName, setTemplateName] = useState("");
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [defaultTemplateId, setDefaultTemplateId] = useState("");
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -287,6 +287,7 @@ export default function LabelDesigner() {
     const { data, error } = await supabase
       .from('label_templates')
       .select('*')
+      .order('is_default', { ascending: false })
       .order('updated_at', { ascending: false });
     if (error) {
       console.error(error);
@@ -424,16 +425,45 @@ export default function LabelDesigner() {
     }
   };
 
-  const setAsDefaultTemplate = (id: string) => {
-    setDefaultTemplateId(id);
-    localStorage.setItem('default-template-id', id);
-    toast.success('Default template set');
+  const setAsDefaultTemplate = async (id: string) => {
+    const template = templates.find(t => t.id === id);
+    if (!template) return;
+    
+    try {
+      // Use the database function to set default
+      const { error } = await supabase.rpc('set_template_default', {
+        template_id: id,
+        template_type_param: template.template_type
+      });
+      
+      if (error) throw error;
+      
+      toast.success(`Set as default ${template.template_type} template`);
+      fetchTemplates(); // Reload to show updated defaults
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to set default template');
+    }
   };
 
-  const clearDefaultTemplate = () => {
-    setDefaultTemplateId('');
-    localStorage.removeItem('default-template-id');
-    toast.success('Default template cleared');
+  const clearDefaultTemplate = async () => {
+    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+    if (!selectedTemplate) return;
+    
+    try {
+      const { error } = await supabase
+        .from('label_templates')
+        .update({ is_default: false })
+        .eq('id', selectedTemplateId);
+      
+      if (error) throw error;
+      
+      toast.success(`Cleared default ${selectedTemplate.template_type} template`);
+      fetchTemplates(); // Reload to show updated defaults
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to clear default template');
+    }
   };
 
   const deleteTemplate = async (id: string) => {
@@ -444,7 +474,6 @@ export default function LabelDesigner() {
     } else {
       toast.success('Template deleted');
       if (selectedTemplateId === id) setSelectedTemplateId('');
-      if (defaultTemplateId === id) clearDefaultTemplate();
       fetchTemplates();
     }
   };
@@ -477,16 +506,16 @@ export default function LabelDesigner() {
     fetchTemplates();
   }, []);
 
-  // Auto-load default template after templates are fetched
+  // Auto-load default template for current template type after templates are fetched
   useEffect(() => {
-    if (templates.length > 0 && defaultTemplateId && fabricCanvas) {
-      const defaultTemplate = templates.find(t => t.id === defaultTemplateId);
-      if (defaultTemplate) {
-        loadTemplate(defaultTemplateId);
-        setSelectedTemplateId(defaultTemplateId);
+    if (templates.length > 0 && fabricCanvas) {
+      const defaultTemplate = templates.find(t => t.template_type === templateType && t.is_default);
+      if (defaultTemplate && !selectedTemplateId) {
+        loadTemplate(defaultTemplate.id);
+        setSelectedTemplateId(defaultTemplate.id);
       }
     }
-  }, []);
+  }, [templates, templateType, fabricCanvas]);
 
   const refreshPrinters = async () => {
     try {
@@ -1127,9 +1156,9 @@ export default function LabelDesigner() {
                       </SelectTrigger>
                        <SelectContent className="z-50">
                          {templates.map((t) => (
-                           <SelectItem key={t.id} value={t.id}>
-                             {t.name} {defaultTemplateId === t.id && "⭐"}
-                           </SelectItem>
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.name} {t.is_default && "⭐"} ({t.template_type})
+                            </SelectItem>
                          ))}
                        </SelectContent>
                      </Select>
@@ -1137,7 +1166,7 @@ export default function LabelDesigner() {
                         <div className="mt-2 flex gap-2 flex-wrap">
                           <Button variant="default" onClick={updateTemplate}>Update Template</Button>
                           <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete</Button>
-                          {defaultTemplateId !== selectedTemplateId ? (
+                          {!templates.find(t => t.id === selectedTemplateId)?.is_default ? (
                             <Button variant="outline" onClick={() => setAsDefaultTemplate(selectedTemplateId)}>Set as Default</Button>
                           ) : (
                             <Button variant="outline" onClick={clearDefaultTemplate}>Clear Default</Button>
