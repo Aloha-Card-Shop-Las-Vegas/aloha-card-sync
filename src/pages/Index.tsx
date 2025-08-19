@@ -605,7 +605,7 @@ const Index = () => {
 
     try {
       const { jsPDF } = await import('jspdf');
-      const { Canvas: FabricCanvas } = await import('fabric');
+      const { Canvas: FabricCanvas, Textbox, FabricImage } = await import('fabric');
       
       // Create multi-page PDF with one label per page (2x1 labels)
       const doc = new jsPDF({
@@ -621,7 +621,7 @@ const Index = () => {
       let lastUsedTemplate: any = null;
 
       for (const item of items) {
-        const val = (item.sku || item.lot || "").trim();
+        const val = (item.sku || item.psaCert || item.lot || "").trim();
         if (!val) continue;
 
         if (!isFirstPage) {
@@ -658,10 +658,6 @@ const Index = () => {
             // Load template and populate with item data
             await new Promise<void>(async (resolve) => {
               fabricCanvas.loadFromJSON(templateToUse.canvas, async () => {
-                // Update text objects with item data
-                const objects = fabricCanvas.getObjects();
-                let barcodeUpdated = false;
-                
                 console.log('=== DEBUGGING CARD DATA ===');
                 console.log('Item data:', {
                   lot: item.lot,
@@ -675,7 +671,15 @@ const Index = () => {
                   variant: item.variant,
                   price: item.price
                 });
-                
+
+                // Remove background image if it exists (common issue with templates)
+                if (fabricCanvas.backgroundImage) {
+                  console.log('Removing background image from template');
+                  fabricCanvas.backgroundImage = null;
+                  fabricCanvas.renderAll();
+                }
+
+                const objects = fabricCanvas.getObjects();
                 console.log(`Found ${objects.length} objects in template`);
                 
                 // Build the card title from available data
@@ -687,6 +691,84 @@ const Index = () => {
                   item.variant
                 ].filter(Boolean).join(' ');
                 console.log('Built card title:', cardTitle);
+
+                // If template has no objects, build label dynamically
+                if (objects.length === 0) {
+                  console.log('No objects in template - building dynamic label');
+                  
+                  // Add card title
+                  const titleText = new Textbox(cardTitle, {
+                    left: 10,
+                    top: 10,
+                    width: 200,
+                    fontSize: 12,
+                    fontFamily: 'Arial',
+                    fill: '#000000'
+                  });
+                  fabricCanvas.add(titleText);
+                  
+                  // Add lot number
+                  if (item.lot) {
+                    const lotText = new Textbox(`LOT: ${item.lot}`, {
+                      left: 10,
+                      top: 35,
+                      width: 150,
+                      fontSize: 10,
+                      fontFamily: 'Arial',
+                      fill: '#000000'
+                    });
+                    fabricCanvas.add(lotText);
+                  }
+                  
+                  // Add price
+                  if (item.price) {
+                    const priceText = new Textbox(`$${item.price}`, {
+                      left: 200,
+                      top: 10,
+                      width: 90,
+                      fontSize: 14,
+                      fontFamily: 'Arial',
+                      fill: '#000000',
+                      textAlign: 'right'
+                    });
+                    fabricCanvas.add(priceText);
+                  }
+                  
+                  // Generate and add barcode
+                  const barcodeValue = item.sku || item.psaCert || item.lot || 'NO-CODE';
+                  console.log('Using barcode value:', barcodeValue);
+                  
+                  const canvas = document.createElement('canvas');
+                  canvas.width = 200;
+                  canvas.height = 50;
+                  
+                  const { default: JsBarcode } = await import('jsbarcode');
+                  JsBarcode(canvas, barcodeValue, {
+                    format: "CODE128",
+                    displayValue: false,
+                    fontSize: 10,
+                    lineColor: "#000000",
+                    background: "#FFFFFF",
+                    margin: 0,
+                    width: 2,
+                    height: 30,
+                  });
+                  
+                  const barcodeImage = new FabricImage(canvas.toDataURL(), {
+                    left: 10,
+                    top: 90,
+                    scaleX: 0.8,
+                    scaleY: 0.8
+                  });
+                  
+                  fabricCanvas.add(barcodeImage);
+                  fabricCanvas.renderAll();
+                  
+                  resolve();
+                  return;
+                }
+                
+                let barcodeUpdated = false;
                 
                 for (const obj of objects) {
                   // Normalize object type to lowercase for comparison
@@ -762,8 +844,9 @@ const Index = () => {
                       canvas.width = 300;
                       canvas.height = 60;
                       
-                      // Use PSA cert for graded, SKU for raw
-                      const barcodeValue = isGraded ? (item.psaCert || item.sku || item.lot) : (item.sku || item.lot);
+                      // Always prioritize SKU for barcode
+                      const barcodeValue = item.sku || item.psaCert || item.lot || 'NO-CODE';
+                      console.log('Using barcode value for existing template image:', barcodeValue);
                       
                       const { default: JsBarcode } = await import('jsbarcode');
                       JsBarcode(canvas, barcodeValue, {
