@@ -37,11 +37,20 @@ class PrintNodeService {
 
   async initialize(): Promise<void> {
     // Get API key from Supabase edge function
-    const { data } = await supabase.functions.invoke('get-printnode-key');
-    if (!data?.apiKey) {
-      throw new Error('PrintNode API key not configured');
+    const { data, error } = await supabase.functions.invoke('get-printnode-key');
+    
+    if (error) {
+      console.error('Edge function error:', error);
+      throw new Error(`Failed to retrieve PrintNode API key: ${error.message}`);
     }
+    
+    if (!data?.success || !data?.apiKey) {
+      const errorMsg = data?.error || 'PrintNode API key not configured';
+      throw new Error(errorMsg);
+    }
+    
     this.apiKey = data.apiKey;
+    console.log(`PrintNode initialized with ${data.keySource} API key`);
   }
 
   private async makeRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {

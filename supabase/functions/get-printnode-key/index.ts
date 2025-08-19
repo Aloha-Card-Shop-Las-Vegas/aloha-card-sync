@@ -12,22 +12,31 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Get the API key from environment variables
-    const PRINTNODE_API_KEY = Deno.env.get('PRINTNODE_API_KEY')
+    // Try primary API key first
+    let PRINTNODE_API_KEY = Deno.env.get('PRINTNODE_API_KEY')
+    let keySource = 'primary'
     
-    console.log('Environment check - PRINTNODE_API_KEY exists:', !!PRINTNODE_API_KEY)
-    console.log('Raw API key (first 10 chars):', PRINTNODE_API_KEY ? PRINTNODE_API_KEY.substring(0, 10) + '...' : 'null')
+    console.log('Primary API key check - PRINTNODE_API_KEY exists:', !!PRINTNODE_API_KEY)
+    
+    // If primary key not found, try backup
+    if (!PRINTNODE_API_KEY) {
+      console.log('Primary key not found, trying backup...')
+      PRINTNODE_API_KEY = Deno.env.get('PRINTNODE_API_KEY_BACKUP')
+      keySource = 'backup'
+      console.log('Backup API key check - PRINTNODE_API_KEY_BACKUP exists:', !!PRINTNODE_API_KEY)
+    }
     
     if (!PRINTNODE_API_KEY) {
-      console.error('PRINTNODE_API_KEY environment variable not found')
-      throw new Error('PrintNode API key not configured')
+      console.error('Neither primary nor backup PrintNode API keys found')
+      throw new Error('PrintNode API key not configured - check both PRINTNODE_API_KEY and PRINTNODE_API_KEY_BACKUP secrets')
     }
 
-    console.log('Successfully retrieved PrintNode API key')
+    console.log(`Successfully retrieved PrintNode API key from ${keySource} source`)
 
     return new Response(
       JSON.stringify({ 
         apiKey: PRINTNODE_API_KEY,
+        keySource: keySource,
         success: true 
       }),
       { 

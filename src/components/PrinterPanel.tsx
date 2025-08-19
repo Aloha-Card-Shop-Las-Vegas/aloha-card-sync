@@ -23,6 +23,8 @@ export function PrinterPanel() {
   const [loading, setLoading] = useState<boolean>(false);
   const [testPrinting, setTestPrinting] = useState<boolean>(false);
   const [testingPDF, setTestingPDF] = useState<boolean>(false);
+  const [keySource, setKeySource] = useState<string>('');
+  const [connectionError, setConnectionError] = useState<string>('');
 
   useEffect(() => {
     loadPrinterSettings();
@@ -37,9 +39,12 @@ export function PrinterPanel() {
         const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
         setPrinters(formattedPrinters);
         setPrintNodeOnline(true);
+        setConnectionError('');
       } catch (error) {
         setPrintNodeOnline(false);
         setPrinters([]);
+        const errorMessage = error instanceof Error ? error.message : "Connection failed";
+        setConnectionError(errorMessage);
       }
     }, 30000);
 
@@ -90,16 +95,28 @@ export function PrinterPanel() {
 
   const refreshPrinters = async () => {
     setLoading(true);
+    setConnectionError('');
     try {
       const printerList = await printNodeService.getPrinters();
       const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
       setPrinters(formattedPrinters);
       setPrintNodeOnline(true);
+      
+      // Try to get key source info from the service initialization
+      try {
+        await printNodeService.initialize();
+        // This will log which key source is being used
+      } catch (initError) {
+        console.log('Key source detection failed:', initError);
+      }
+      
       toast.success(`Found ${formattedPrinters.length} printer(s)`);
     } catch (error) {
       setPrintNodeOnline(false);
       setPrinters([]);
-      toast.error("Failed to connect to PrintNode. Check your API key.");
+      const errorMessage = error instanceof Error ? error.message : "Failed to connect to PrintNode";
+      setConnectionError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -240,7 +257,16 @@ export function PrinterPanel() {
               PrintNode Not Available
             </div>
             <p className="text-sm text-muted-foreground">
-              Check your PrintNode API key configuration in Supabase secrets.
+              {connectionError || "Check your PrintNode API key configuration in Supabase secrets."}
+            </p>
+          </div>
+        )}
+
+        {/* API Key Source Indicator */}
+        {printNodeOnline && keySource && (
+          <div className="p-2 bg-green-50 border border-green-200 rounded-md">
+            <p className="text-xs text-green-700">
+              Using {keySource} API key
             </p>
           </div>
         )}

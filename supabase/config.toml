@@ -1,5 +1,8 @@
 project_id = "dmpoandoydaqxhzdjnmk"
 
+[functions.get-printnode-key]
+verify_jwt = false
+
 [functions.psa-scrape]
 verify_jwt = false
 
