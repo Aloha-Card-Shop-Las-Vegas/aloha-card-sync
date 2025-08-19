@@ -686,8 +686,8 @@ const Index = () => {
         isFirstPage = false;
         validItems++;
 
-        // Use simple barcode fallback for all items
-        await addSimpleBarcode(doc, val);
+        // Use rich label layout with item details
+        await drawRichLabel(doc, item);
       }
 
       if (validItems === 0) {
@@ -731,6 +731,60 @@ const Index = () => {
       toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
       return false;
     }
+  };
+
+  // Helper function to draw rich label with item details
+  const drawRichLabel = async (doc: any, item: CardItem) => {
+    const JsBarcode: any = (await import("jsbarcode")).default;
+    
+    // Create small barcode canvas (about 1/3 of label width)
+    const barcodeCanvas = document.createElement("canvas");
+    barcodeCanvas.width = 100;
+    barcodeCanvas.height = 50;
+
+    const barcodeData = item.sku || item.id || 'NO-SKU';
+    JsBarcode(barcodeCanvas, barcodeData, {
+      format: "CODE128",
+      displayValue: false,
+      width: 1,
+      height: 40,
+      margin: 2,
+    });
+
+    // Add title (truncated to fit)
+    const title = item.title || 'Unknown Item';
+    const truncatedTitle = title.length > 25 ? title.substring(0, 25) + '...' : title;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.text(truncatedTitle, 0.05, 0.15); // Top left
+
+    // Add price (top right)
+    if (item.price) {
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`$${item.price}`, 1.5, 0.15, { align: 'right' });
+    }
+
+    // Add SKU/LOT info (second line)
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'normal');
+    let detailLine = '';
+    if (item.sku) detailLine += `SKU: ${item.sku}`;
+    if (item.lot && item.sku) detailLine += ` | LOT: ${item.lot}`;
+    else if (item.lot) detailLine += `LOT: ${item.lot}`;
+    if (detailLine) {
+      doc.text(detailLine, 0.05, 0.3);
+    }
+
+    // Add condition/grade (third line if present)
+    if (item.grade) {
+      doc.setFontSize(6);
+      doc.text(`Grade: ${item.grade}`, 0.05, 0.45);
+    }
+
+    // Add barcode (bottom right area)
+    const barcodeImgData = barcodeCanvas.toDataURL("image/png");
+    doc.addImage(barcodeImgData, "PNG", 1.2, 0.5, 0.75, 0.4); // Small barcode in bottom right
   };
 
   // Helper function for simple barcode fallback
