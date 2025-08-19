@@ -1100,11 +1100,11 @@ const Index = () => {
                                 <>
                                   <Button
                                     size="sm"
-                                    variant={b.printedAt ? "secondary" : "default"}
+                                    variant={b.printedAt ? "outline" : "default"}
                                     onClick={() => handlePrintRow(b)}
-                                    disabled={!!b.printedAt}
+                                    className={b.printedAt ? "border-orange-600 text-orange-600 hover:bg-orange-50" : ""}
                                   >
-                                    {b.printedAt ? "Printed" : "Print"}
+                                    {b.printedAt ? "Reprint" : "Print"}
                                   </Button>
                                   <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
                                   <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
