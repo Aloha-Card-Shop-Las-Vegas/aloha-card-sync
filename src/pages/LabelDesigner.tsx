@@ -70,6 +70,7 @@ export default function LabelDesigner() {
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [printLoading, setPrintLoading] = useState(false);
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
+  const [hasPrinted, setHasPrinted] = useState(false);
   
   // Advanced TSPL settings
   const [tsplDensity, setTsplDensity] = useState('10');
@@ -587,6 +588,7 @@ export default function LabelDesigner() {
       });
 
       if (result.success) {
+        setHasPrinted(true);
         toast.success(`${isTest ? 'Test' : 'Label'} sent to PrintNode printer successfully (Job ID: ${result.jobId})`);
       } else {
         throw new Error(result.error || 'Print failed');
@@ -902,9 +904,13 @@ export default function LabelDesigner() {
                               size="sm" 
                               onClick={() => handlePrintNodePrint(false)}
                               disabled={printLoading}
-                              className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                              className={`flex-1 text-white ${
+                                hasPrinted 
+                                  ? 'bg-orange-600 hover:bg-orange-700' 
+                                  : 'bg-green-600 hover:bg-green-700'
+                              }`}
                             >
-                              {printLoading ? "Printing..." : "Print Label"}
+                              {printLoading ? "Printing..." : hasPrinted ? "Reprint" : "Print Label"}
                             </Button>
                           </div>
                         </div>
