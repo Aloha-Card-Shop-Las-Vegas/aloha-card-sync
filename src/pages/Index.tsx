@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -73,6 +73,11 @@ const Index = () => {
   const [pushingAll, setPushingAll] = useState(false);
   const [pushPrintAllRunning, setPushPrintAllRunning] = useState(false);
 
+  // Hardened printing locks
+  const printingIdsRef = useRef<Set<string>>(new Set());
+  const jobInFlightRef = useRef(false);
+  const [jobInFlight, setJobInFlight] = useState(false);
+
   // Inline edit state for Batch Queue
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editYear, setEditYear] = useState<string>("");
@@ -94,6 +99,31 @@ const Index = () => {
   type GameOption = { id: number; name: string; categoryId: number | null; categoryName: string | null };
   const [games, setGames] = useState<GameOption[]>([]);
   const [editGameId, setEditGameId] = useState<number | null>(null);
+  // Lock helpers
+  const acquireRowLock = (id: string) => {
+    if (!id) return false;
+    if (printingIdsRef.current.has(id)) return false;
+    printingIdsRef.current.add(id);
+    return true;
+  };
+  
+  const releaseRowLock = (id: string) => {
+    if (!id) return;
+    printingIdsRef.current.delete(id);
+  };
+
+  const acquireGlobalLock = () => {
+    if (jobInFlightRef.current) return false;
+    jobInFlightRef.current = true;
+    setJobInFlight(true);
+    return true;
+  };
+  
+  const releaseGlobalLock = () => {
+    jobInFlightRef.current = false;
+    setJobInFlight(false);
+  };
+
   const handleSignOut = async () => {
     try {
       cleanupAuthState();
@@ -140,8 +170,22 @@ const Index = () => {
     "GEM MT 10",
   ];
 
+  // Persist printer selection
+  useEffect(() => {
+    if (selectedPrinterId) {
+      localStorage.setItem('printnode-selected-printer', String(selectedPrinterId));
+    }
+  }, [selectedPrinterId]);
+
+  // StrictMode guards
+  const didInitMainRef = useRef(false);
+  const didInitCatsGamesRef = useRef(false);
+  const didInitIntakeListenerRef = useRef(false);
+
   // Load existing items from DB so batch persists
   useEffect(() => {
+    if (didInitMainRef.current) return;
+    didInitMainRef.current = true;
     const loadBatch = async () => {
       console.log("Loading intake items from DB");
       const { data, error } = await supabase
@@ -237,6 +281,8 @@ const Index = () => {
 
   // Load categories and games for dropdown
   useEffect(() => {
+    if (didInitCatsGamesRef.current) return;
+    didInitCatsGamesRef.current = true;
     const loadCatsAndGames = async () => {
       const [catsRes, groupsRes] = await Promise.all([
         supabase.from('categories').select('id, name').order('name', { ascending: true }),
@@ -265,6 +311,8 @@ const Index = () => {
 
   // Listen for Raw Intake additions and update batch in real time
   useEffect(() => {
+    if (didInitIntakeListenerRef.current) return;
+    didInitIntakeListenerRef.current = true;
     const handler = (e: Event) => {
       const any = e as CustomEvent;
       const row: any = any.detail;
@@ -596,22 +644,25 @@ const Index = () => {
     }
   };
 
+  // Once helper to prevent double export/POST
+  function once<T extends (...a: any[]) => any>(fn: T) {
+    let called = false;
+    return (...args: Parameters<T>): ReturnType<T> | undefined => {
+      if (called) return;
+      called = true;
+      return fn(...args);
+    };
+  }
+
   // PrintNode printing using default template or simple barcode
-  const printNodeLabels = async (items: CardItem[]) => {
-    console.log('=== printNodeLabels CALLED ===');
-    console.log('Items to print:', items.length);
-    console.log('Selected printer ID:', selectedPrinterId);
-    console.log('PrintNode connected:', printNodeConnected);
-    
+  const printNodeLabels = async (items: CardItem[]): Promise<boolean> => {
     if (!selectedPrinterId) {
-      console.error('No PrintNode printer selected');
       toast.error('No PrintNode printer selected');
-      return;
+      return false;
     }
 
     try {
       const { jsPDF } = await import('jspdf');
-      const { Canvas: FabricCanvas, Textbox, FabricImage } = await import('fabric');
       
       // Create multi-page PDF with one label per page (2x1 labels)
       const doc = new jsPDF({
@@ -624,7 +675,6 @@ const Index = () => {
 
       let isFirstPage = true;
       let validItems = 0;
-      let lastUsedTemplate: any = null;
 
       for (const item of items) {
         const val = (item.sku || item.psaCert || item.lot || "").trim();
@@ -636,340 +686,50 @@ const Index = () => {
         isFirstPage = false;
         validItems++;
 
-        // Determine card type and select appropriate template
-        const isGraded = !!(item.psaCert && item.grade && item.grade !== 'Raw');
-        
-        // Use appropriate template based on card type
-        const templateToUse = isGraded ? 
-          defaultTemplates.graded : 
-          defaultTemplates.raw;
-        
-        console.log(`Item ${item.lot}: isGraded=${isGraded}, templateType=${templateToUse?.template_type}, templateName=${templateToUse?.name}`);
-        lastUsedTemplate = templateToUse;
-
-        if (templateToUse && templateToUse.canvas) {
-          // Use appropriate template
-          try {
-            // Create temporary canvas to render template
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = 300; // 2in at 150 DPI
-            tempCanvas.height = 150; // 1in at 150 DPI
-            
-            const fabricCanvas = new FabricCanvas(tempCanvas, {
-              width: 300,
-              height: 150,
-              backgroundColor: "#ffffff",
-            });
-
-            // Load template and populate with item data
-            await new Promise<void>(async (resolve) => {
-              fabricCanvas.loadFromJSON(templateToUse.canvas, async () => {
-                console.log('=== COMPLETE LABEL REBUILD ===');
-                console.log('Item data:', {
-                  lot: item.lot,
-                  sku: item.sku,
-                  psaCert: item.psaCert,
-                  grade: item.grade,
-                  year: item.year,
-                  brandTitle: item.brandTitle,
-                  subject: item.subject,
-                  cardNumber: item.cardNumber,
-                  variant: item.variant,
-                  price: item.price
-                });
-
-                // STEP 1: Remove background image completely
-                if (fabricCanvas.backgroundImage) {
-                  console.log('Removing background image from template');
-                  fabricCanvas.backgroundImage = null;
-                  fabricCanvas.renderAll();
-                }
-
-                // STEP 2: Clear ALL existing objects (images, text, groups - everything)
-                const objects = fabricCanvas.getObjects();
-                console.log(`Clearing ${objects.length} existing objects from template`);
-                fabricCanvas.clear();
-                fabricCanvas.backgroundColor = '#FFFFFF';
-                
-                // Build the card title from available data
-                const cardTitle = [
-                  item.year,
-                  item.brandTitle,
-                  item.subject,
-                  item.cardNumber ? `#${item.cardNumber}` : '',
-                  item.variant
-                ].filter(Boolean).join(' ');
-                console.log('Built card title:', cardTitle);
-                
-                // STEP 3: Rebuild label completely with actual data
-
-                // Always rebuild label with actual data (ignore template objects)
-                console.log('Building complete label with actual data');
-                
-                const isGraded = item.grade && item.grade.trim() !== '';
-                
-                // Add card title (with grade if applicable)
-                const titleText = isGraded ? 
-                  `${cardTitle} • ${item.grade}` : 
-                  cardTitle;
-                
-                // Auto-shrink font for long titles
-                let titleSize = titleText.length > 30 ? 11 : titleText.length > 20 ? 12 : 14;
-                
-                const titleObj = new Textbox(titleText, {
-                  left: 10,
-                  top: 8,
-                  width: 280,
-                  fontSize: titleSize,
-                  fontFamily: 'Arial',
-                  fill: '#000000',
-                  fontWeight: 'bold',
-                  textAlign: 'left'
-                });
-                fabricCanvas.add(titleObj);
-                
-                // Add lot number
-                if (item.lot) {
-                  const lotObj = new Textbox(`LOT: ${item.lot}`, {
-                    left: 10,
-                    top: 30,
-                    width: 150,
-                    fontSize: 10,
-                    fontFamily: 'Arial',
-                    fill: '#000000',
-                    textAlign: 'left'
-                  });
-                  fabricCanvas.add(lotObj);
-                }
-                
-                // Add price (right aligned)
-                if (item.price && parseFloat(item.price) > 0) {
-                  const priceObj = new Textbox(`$${item.price}`, {
-                    left: 200,
-                    top: 8,
-                    width: 90,
-                    fontSize: 16,
-                    fontFamily: 'Arial',
-                    fill: '#000000',
-                    fontWeight: 'bold',
-                    textAlign: 'right'
-                  });
-                  fabricCanvas.add(priceObj);
-                }
-                
-                // Add SKU (if available and not graded)
-                if (!isGraded && item.sku) {
-                  const skuObj = new Textbox(`SKU: ${item.sku}`, {
-                    left: 180,
-                    top: 30,
-                    width: 110,
-                    fontSize: 9,
-                    fontFamily: 'Arial',
-                    fill: '#000000',
-                    textAlign: 'right'
-                  });
-                  fabricCanvas.add(skuObj);
-                }
-                
-                // Generate barcode - ALWAYS prioritize SKU
-                const barcodeValue = item.sku || item.psaCert || item.lot || 'NO-CODE';
-                console.log('Generating barcode for:', barcodeValue);
-                
-                const canvas = document.createElement('canvas');
-                canvas.width = 280;
-                canvas.height = 60;
-                
-                const { default: JsBarcode } = await import('jsbarcode');
-                JsBarcode(canvas, barcodeValue, {
-                  format: "CODE128",
-                  displayValue: true,
-                  fontSize: 9,
-                  lineColor: "#000000",
-                  background: "#FFFFFF",
-                  margin: 2,
-                  width: 2,
-                  height: 35,
-                });
-                
-                // Create an HTMLImageElement for Fabric v6 compatibility
-                const imgEl = new Image();
-                imgEl.src = canvas.toDataURL();
-                try { await imgEl.decode(); } catch {}
-
-                const barcodeImage = new FabricImage(imgEl, {
-                  left: 10,
-                  top: 75,
-                });
-                // Scale to fit area ~280x60 with slight padding
-                const scale = Math.min(280 / (imgEl.width || 280), 60 / (imgEl.height || 60)) * 0.9;
-                barcodeImage.set({ scaleX: scale, scaleY: scale });
-                
-                fabricCanvas.add(barcodeImage);
-                console.log('Label rebuilt with actual data');
-                
-                fabricCanvas.renderAll();
-                resolve();
-                
-                let barcodeUpdated = false;
-                
-                for (const obj of objects) {
-                  // Normalize object type to lowercase for comparison
-                  const objType = obj.type?.toLowerCase() || '';
-                  console.log('Processing object:', { type: obj.type, objType, hasText: !!(obj as any).text });
-                  
-                  if (objType === 'textbox' || objType === 'text') {
-                    const textObj = obj as any; // Fabric text object
-                    const originalText = textObj.text || '';
-                    const text = originalText.toLowerCase();
-                    console.log('Found text object:', { originalText, lowerText: text });
-                    
-                    let newText = '';
-                    let replaced = false;
-                    
-                    // Direct replacement based on exact template content
-                    if (originalText === '$1,000' || originalText === '$1000') {
-                      newText = item.price ? `$${item.price}` : '$0';
-                      replaced = true;
-                      console.log('EXACT MATCH: Replacing price $1,000');
-                    } else if (originalText === 'POKEMON GENGAR VMAX #020 • NM') {
-                      newText = isGraded ? 
-                        `${cardTitle} • ${item.grade || 'GRADED'}` : 
-                        cardTitle;
-                      replaced = true;
-                      console.log('EXACT MATCH: Replacing main title');
-                    } else if (originalText === 'NM' && originalText.length === 2) {
-                      newText = item.grade || item.variant || 'NM';
-                      replaced = true;
-                      console.log('EXACT MATCH: Replacing condition NM');
-                    } else if (text.includes('1,000') || text.includes('$1,000')) {
-                      newText = item.price ? `$${item.price}` : '$0';
-                      replaced = true;
-                      console.log('PARTIAL MATCH: Replacing price field');
-                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || text.includes('#020')) {
-                      newText = isGraded ? 
-                        `${cardTitle} • ${item.grade || 'GRADED'}` : 
-                        cardTitle;
-                      replaced = true;
-                      console.log('PARTIAL MATCH: Replacing title field');
-                    } else if (text.includes('lot') || text.includes('000001')) {
-                      newText = item.lot || '';
-                      replaced = true;
-                      console.log('PARTIAL MATCH: Replacing lot field');
-                    } else if (text.includes('sku') || text.includes('120979260')) {
-                      newText = item.sku || '';
-                      replaced = true;
-                      console.log('PARTIAL MATCH: Replacing SKU field');
-                    } else if (text.includes('cert') || text.includes('psa')) {
-                      newText = item.psaCert || '';
-                      replaced = true;
-                      console.log('PARTIAL MATCH: Replacing cert field');
-                    }
-                    
-                    if (replaced) {
-                      console.log(`Updating text from "${originalText}" to "${newText}"`);
-                      textObj.set('text', newText);
-                      textObj.set('dirty', true);
-                      fabricCanvas.renderAll();
-                    } else {
-                      console.log('No replacement made for text:', originalText);
-                    }
-                  }
-                  
-                  // Handle barcode images - replace src with new barcode
-                  if (objType === 'image') {
-                    const imageObj = obj as any; // Fabric image object
-                    const hasDataSrc = (imageObj.src && typeof imageObj.src === 'string' && imageObj.src.includes('data:image'));
-                    if (hasDataSrc || true) {
-                      barcodeUpdated = true;
-                      // Generate new barcode for this item
-                      const canvas = document.createElement('canvas');
-                      canvas.width = 300;
-                      canvas.height = 60;
-                      
-                      // Always prioritize SKU for barcode
-                      const barcodeValue = item.sku || item.psaCert || item.lot || 'NO-CODE';
-                      console.log('Using barcode value for existing template image:', barcodeValue);
-                      
-                      const { default: JsBarcode } = await import('jsbarcode');
-                      JsBarcode(canvas, barcodeValue, {
-                        format: "CODE128",
-                        displayValue: false,
-                        fontSize: 12,
-                        lineColor: "#000000",
-                        background: "#FFFFFF",
-                        margin: 0,
-                        width: 2,
-                        height: 40,
-                      });
-                      
-                      await new Promise<void>((resolveBarcode) => {
-                        imageObj.setSrc(canvas.toDataURL(), () => {
-                          fabricCanvas.renderAll();
-                          resolveBarcode();
-                        });
-                      });
-                    }
-                  }
-                }
-                
-                // Always force render after loading and updating
-                fabricCanvas.renderAll();
-                fabricCanvas.requestRenderAll();
-                
-                resolve();
-              });
-            });
-
-            // Wait for canvas to fully render before exporting
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            // Export canvas as image and add to PDF
-            const dataURL = fabricCanvas.toDataURL({
-              format: 'png',
-              quality: 1,
-              multiplier: 2
-            });
-            
-            doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
-            fabricCanvas.dispose();
-            
-          } catch (e) {
-            console.error('Error using template, falling back to barcode:', e);
-            // Fallback to simple barcode
-            await addSimpleBarcode(doc, val);
-          }
-        } else {
-          // No template - use simple barcode
-          await addSimpleBarcode(doc, val);
-        }
+        // Use simple barcode fallback for all items
+        await addSimpleBarcode(doc, val);
       }
 
       if (validItems === 0) {
         toast.error("No valid barcodes to print");
-        return;
+        return false;
       }
 
-      // Send to PrintNode
-      console.log('=== SENDING TO PRINTNODE ===');
-      const pdfBase64 = doc.output('datauristring').split(',')[1];
-      console.log('PDF base64 length:', pdfBase64.length);
-      console.log('Sending to printer ID:', selectedPrinterId);
-      
-      const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
-        title: `Batch Labels (${validItems} items)${lastUsedTemplate ? ` - ${lastUsedTemplate.name}` : ''}`,
-        copies: 1
+      // Guard against double export/POST with once()
+      const finishAndSend = once(async () => {
+        const base64 = doc.output('datauristring').split(',')[1];
+        const correlationId = `idx-${Date.now()}-${items.map(i => i.id).join(',')}`;
+        const pages = (doc as any).getNumberOfPages?.() ?? items.length;
+
+        console.log('=== SENDING TO PRINTNODE ===', {
+          correlationId,
+          printerId: selectedPrinterId,
+          pages,
+          itemIds: items.map(i => i.id),
+        });
+
+        const result = await printNodeService.printPDF(base64, selectedPrinterId!, {
+          title: `Label Print · ${correlationId}`,
+          copies: 1,
+        });
+
+        console.log('PrintNode result:', result, { correlationId });
+
+        if (result.success) {
+          toast.success(`${pages} label(s) sent (Job ID: ${result.jobId})`);
+          return true;
+        } else {
+          toast.error(result.error || 'PrintNode print failed');
+          return false;
+        }
       });
-      
-      console.log('PrintNode result:', result);
 
-      if (result.success) {
-        toast.success(`${validItems} labels sent to PrintNode printer (Job ID: ${result.jobId})`);
-      } else {
-        throw new Error(result.error || 'PrintNode print failed');
-      }
+      const ok = await finishAndSend();
+      return !!ok;
     } catch (e) {
       console.error(e);
       toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      return false;
     }
   };
 
@@ -996,36 +756,24 @@ const Index = () => {
     doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
   };
 
-  // Track printing to prevent double prints
-  const [currentlyPrinting, setCurrentlyPrinting] = useState<Set<string>>(new Set());
-
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
-    
-    // Prevent double printing
-    if (currentlyPrinting.has(b.id)) {
-      console.log('Already printing this item, skipping:', b.id);
-      return;
-    }
-    
     if (!printNodeConnected || !selectedPrinterId) {
       toast.error('PrintNode not connected or no printer selected');
       return;
     }
+    if (!acquireGlobalLock()) return;
+    if (!acquireRowLock(b.id)) { releaseGlobalLock(); return; }
 
-    setCurrentlyPrinting(prev => new Set([...prev, b.id!]));
     try {
-      await markPrinted([b.id]);
-      await printNodeLabels([b]);
-      toast.success(`Printed label for Lot ${b.lot || ""}`);
-    } catch {
-      toast.error("Failed to print");
+      const ok = await printNodeLabels([b]);
+      if (ok) await markPrinted([b.id]);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to print');
     } finally {
-      setCurrentlyPrinting(prev => {
-        const next = new Set(prev);
-        next.delete(b.id!);
-        return next;
-      });
+      releaseRowLock(b.id);
+      releaseGlobalLock();
     }
   };
   const handlePushRow = async (b: CardItem) => {
@@ -1060,26 +808,22 @@ const Index = () => {
 
   // Bulk actions
   const handlePrintAll = async () => {
-    const ids = batch.map((b) => b.id!).filter(Boolean);
-    if (ids.length === 0) {
-      toast.info("Nothing to print");
-      return;
-    }
-    
-    if (!printNodeConnected || !selectedPrinterId) {
-      toast.error('PrintNode not connected or no printer selected');
-      return;
-    }
-    
+    const items = batch.filter(i => i.id) as CardItem[];
+    const ids = items.map(i => i.id!) as string[];
+    if (ids.length === 0) { toast.info('Nothing to print'); return; }
+    if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
+
+    if (!acquireGlobalLock()) return;
     setPrintingAll(true);
     try {
-      await markPrinted(ids);
-      await printNodeLabels(batch.filter((b) => b.id && ids.includes(b.id)) as CardItem[]);
-      toast.success("Printed all labels");
-    } catch {
-      toast.error("Failed to print all");
+      const ok = await printNodeLabels(items);
+      if (ok) await markPrinted(ids);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to print all');
     } finally {
       setPrintingAll(false);
+      releaseGlobalLock();
     }
   };
 
