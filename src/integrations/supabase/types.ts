@@ -157,6 +157,7 @@ export type Database = {
           created_at: string
           data: Json | null
           id: string
+          is_default: boolean | null
           name: string
           template_type: string | null
           updated_at: string
@@ -166,6 +167,7 @@ export type Database = {
           created_at?: string
           data?: Json | null
           id?: string
+          is_default?: boolean | null
           name: string
           template_type?: string | null
           updated_at?: string
@@ -175,6 +177,7 @@ export type Database = {
           created_at?: string
           data?: Json | null
           id?: string
+          is_default?: boolean | null
           name?: string
           template_type?: string | null
           updated_at?: string
@@ -453,6 +456,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      set_template_default: {
+        Args: { template_id: string; template_type_param: string }
+        Returns: undefined
       }
     }
     Enums: {
