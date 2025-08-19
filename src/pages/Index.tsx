@@ -667,28 +667,35 @@ const Index = () => {
                     const textObj = obj as any; // Fabric text object
                     const text = textObj.text?.toLowerCase() || '';
                     
+                    // Build the card title from available data
+                    const cardTitle = [
+                      item.year,
+                      item.brandTitle,
+                      item.subject,
+                      item.cardNumber ? `#${item.cardNumber}` : '',
+                      item.variant
+                    ].filter(Boolean).join(' ');
+                    
                     // Replace template placeholders with actual item data
                     if (text.includes('lot') || text.includes('000001')) {
                       textObj.set('text', item.lot);
                     } else if (text.includes('sku') || text.includes('120979260')) {
                       textObj.set('text', item.sku || '');
-                    } else if (text.includes('price') || text.includes('$1,000') || text.includes('$')) {
+                    } else if (text.includes('price') || text.includes('$1,000') || text.includes('$') || text.includes('1,000')) {
                       textObj.set('text', item.price ? `$${item.price}` : '');
-                    } else if (text.includes('grade') || text.includes('nm') || text.includes('near mint')) {
+                    } else if (text.includes('grade') && !text.includes('pokemon') && !text.includes('gengar')) {
+                      // Only update if it's a standalone grade field, not part of the title
                       textObj.set('text', item.grade || item.variant || '');
                     } else if (text.includes('cert') || text.includes('psa')) {
                       textObj.set('text', item.psaCert || '');
-                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || text.includes('#020') || 
-                               text.includes('gengar vmax') || text.includes('card') || text.includes('title')) {
-                      // Build the card title from available data
-                      const cardTitle = [
-                        item.year,
-                        item.brandTitle,
-                        item.subject,
-                        item.cardNumber ? `#${item.cardNumber}` : '',
-                        item.variant
-                      ].filter(Boolean).join(' ');
-                      textObj.set('text', cardTitle);
+                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || 
+                               text.includes('#020') || text.includes('card') || text.includes('title') ||
+                               text.includes('• nm') || text.includes('•') || (cardTitle && text.length > 10)) {
+                      // This is likely the main card title - replace with actual card info
+                      const fullTitle = isGraded ? 
+                        `${cardTitle} • ${item.grade || 'GRADED'}` : 
+                        cardTitle;
+                      textObj.set('text', fullTitle);
                     }
                   }
                   
