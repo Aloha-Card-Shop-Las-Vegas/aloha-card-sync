@@ -675,8 +675,17 @@ const Index = () => {
                       textObj.set('text', item.grade || item.variant || '');
                     } else if (text.includes('cert') || text.includes('psa')) {
                       textObj.set('text', item.psaCert || '');
-                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || text.includes('#020')) {
-                      textObj.set('text', item.title || '');
+                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || text.includes('#020') || 
+                               text.includes('gengar vmax') || text.includes('card') || text.includes('title')) {
+                      // Build the card title from available data
+                      const cardTitle = [
+                        item.year,
+                        item.brandTitle,
+                        item.subject,
+                        item.cardNumber ? `#${item.cardNumber}` : '',
+                        item.variant
+                      ].filter(Boolean).join(' ');
+                      textObj.set('text', cardTitle);
                     }
                   }
                   
