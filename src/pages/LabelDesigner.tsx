@@ -446,6 +446,32 @@ export default function LabelDesigner() {
     }
   };
 
+  const setAsDefaultForType = async (templateType: 'graded' | 'raw') => {
+    if (!selectedTemplateId) {
+      toast.error('Please select a template first');
+      return;
+    }
+    
+    const template = templates.find(t => t.id === selectedTemplateId);
+    if (!template) return;
+    
+    try {
+      // Use the database function to set default
+      const { error } = await supabase.rpc('set_template_default', {
+        template_id: selectedTemplateId,
+        template_type_param: templateType
+      });
+      
+      if (error) throw error;
+      
+      toast.success(`Set as default ${templateType} template: ${template.name}`);
+      fetchTemplates(); // Reload to show updated defaults
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to set default template');
+    }
+  };
+
   const clearDefaultTemplate = async () => {
     const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
     if (!selectedTemplate) return;
@@ -1162,17 +1188,37 @@ export default function LabelDesigner() {
                          ))}
                        </SelectContent>
                      </Select>
-                      {selectedTemplateId && (
-                        <div className="mt-2 flex gap-2 flex-wrap">
-                          <Button variant="default" onClick={updateTemplate}>Update Template</Button>
-                          <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete</Button>
-                          {!templates.find(t => t.id === selectedTemplateId)?.is_default ? (
-                            <Button variant="outline" onClick={() => setAsDefaultTemplate(selectedTemplateId)}>Set as Default</Button>
-                          ) : (
-                            <Button variant="outline" onClick={clearDefaultTemplate}>Clear Default</Button>
-                          )}
-                        </div>
-                      )}
+                       {selectedTemplateId && (
+                         <div className="mt-2 space-y-2">
+                           <div className="flex gap-2 flex-wrap">
+                             <Button variant="default" onClick={updateTemplate}>Update Template</Button>
+                             <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete</Button>
+                             {!templates.find(t => t.id === selectedTemplateId)?.is_default ? (
+                               <Button variant="outline" onClick={() => setAsDefaultTemplate(selectedTemplateId)}>Set as Default</Button>
+                             ) : (
+                               <Button variant="outline" onClick={clearDefaultTemplate}>Clear Default</Button>
+                             )}
+                           </div>
+                           <div className="flex gap-2 flex-wrap">
+                             <Button 
+                               variant="secondary" 
+                               size="sm"
+                               onClick={() => setAsDefaultForType('graded')}
+                               className="bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300"
+                             >
+                               Set as Default for Graded Cards
+                             </Button>
+                             <Button 
+                               variant="secondary" 
+                               size="sm"
+                               onClick={() => setAsDefaultForType('raw')}
+                               className="bg-green-100 hover:bg-green-200 text-green-800 border-green-300"
+                             >
+                               Set as Default for Raw Cards
+                             </Button>
+                           </div>
+                         </div>
+                       )}
                   </div>
                 </div>
               </CardContent>
