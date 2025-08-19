@@ -663,7 +663,10 @@ const Index = () => {
                 let barcodeUpdated = false;
                 
                 for (const obj of objects) {
-                  if (obj.type === 'textbox' || obj.type === 'text') {
+                  // Normalize object type to lowercase for comparison
+                  const objType = obj.type?.toLowerCase() || '';
+                  
+                  if (objType === 'textbox' || objType === 'text') {
                     const textObj = obj as any; // Fabric text object
                     const text = textObj.text?.toLowerCase() || '';
                     
@@ -676,26 +679,31 @@ const Index = () => {
                       item.variant
                     ].filter(Boolean).join(' ');
                     
+                    // Check if this is the main title field (contains template data)
+                    const isMainTitleField = text.includes('pokemon') || text.includes('gengar') || 
+                                           text.includes('vmax') || text.includes('#020') || 
+                                           text.includes('card') || text.includes('title') ||
+                                           text.includes('• nm') || text.includes('•') || 
+                                           (text.length > 20 && (text.includes('near mint') || text.includes('nm')));
+                    
                     // Replace template placeholders with actual item data
                     if (text.includes('lot') || text.includes('000001')) {
-                      textObj.set('text', item.lot);
+                      textObj.set('text', item.lot || '');
                     } else if (text.includes('sku') || text.includes('120979260')) {
                       textObj.set('text', item.sku || '');
                     } else if (text.includes('price') || text.includes('$1,000') || text.includes('$') || text.includes('1,000')) {
                       textObj.set('text', item.price ? `$${item.price}` : '');
-                    } else if (text.includes('grade') && !text.includes('pokemon') && !text.includes('gengar')) {
-                      // Only update if it's a standalone grade field, not part of the title
-                      textObj.set('text', item.grade || item.variant || '');
                     } else if (text.includes('cert') || text.includes('psa')) {
                       textObj.set('text', item.psaCert || '');
-                    } else if (text.includes('pokemon') || text.includes('gengar') || text.includes('vmax') || 
-                               text.includes('#020') || text.includes('card') || text.includes('title') ||
-                               text.includes('• nm') || text.includes('•') || (cardTitle && text.length > 10)) {
-                      // This is likely the main card title - replace with actual card info
+                    } else if (isMainTitleField) {
+                      // This is the main card title - completely replace with actual card info
                       const fullTitle = isGraded ? 
                         `${cardTitle} • ${item.grade || 'GRADED'}` : 
                         cardTitle;
                       textObj.set('text', fullTitle);
+                    } else if (text.includes('grade') || (text.includes('nm') && text.length < 10)) {
+                      // This is a standalone grade/condition field
+                      textObj.set('text', item.grade || item.variant || '');
                     }
                   }
                   
