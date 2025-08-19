@@ -665,10 +665,12 @@ const Index = () => {
                 for (const obj of objects) {
                   // Normalize object type to lowercase for comparison
                   const objType = obj.type?.toLowerCase() || '';
+                  console.log('Processing object:', { type: obj.type, objType });
                   
                   if (objType === 'textbox' || objType === 'text') {
                     const textObj = obj as any; // Fabric text object
                     const text = textObj.text?.toLowerCase() || '';
+                    console.log('Found text object:', { originalText: textObj.text, lowerText: text });
                     
                     // Build the card title from available data
                     const cardTitle = [
@@ -678,6 +680,7 @@ const Index = () => {
                       item.cardNumber ? `#${item.cardNumber}` : '',
                       item.variant
                     ].filter(Boolean).join(' ');
+                    console.log('Built card title:', cardTitle);
                     
                     // Check if this is the main title field (contains template data)
                     const isMainTitleField = text.includes('pokemon') || text.includes('gengar') || 
@@ -686,24 +689,34 @@ const Index = () => {
                                            text.includes('• nm') || text.includes('•') || 
                                            (text.length > 20 && (text.includes('near mint') || text.includes('nm')));
                     
+                    console.log('Is main title field?', isMainTitleField);
+                    
                     // Replace template placeholders with actual item data
                     if (text.includes('lot') || text.includes('000001')) {
+                      console.log('Replacing lot number');
                       textObj.set('text', item.lot || '');
                     } else if (text.includes('sku') || text.includes('120979260')) {
+                      console.log('Replacing SKU');
                       textObj.set('text', item.sku || '');
                     } else if (text.includes('price') || text.includes('$1,000') || text.includes('$') || text.includes('1,000')) {
+                      console.log('Replacing price');
                       textObj.set('text', item.price ? `$${item.price}` : '');
                     } else if (text.includes('cert') || text.includes('psa')) {
+                      console.log('Replacing cert');
                       textObj.set('text', item.psaCert || '');
                     } else if (isMainTitleField) {
                       // This is the main card title - completely replace with actual card info
                       const fullTitle = isGraded ? 
                         `${cardTitle} • ${item.grade || 'GRADED'}` : 
                         cardTitle;
+                      console.log('Replacing main title with:', fullTitle);
                       textObj.set('text', fullTitle);
                     } else if (text.includes('grade') || (text.includes('nm') && text.length < 10)) {
                       // This is a standalone grade/condition field
+                      console.log('Replacing grade field');
                       textObj.set('text', item.grade || item.variant || '');
+                    } else {
+                      console.log('No replacement made for text:', text);
                     }
                   }
                   
