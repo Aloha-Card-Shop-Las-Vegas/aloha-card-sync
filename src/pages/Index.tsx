@@ -13,6 +13,7 @@ import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
 import { printNodeService } from "@/lib/printNodeService";
+import PrintPreviewDialog from "@/components/PrintPreviewDialog";
 
 
 type CardItem = {
@@ -77,6 +78,13 @@ const Index = () => {
   const printingIdsRef = useRef<Set<string>>(new Set());
   const jobInFlightRef = useRef(false);
   const [jobInFlight, setJobInFlight] = useState(false);
+
+  // Preview modal state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewProgram, setPreviewProgram] = useState("");
+  const [previewLabel, setPreviewLabel] = useState<{ title: string; lot: string; price: string; barcode: string } | null>(null);
+  const [previewItemId, setPreviewItemId] = useState<string | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
 
   // Inline edit state for Batch Queue
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -738,6 +746,67 @@ const Index = () => {
 
   // Legacy Fabric/PDF code removed - now using TSPL RAW printing only
 
+  // Preview helpers
+  const openPreviewForRow = async (b: CardItem) => {
+    try {
+      const title = buildTitleFromParts(b.year, b.brandTitle, b.cardNumber, b.subject, b.variant);
+      const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+        body: {
+          title,
+          lot_number: b.lot,
+          price: b.price?.toString(),
+          grade: b.grade,
+          sku: b.sku,
+          id: b.id
+        }
+      });
+
+      if (error) {
+        console.error('Label render error (preview):', error);
+        toast.error(`Failed to render label for ${title}`);
+        return;
+      }
+
+      const program = (labelData as any)?.program as string;
+      setPreviewProgram(program || "");
+      setPreviewLabel({
+        title,
+        lot: b.lot || "",
+        price: b.price ? `$${Number(b.price).toFixed(2)}` : "",
+        barcode: b.sku || b.id || "NO-SKU",
+      });
+      setPreviewItemId(b.id || null);
+      setPreviewOpen(true);
+    } catch (e) {
+      console.error('Preview error:', e);
+      toast.error('Failed to open preview');
+    }
+  };
+
+  const printFromPreview = async () => {
+    if (!selectedPrinterId) { toast.error('Select a PrintNode printer'); return; }
+    if (!previewProgram) { toast.error('No TSPL program to print'); return; }
+    try {
+      setPreviewBusy(true);
+      const result = await printNodeService.printRAW(previewProgram, selectedPrinterId, {
+        title: 'Label RAW · preview',
+        copies: 1,
+      });
+      if (result.success) {
+        if (previewItemId) await markPrinted([previewItemId]);
+        toast.success('Sent to printer');
+        setPreviewOpen(false);
+      } else {
+        toast.error(result.error || 'Print failed');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Print failed');
+    } finally {
+      setPreviewBusy(false);
+    }
+  };
+
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
     if (!printNodeConnected || !selectedPrinterId) {
@@ -1044,6 +1113,9 @@ const Index = () => {
                                 <Button size="sm" variant="secondary" onClick={cancelEditRow}>Close</Button>
                               ) : (
                                 <>
+                                  <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); openPreviewForRow(b); }}>
+                                    Preview
+                                  </Button>
                                   <Button
                                     size="sm"
                                     variant={b.printedAt ? "outline" : "default"}
@@ -1166,6 +1238,15 @@ const Index = () => {
             </CardContent>
           </Card>
         </section>
+      {previewLabel && (
+        <PrintPreviewDialog
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          label={previewLabel}
+          tspl={previewProgram}
+          onPrint={printFromPreview}
+        />
+      )}
       </main>
     </div>
   );
