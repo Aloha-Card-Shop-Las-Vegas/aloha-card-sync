@@ -982,24 +982,11 @@ const Index = () => {
 
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
-    if (!printNodeConnected || !selectedPrinterId) {
-      toast.error('PrintNode not connected or no printer selected');
-      return;
-    }
-    if (!acquireGlobalLock()) return;
-    if (!acquireRowLock(b.id)) { releaseGlobalLock(); return; }
+    if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
 
-    try {
-      console.log(`=== SENDING TO PRINTNODE RAW === Single Row Print`);
-      const ok = await printNodeLabels([b]);
-      if (ok) await markPrinted([b.id]);
-    } catch (e) {
-      console.error(e);
-      toast.error('Failed to print');
-    } finally {
-      releaseRowLock(b.id);
-      releaseGlobalLock();
-    }
+    // Show preview dialog instead of printing directly
+    setPreviewItemId(b.id);
+    setPreviewOpen(true);
   };
   const handlePushRow = async (b: CardItem) => {
     if (!b.id) return;
@@ -1132,17 +1119,50 @@ const Index = () => {
     if (ids.length === 0) { toast.info('Nothing to print'); return; }
     if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
 
-    if (!acquireGlobalLock()) return;
-    setPrintingAll(true);
+    // Show bulk preview dialog instead of printing directly
     try {
-      const ok = await printNodeLabels(items);
-      if (ok) await markPrinted(ids);
+      const previewItems: BulkPreviewItem[] = [];
+      
+      for (const item of items) {
+        const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+        
+        // Determine template to use based on item type
+        const isGraded = item.grade || item.psaCert;
+        const template = isGraded ? defaultTemplates.graded : defaultTemplates.raw;
+        
+        const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+          body: {
+            title,
+            lot_number: item.lot,
+            price: item.price?.toString(),
+            grade: item.grade,
+            sku: item.sku,
+            id: item.id,
+            template: template
+          }
+        });
+        
+        if (error) {
+          console.error('Label render error (print all preview):', error);
+          toast.error(`Failed to render label for ${title}`);
+          return;
+        }
+        
+        previewItems.push({
+          id: item.id!,
+          title,
+          lot: item.lot || "",
+          price: item.price ? `$${Number(item.price).toFixed(2)}` : "",
+          barcode: item.sku || item.id || "NO-SKU",
+          tspl: (labelData as any)?.program || ""
+        });
+      }
+      
+      setBulkPreviewItems(previewItems);
+      setBulkPreviewOpen(true);
     } catch (e) {
-      console.error(e);
-      toast.error('Failed to print all');
-    } finally {
-      setPrintingAll(false);
-      releaseGlobalLock();
+      console.error('Print all preview error:', e);
+      toast.error('Failed to prepare print preview');
     }
   };
 
@@ -1179,9 +1199,46 @@ const Index = () => {
       await Promise.all(ids.map((id) => supabase.functions.invoke("shopify-import", { body: { itemId: id } })));
       await markPushed(ids);
 
-      // Then print
-      const ok = await printNodeLabels(items);
-      if (ok) await markPrinted(ids);
+      // Show preview for print step
+      const previewItems: BulkPreviewItem[] = [];
+      
+      for (const item of items) {
+        const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+        
+        // Determine template to use based on item type
+        const isGraded = item.grade || item.psaCert;
+        const template = isGraded ? defaultTemplates.graded : defaultTemplates.raw;
+        
+        const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+          body: {
+            title,
+            lot_number: item.lot,
+            price: item.price?.toString(),
+            grade: item.grade,
+            sku: item.sku,
+            id: item.id,
+            template: template
+          }
+        });
+        
+        if (error) {
+          console.error('Label render error (push preview):', error);
+          toast.error(`Failed to render label for ${title}`);
+          return;
+        }
+        
+        previewItems.push({
+          id: item.id!,
+          title,
+          lot: item.lot || "",
+          price: item.price ? `$${Number(item.price).toFixed(2)}` : "",
+          barcode: item.sku || item.id || "NO-SKU",
+          tspl: (labelData as any)?.program || ""
+        });
+      }
+      
+      setBulkPreviewItems(previewItems);
+      setBulkPreviewOpen(true);
     } catch (e) {
       console.error(e);
       toast.error('Failed to push and print all');
