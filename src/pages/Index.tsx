@@ -12,7 +12,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
-import { generateWorkstationId, queuePrintJob, queuePrintBatch } from "@/lib/printerService";
+import { generateWorkstationId, queueTemplateJob, queueTemplateBatch } from "@/lib/printerService";
 import { Printer } from "lucide-react";
 
 type CardItem = {
@@ -360,26 +360,19 @@ const Index = () => {
       console.log(`Workstation: ${workstationId}`);
       console.log(`Printer: ${printerName || 'Default'}`);
 
-      // Create print data payload
+      // Create print data for template
       const printData = {
-        template_id: "price-2x1-v1", // Default template
-        data: {
-          product_name: title,
-          price: cardItem.price || '0.00',
-          sku: cardItem.sku || cardItem.id || 'NO-SKU',
-          variant: cardItem.grade || (cardItem.condition || 'Raw'),
-          lot: cardItem.lot || '',
-          subject: cardItem.subject || '',
-          brand: cardItem.brandTitle || ''
-        },
-        target: printerName ? { printer_name: printerName } : { ip: "192.168.1.100" },
-        copies: 1
+        product_name: title,
+        price: cardItem.price || '0.00',
+        sku: cardItem.sku || cardItem.id || 'NO-SKU',
+        condition: cardItem.grade || (cardItem.condition || 'Raw'),
       };
 
-      // Queue the print job
-      const jobId = await queuePrintJob({
+      // Queue the print job using template
+      const jobId = await queueTemplateJob({
         workstationId,
-        tsplCode: JSON.stringify(printData),
+        templateId: 'price-2x1-v1',
+        data: printData,
         printerName: printerName || undefined,
         copies: 1
       });
@@ -448,24 +441,15 @@ const Index = () => {
       const batchJobs = unprintedItems.map(item => {
         const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
         
-        const printData = {
-          template_id: "price-2x1-v1",
+        return {
+          workstationId,
+          templateId: 'price-2x1-v1',
           data: {
             product_name: title,
             price: item.price || '0.00',
             sku: item.sku || item.id || 'NO-SKU',
-            variant: item.grade || (item.condition || 'Raw'),
-            lot: item.lot || '',
-            subject: item.subject || '',
-            brand: item.brandTitle || ''
+            condition: item.grade || (item.condition || 'Raw'),
           },
-          target: printerName ? { printer_name: printerName } : { ip: "192.168.1.100" },
-          copies: 1
-        };
-
-        return {
-          workstationId,
-          tsplCode: JSON.stringify(printData),
           printerName: printerName || undefined,
           copies: 1
         };
@@ -473,7 +457,7 @@ const Index = () => {
 
       try {
         // Queue all jobs
-        const jobIds = await queuePrintBatch(batchJobs);
+        const jobIds = await queueTemplateBatch(batchJobs);
         successCount = jobIds.length;
         
         // Mark all as printed (queued for processing)

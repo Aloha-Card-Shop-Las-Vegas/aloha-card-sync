@@ -184,44 +184,74 @@ export type Database = {
         }
         Relationships: []
       }
+      label_templates_new: {
+        Row: {
+          body: string
+          id: string
+          optional_fields: string[] | null
+          required_fields: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          body: string
+          id: string
+          optional_fields?: string[] | null
+          required_fields?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          body?: string
+          id?: string
+          optional_fields?: string[] | null
+          required_fields?: string[] | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       print_jobs: {
         Row: {
+          claimed_at: string | null
+          copies: number
           created_at: string | null
-          error_message: string | null
+          data: Json
+          error: string | null
           id: string
-          payload_type: string | null
-          printer_id: number | null
-          printer_name: string | null
-          printnode_job_id: number | null
+          printed_at: string | null
           status: string
-          tspl_code: string
-          updated_at: string | null
+          target: Json
+          template_id: string | null
+          template_version: string | null
+          tspl_body: string | null
           workstation_id: string
         }
         Insert: {
+          claimed_at?: string | null
+          copies?: number
           created_at?: string | null
-          error_message?: string | null
+          data: Json
+          error?: string | null
           id?: string
-          payload_type?: string | null
-          printer_id?: number | null
-          printer_name?: string | null
-          printnode_job_id?: number | null
+          printed_at?: string | null
           status?: string
-          tspl_code: string
-          updated_at?: string | null
+          target: Json
+          template_id?: string | null
+          template_version?: string | null
+          tspl_body?: string | null
           workstation_id: string
         }
         Update: {
+          claimed_at?: string | null
+          copies?: number
           created_at?: string | null
-          error_message?: string | null
+          data?: Json
+          error?: string | null
           id?: string
-          payload_type?: string | null
-          printer_id?: number | null
-          printer_name?: string | null
-          printnode_job_id?: number | null
+          printed_at?: string | null
           status?: string
-          tspl_code?: string
-          updated_at?: string | null
+          target?: Json
+          template_id?: string | null
+          template_version?: string | null
+          tspl_body?: string | null
           workstation_id?: string
         }
         Relationships: []
@@ -449,6 +479,24 @@ export type Database = {
       }
     }
     Functions: {
+      claim_next_print_job: {
+        Args: { ws: string }
+        Returns: {
+          claimed_at: string | null
+          copies: number
+          created_at: string | null
+          data: Json
+          error: string | null
+          id: string
+          printed_at: string | null
+          status: string
+          target: Json
+          template_id: string | null
+          template_version: string | null
+          tspl_body: string | null
+          workstation_id: string
+        }
+      }
       generate_lot_number: {
         Args: Record<PropertyKey, never>
         Returns: string
