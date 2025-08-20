@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
 import { printNodeService } from "@/lib/printNodeService";
 import PrintPreviewDialog from "@/components/PrintPreviewDialog";
+import PrintAllPreviewDialog, { BulkPreviewItem } from "@/components/PrintAllPreviewDialog";
 
 
 type CardItem = {
@@ -85,6 +86,11 @@ const Index = () => {
   const [previewLabel, setPreviewLabel] = useState<{ title: string; lot: string; price: string; barcode: string } | null>(null);
   const [previewItemId, setPreviewItemId] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+
+  // Bulk preview modal state
+  const [bulkPreviewOpen, setBulkPreviewOpen] = useState(false);
+  const [bulkPreviewItems, setBulkPreviewItems] = useState<BulkPreviewItem[]>([]);
+  const [bulkPreviewBusy, setBulkPreviewBusy] = useState(false);
 
   // Inline edit state for Batch Queue
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -859,7 +865,95 @@ const Index = () => {
   };
 
   // Bulk actions
+  const openBulkPreview = async () => {
+    const items = batch.filter(i => i.id) as CardItem[];
+    if (items.length === 0) { toast.info('Nothing to print'); return; }
+    
+    try {
+      const previews: BulkPreviewItem[] = [];
+      
+      for (const item of items) {
+        const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+        const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+          body: {
+            title,
+            lot_number: item.lot,
+            price: item.price?.toString(),
+            grade: item.grade,
+            sku: item.sku,
+            id: item.id
+          }
+        });
+        
+        if (error) {
+          console.error('Label render error (bulk preview):', error);
+          toast.error(`Failed to render label for ${title}`);
+          return;
+        }
+        
+        previews.push({
+          id: item.id!,
+          title,
+          lot: item.lot || "",
+          price: item.price ? `$${Number(item.price).toFixed(2)}` : "",
+          barcode: item.sku || item.id || "NO-SKU",
+          tspl: (labelData as any)?.program || ""
+        });
+      }
+      
+      setBulkPreviewItems(previews);
+      setBulkPreviewOpen(true);
+    } catch (e) {
+      console.error('Bulk preview error:', e);
+      toast.error('Failed to generate bulk preview');
+    }
+  };
+
+  const printAllFromPreview = async () => {
+    if (!selectedPrinterId) { toast.error('Select a PrintNode printer'); return; }
+    setBulkPreviewBusy(true);
+    
+    try {
+      let successCount = 0;
+      for (const preview of bulkPreviewItems) {
+        const result = await printNodeService.printRAW(preview.tspl, selectedPrinterId, {
+          title: `Label RAW · ${preview.id}`,
+          copies: 1
+        });
+        
+        if (result.success) {
+          successCount++;
+        } else {
+          console.error(`Print failed for ${preview.id}:`, result.error);
+        }
+      }
+      
+      if (successCount > 0) {
+        const ids = bulkPreviewItems.map(p => p.id);
+        await markPrinted(ids);
+        toast.success(`Printed ${successCount} label(s)`);
+        setBulkPreviewOpen(false);
+      } else {
+        toast.error('All prints failed');
+      }
+    } catch (e) {
+      console.error('Bulk print error:', e);
+      toast.error('Failed to print all');
+    } finally {
+      setBulkPreviewBusy(false);
+    }
+  };
+
   const handlePrintAll = async () => {
+    if (!printNodeConnected || !selectedPrinterId) { 
+      toast.error('PrintNode not connected or no printer selected'); 
+      return; 
+    }
+    await openBulkPreview();
+  };
+
+  // Legacy direct print all (keeping as backup)
+  const handlePrintAllDirect = async () => {
     const items = batch.filter(i => i.id) as CardItem[];
     const ids = items.map(i => i.id!) as string[];
     if (ids.length === 0) { toast.info('Nothing to print'); return; }
@@ -1247,6 +1341,14 @@ const Index = () => {
           onPrint={printFromPreview}
         />
       )}
+      
+      <PrintAllPreviewDialog
+        open={bulkPreviewOpen}
+        onOpenChange={setBulkPreviewOpen}
+        items={bulkPreviewItems}
+        onPrintAll={printAllFromPreview}
+        loading={bulkPreviewBusy}
+      />
       </main>
     </div>
   );
