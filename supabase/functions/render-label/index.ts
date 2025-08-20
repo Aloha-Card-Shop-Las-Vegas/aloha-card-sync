@@ -108,21 +108,29 @@ const getConditionAbbr = (condition: string): string => {
 };
 
 // Auto-fitting text scale calculation
-const getOptimalTextScale = (text: string, elementWidth: number): number => {
-  if (!text || elementWidth <= 0) return 1;
+const getOptimalTextScale = (text: string, elementWidth: number, elementHeight: number): number => {
+  if (!text || elementWidth <= 0 || elementHeight <= 0) return 1;
   
-  // TSPL FONT001 approximate character widths per scale (in dots at 203dpi)
+  // TSPL FONT001 approximate dimensions per scale (in dots at 203dpi)
   const charWidths = { 1: 6, 2: 12, 3: 18, 4: 24, 5: 30 };
+  const charHeights = { 1: 8, 2: 16, 3: 24, 4: 32, 5: 40 };
   const padding = 4; // Small padding for margins
-  const availableWidth = elementWidth - padding;
   
-  // Find largest scale that fits
+  const availableWidth = elementWidth - padding;
+  const availableHeight = elementHeight - padding;
+  
+  // Find largest scale that fits both width and height
   for (let scale = 5; scale >= 1; scale--) {
     const textWidth = text.length * charWidths[scale as keyof typeof charWidths];
-    if (textWidth <= availableWidth) {
+    const textHeight = charHeights[scale as keyof typeof charHeights];
+    
+    if (textWidth <= availableWidth && textHeight <= availableHeight) {
+      console.log(`Text "${text}" - Scale: ${scale}, Width: ${textWidth}/${availableWidth}, Height: ${textHeight}/${availableHeight}`);
       return scale;
     }
   }
+  
+  console.log(`Text "${text}" - Fallback to scale 1, Width: ${availableWidth}, Height: ${availableHeight}`);
   return 1; // Minimum scale as fallback
 };
 
@@ -144,7 +152,30 @@ function renderTemplateToTSPL(template: any, data: {
     }
 
     const sanitize = (s: string) => s.replace(/"/g, "'");
-    const formatPrice = (p: string) => p.startsWith('$') ? p : (p ? `$${p}` : '');
+    const formatPrice = (p: string) => {
+      if (!p || p === '') return '';
+      if (p.startsWith('$')) {
+        // Extract number from existing formatted price
+        const numStr = p.replace(/[$,]/g, '');
+        const num = parseFloat(numStr);
+        if (isNaN(num)) return p;
+        return new Intl.NumberFormat('en-US', { 
+          style: 'currency', 
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2
+        }).format(num);
+      } else {
+        const num = parseFloat(p);
+        if (isNaN(num)) return p;
+        return new Intl.NumberFormat('en-US', { 
+          style: 'currency', 
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2
+        }).format(num);
+      }
+    };
 
     // TSPL settings from template or defaults
     const settings = template.data?.tsplSettings || {};
@@ -175,10 +206,8 @@ function renderTemplateToTSPL(template: any, data: {
         
         let text = '';
         
-        // Get data based on element field mapping
-        if (element.type === 'text') {
-          text = element.text || '';
-        } else if (element.field) {
+        // Prioritize field mapping over static text for dynamic templates
+        if (element.field) {
           switch (element.field) {
             case 'subject':
             case 'title':
@@ -223,6 +252,8 @@ function renderTemplateToTSPL(template: any, data: {
             default:
               text = element.field;
           }
+        } else if (element.type === 'text') {
+          text = element.text || '';
         }
         
         console.log(`Processing element ${element.id}: field=${element.field}, text="${text}"`);
@@ -235,7 +266,7 @@ function renderTemplateToTSPL(template: any, data: {
           // Render as text with auto-fitting scale
           const displayText = text || (element.field ? `[${element.field}]` : '');
           if (displayText) {
-            const optimalScale = getOptimalTextScale(displayText, width);
+            const optimalScale = getOptimalTextScale(displayText, width, height);
             commands.push(`TEXT ${x},${y},"FONT001",0,${optimalScale},${optimalScale},"${sanitize(displayText)}"`);
           }
         }
