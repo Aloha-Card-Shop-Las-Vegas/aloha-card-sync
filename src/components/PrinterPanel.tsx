@@ -109,10 +109,16 @@ export function PrinterPanel() {
         });
       
       // Also save to localStorage for immediate access
-      localStorage.setItem('printerSettings', JSON.stringify({
+      const printerData = {
         workstationId,
         selectedPrinterId: selectedPrinter.id,
         printerName: selectedPrinter.name
+      };
+      localStorage.setItem('printerSettings', JSON.stringify(printerData));
+      
+      // Dispatch custom event to notify other components
+      window.dispatchEvent(new CustomEvent('printerSelectionChanged', { 
+        detail: printerData 
       }));
         
       toast.success("Printer settings saved");

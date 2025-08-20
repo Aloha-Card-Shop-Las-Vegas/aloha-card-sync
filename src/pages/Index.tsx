@@ -217,18 +217,31 @@ const Index = () => {
 
   // Listen for printer setting changes from PrinterPanel
   useEffect(() => {
-    const handleStorageChange = () => {
-      const printerSettings = localStorage.getItem('printerSettings');
-      if (printerSettings) {
-        const parsed = JSON.parse(printerSettings);
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'printerSettings' && e.newValue) {
+        const parsed = JSON.parse(e.newValue);
         if (parsed.selectedPrinterId && parsed.selectedPrinterId !== selectedPrinterId) {
           setSelectedPrinterId(parsed.selectedPrinterId);
+          console.log(`Updated printer selection from storage: ${parsed.printerName} (ID: ${parsed.selectedPrinterId})`);
         }
       }
     };
 
+    // Also check for updates via custom events (for same-window updates)
+    const handlePrinterUpdate = (e: CustomEvent) => {
+      if (e.detail.selectedPrinterId && e.detail.selectedPrinterId !== selectedPrinterId) {
+        setSelectedPrinterId(e.detail.selectedPrinterId);
+        console.log(`Updated printer selection from event: ${e.detail.printerName} (ID: ${e.detail.selectedPrinterId})`);
+      }
+    };
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('printerSelectionChanged', handlePrinterUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('printerSelectionChanged', handlePrinterUpdate as EventListener);
+    };
   }, [selectedPrinterId]);
 
   // StrictMode guards
@@ -292,12 +305,14 @@ const Index = () => {
           const parsed = JSON.parse(printerSettings);
           if (parsed.selectedPrinterId && printerList.find(p => p.id === parsed.selectedPrinterId)) {
             setSelectedPrinterId(parsed.selectedPrinterId);
+            console.log(`Loaded saved printer: ${parsed.printerName} (ID: ${parsed.selectedPrinterId})`);
           }
         }
         
         // Fallback: Auto-select first printer if no saved selection
         if (!selectedPrinterId && printerList.length > 0) {
           setSelectedPrinterId(printerList[0].id);
+          console.log(`Auto-selected first printer: ${printerList[0].name} (ID: ${printerList[0].id})`);
         }
         
         console.log(`PrintNode connected - Found ${printerList.length} printer(s)`);
@@ -1060,6 +1075,8 @@ const Index = () => {
         copies: 1
       });
 
+      console.log(`Batch print sent to printer ID: ${selectedPrinterId}, result:`, result);
+
       if (result.success) {
         await markPrinted([previewItemId]);
         setPreviewOpen(false);
@@ -1206,6 +1223,8 @@ const Index = () => {
             title: `Label PDF · ${preview.id}`,
             copies: 1
           });
+          
+          console.log(`Bulk print item ${preview.id} sent to printer ID: ${selectedPrinterId}, result:`, result);
           
           if (result.success) {
             successCount++;
