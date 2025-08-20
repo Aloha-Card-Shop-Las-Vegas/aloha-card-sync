@@ -204,6 +204,33 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     }
   };
 
+  const updateTemplate = async () => {
+    if (!fabricCanvas || !selectedTemplateId) {
+      toast.error('Please select a template to update');
+      return;
+    }
+    
+    try {
+      const canvasData = fabricCanvas.toJSON();
+      
+      const { error } = await supabase
+        .from('label_templates')
+        .update({
+          canvas: canvasData,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', selectedTemplateId);
+      
+      if (error) throw error;
+      
+      toast.success('Template updated successfully');
+      await fetchTemplates();
+    } catch (error) {
+      console.error('Error updating template:', error);
+      toast.error('Failed to update template');
+    }
+  };
+
   const handlePrint = () => {
     // Use the current TSPL (either original or regenerated)
     onPrint();
@@ -347,25 +374,33 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                     </div>
                   </div>
                   
-                  {/* Save Template Controls */}
+                  {/* Template Actions */}
+                  <div className="flex items-center gap-2">
+                    {selectedTemplateId && (
+                      <Button onClick={updateTemplate} variant="default" className="flex-1">
+                        Update "{templates.find(t => t.id === selectedTemplateId)?.name}"
+                      </Button>
+                    )}
+                    <Button onClick={regenerateTSPL} variant="outline" className="flex-1">
+                      Regenerate TSPL
+                    </Button>
+                  </div>
+                  
+                  {/* Save as New Template */}
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
-                      <Label htmlFor="template-name">Save as Template</Label>
+                      <Label htmlFor="template-name">Save as New Template</Label>
                       <Input
                         id="template-name"
                         value={templateName}
                         onChange={(e) => setTemplateName(e.target.value)}
-                        placeholder="Template name"
+                        placeholder="New template name"
                       />
                     </div>
                     <Button onClick={saveTemplate} disabled={!templateName.trim()}>
-                      Save
+                      Save New
                     </Button>
                   </div>
-                  
-                  <Button onClick={regenerateTSPL} variant="outline" className="w-full">
-                    Regenerate TSPL from Canvas
-                  </Button>
                 </div>
               )}
             </div>
