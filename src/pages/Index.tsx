@@ -214,6 +214,62 @@ const Index = () => {
   const didInitCatsGamesRef = useRef(false);
   const didInitIntakeListenerRef = useRef(false);
 
+  // Listen for intake item additions from RawIntake component
+  useEffect(() => {
+    if (didInitIntakeListenerRef.current) return;
+    didInitIntakeListenerRef.current = true;
+    
+    const handleIntakeItemAdded = (event: any) => {
+      console.log('Received intake:item-added event:', event.detail);
+      const newItemData = event.detail;
+      
+      // Build title from the added data
+      const title = buildTitleFromParts(
+        newItemData.year, 
+        newItemData.brand_title, 
+        newItemData.card_number, 
+        newItemData.subject, 
+        newItemData.variant
+      );
+      
+      const newItem: CardItem = {
+        title: title,
+        set: "",
+        year: newItemData.year || "",
+        grade: newItemData.grade || "",
+        psaCert: newItemData.psa_cert || "",
+        price: newItemData.price != null ? String(newItemData.price) : "",
+        cost: newItemData.cost != null ? String(newItemData.cost) : "",
+        lot: newItemData.lot_number || "",
+        sku: newItemData.sku || "",
+        brandTitle: newItemData.brand_title || "",
+        subject: newItemData.subject || "",
+        category: newItemData.category || "",
+        variant: newItemData.variant || "",
+        cardNumber: newItemData.card_number || "",
+        quantity: newItemData.quantity || 1,
+        condition: newItemData.variant || "",
+        id: newItemData.id,
+        printedAt: newItemData.printed_at || null,
+        pushedAt: newItemData.pushed_at || null,
+      };
+      
+      console.log('Adding item from RawIntake to batch:', newItem);
+      setBatch(prev => {
+        console.log('Previous batch length:', prev.length);
+        const newBatch = [newItem, ...prev];
+        console.log('New batch length after RawIntake addition:', newBatch.length);
+        return newBatch;
+      });
+    };
+    
+    window.addEventListener('intake:item-added', handleIntakeItemAdded);
+    
+    return () => {
+      window.removeEventListener('intake:item-added', handleIntakeItemAdded);
+    };
+  }, []);
+
   // Load existing items from DB so batch persists
   useEffect(() => {
     if (didInitMainRef.current) return;
@@ -539,11 +595,15 @@ const Index = () => {
   };
 
   const addToQueue = async () => {
+    console.log('addToQueue called with item:', item);
+    
     if (!item.title && !item.brandTitle && !item.subject) {
+      console.log('Validation failed - no required fields filled');
       toast.error('Please fill in at least one field');
       return;
     }
 
+    console.log('Validation passed, attempting to insert to database');
     try {
       const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
       
@@ -570,6 +630,8 @@ const Index = () => {
 
       if (error) throw error;
 
+      console.log('Database insert successful, data:', data);
+
       const newItem: CardItem = {
         ...item,
         title,
@@ -578,7 +640,13 @@ const Index = () => {
         pushedAt: null,
       };
 
-      setBatch(prev => [newItem, ...prev]);
+      console.log('Adding newItem to batch:', newItem);
+      setBatch(prev => {
+        console.log('Previous batch length:', prev.length);
+        const newBatch = [newItem, ...prev];
+        console.log('New batch length:', newBatch.length);
+        return newBatch;
+      });
       
       // Reset form
       setItem({
@@ -602,9 +670,11 @@ const Index = () => {
       });
       setLookupCert("");
       
+      console.log('Item added to batch successfully');
       toast.success('Item added to batch');
     } catch (error) {
       console.error('Error adding to queue:', error);
+      console.error('Error details:', error);
       toast.error('Failed to add item');
     }
   };
@@ -744,11 +814,17 @@ const Index = () => {
                   </div>
                 </>
               ) : (
-                <RawIntake onAdded={() => {}} />
+                <RawIntake onAdded={(addedItem) => {
+                  console.log('RawIntake onAdded callback triggered:', addedItem);
+                  // The event listener above will handle the batch update
+                  // This callback can be used for additional immediate actions if needed
+                }} />
               )}
-              <div className="mt-4">
-                <Button onClick={addToQueue} className="w-full">Add to Batch</Button>
-              </div>
+              {intakeMode === 'graded' && (
+                <div className="mt-4">
+                  <Button onClick={addToQueue} className="w-full">Add to Batch</Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </section>
