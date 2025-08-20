@@ -10,7 +10,6 @@ import { printNodeService } from "@/lib/printNodeService";
 import { supabase } from "@/integrations/supabase/client";
 import jsPDF from 'jspdf';
 
-
 interface PrintNodePrinter {
   id: number;
   name: string;
@@ -37,11 +36,7 @@ export function PrinterPanel() {
     const interval = setInterval(async () => {
       try {
         const printerList = await printNodeService.getPrinters();
-        // Filter out the specific Rollo X1040 printer
-        const filteredPrinters = printerList.filter(p => 
-          !p.name.includes('Rollo X1040') && !p.name.includes('X1243221259')
-        );
-        const formattedPrinters = filteredPrinters.map(p => ({id: p.id, name: p.name}));
+        const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
         setPrinters(formattedPrinters);
         setPrintNodeOnline(true);
         setConnectionError('');
@@ -138,11 +133,7 @@ export function PrinterPanel() {
     setConnectionError('');
     try {
       const printerList = await printNodeService.getPrinters();
-      // Filter out the specific Rollo X1040 printer
-      const filteredPrinters = printerList.filter(p => 
-        !p.name.includes('Rollo X1040') && !p.name.includes('X1243221259')
-      );
-      const formattedPrinters = filteredPrinters.map(p => ({id: p.id, name: p.name}));
+      const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
       setPrinters(formattedPrinters);
       setPrintNodeOnline(true);
       
@@ -166,8 +157,115 @@ export function PrinterPanel() {
     }
   };
 
+  const generateTestPDF = (): string => {
+    const doc = new jsPDF({
+      unit: 'in',
+      format: [2.0, 1.0], // Exact 2.0" x 1.0" 
+      orientation: 'landscape',
+      putOnlyUsedFonts: true,
+      compress: false
+    });
 
+    // Set PDF metadata for single label
+    doc.setProperties({
+      title: 'Single Label Print',
+      subject: 'Test Label',
+      creator: 'Label Designer'
+    });
 
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(12);
+    doc.text('2x1" TEST', 0.1, 0.3);
+    doc.setFontSize(10);
+    doc.text('Rollo Label', 0.1, 0.5);
+    doc.setFontSize(8);
+    doc.text(`${new Date().toLocaleTimeString()}`, 0.1, 0.7);
+
+    return doc.output('datauristring').split(',')[1];
+  };
+
+  const runPDFTest = async () => {
+    if (!selectedPrinter) {
+      toast.error("No printer selected");
+      return;
+    }
+
+    setTestingPDF(true);
+    try {
+      const pdfBase64 = generateTestPDF();
+      const result = await printNodeService.printPDF(
+        pdfBase64,
+        selectedPrinter.id,
+        { title: `PDF Test - ${new Date().toLocaleTimeString()}`, copies: 1 }
+      );
+
+      if (result.success) {
+        toast.success(`PDF Test Sent - Job ID: ${result.jobId}`);
+      } else {
+        throw new Error(result.error || 'PDF print failed');
+      }
+    } catch (error) {
+      console.error('PDF test error:', error);
+      toast.error(error instanceof Error ? error.message : "PDF test failed");
+    } finally {
+      setTestingPDF(false);
+    }
+  };
+
+  const runSmokeTest = async () => {
+    if (!selectedPrinter) {
+      toast.error("No printer selected");
+      return;
+    }
+
+    setTestPrinting(true);
+    
+    try {
+      // Create print job record
+      const { data: printJob } = await supabase
+        .from('print_jobs')
+        .insert({
+          workstation_id: workstationId,
+          printer_name: selectedPrinter.name,
+          printer_id: selectedPrinter.id,
+          tspl_code: `PDF print job - ${new Date().toISOString()}`,
+          status: 'queued'
+        })
+        .select()
+        .single();
+
+      if (!printJob) throw new Error('Failed to create print job record');
+
+      // Generate and send PDF
+      const pdfBase64 = generateTestPDF();
+      const result = await printNodeService.printPDF(
+        pdfBase64,
+        selectedPrinter.id,
+        { title: `Test Print - ${new Date().toLocaleTimeString()}` }
+      );
+
+      if (result.success) {
+        // Update print job with PrintNode job ID
+        await supabase
+          .from('print_jobs')
+          .update({
+            status: 'sent',
+            printnode_job_id: result.jobId
+          })
+          .eq('id', printJob.id);
+
+        toast.success(`PDF Test Sent - Job ID: ${result.jobId}`);
+      } else {
+        throw new Error(result.error || 'Print failed');
+      }
+      
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Smoke test failed';
+      toast.error(errorMsg);
+    } finally {
+      setTestPrinting(false);
+    }
+  };
 
   return (
     <Card className="w-full max-w-md">
@@ -218,33 +316,9 @@ export function PrinterPanel() {
           <label className="text-sm font-medium">Selected Printer:</label>
           <Select 
             value={selectedPrinter?.id.toString() || ''} 
-            onValueChange={async (value) => {
+            onValueChange={(value) => {
               const printer = printers.find(p => p.id.toString() === value);
               setSelectedPrinter(printer || null);
-              
-              // Auto-save selection immediately
-              if (printer) {
-                const settings = {
-                  selectedPrinterId: printer.id,
-                  printerName: printer.name,
-                  workstationId
-                };
-                
-                // Save to localStorage immediately
-                localStorage.setItem('printerSettings', JSON.stringify(settings));
-                
-                // Dispatch custom event for same-window updates
-                window.dispatchEvent(new CustomEvent('printerSelectionChanged', { 
-                  detail: settings 
-                }));
-                
-                // Save to Supabase in background (don't await to keep UI responsive)
-                savePrinterSettings().catch(error => {
-                  console.error('Background save failed:', error);
-                });
-                
-                toast.success(`Selected printer: ${printer.name}`);
-              }
             }}
             disabled={!printNodeOnline}
           >
@@ -291,58 +365,27 @@ export function PrinterPanel() {
           <Button 
             variant="outline"
             size="sm"
-            onClick={async () => {
-              if (!selectedPrinter) {
-                toast.error("No printer selected");
-                return;
-              }
-              setTestingPDF(true);
-              try {
-                const doc = new jsPDF({
-                  unit: 'in',
-                  format: [2.0, 1.0],
-                  orientation: 'landscape',
-                  putOnlyUsedFonts: true,
-                  compress: false
-                });
-                doc.setTextColor(0, 0, 0);
-                doc.setFontSize(12);
-                doc.text('2x1" TEST', 0.1, 0.3);
-                doc.setFontSize(10);
-                doc.text('PDF Format', 0.1, 0.5);
-                doc.setFontSize(8);
-                doc.text(`${new Date().toLocaleTimeString()}`, 0.1, 0.7);
-                const pdfBase64 = doc.output('datauristring').split(',')[1];
-                
-                const result = await printNodeService.printPDF(pdfBase64, selectedPrinter.id, {
-                  title: `PDF Test - ${new Date().toLocaleTimeString()}`,
-                  copies: 1
-                });
-                
-                if (result.success) {
-                  toast.success(`PDF Test Sent - Job ID: ${result.jobId}`);
-                } else {
-                  throw new Error(result.error || 'PDF print failed');
-                }
-              } catch (error) {
-                console.error('PDF test error:', error);
-                toast.error(error instanceof Error ? error.message : "PDF test failed");
-              } finally {
-                setTestingPDF(false);
-              }
-            }}
+            onClick={runPDFTest} 
             disabled={!printNodeOnline || !selectedPrinter || testingPDF}
             className="w-full"
           >
             <FileText className="w-4 h-4 mr-2" />
             {testingPDF ? "Testing..." : "Quick PDF Test"}
           </Button>
-        </div>
 
+          <Button 
+            className="w-full gap-2" 
+            onClick={runSmokeTest}
+            disabled={!printNodeOnline || !selectedPrinter || testPrinting}
+          >
+            <TestTube className="h-4 w-4" />
+            {testPrinting ? "Testing..." : "Full Test Print"}
+          </Button>
+        </div>
 
         {/* PrintNode Info */}
         <div className="text-xs text-muted-foreground pt-2 border-t">
-          Supports both TSPL RAW and PDF printing.
+          Optimized for Rollo label printers using PDF format.
           <br />
           {printers.length > 0 && `${printers.length} printer(s) available`}
         </div>
