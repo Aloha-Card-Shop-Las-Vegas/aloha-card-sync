@@ -1643,9 +1643,9 @@ const Index = () => {
                                           <SelectValue placeholder="Select game" />
                                         </SelectTrigger>
                                         <SelectContent className="bg-background z-50">
-                                          {games.length === 0 ? (
-                                            <SelectItem value="" disabled>No games</SelectItem>
-                                          ) : (
+                                           {games.length === 0 ? (
+                                             <SelectItem value="no-games" disabled>No games</SelectItem>
+                                           ) : (
                                             games.map((g) => (
                                               <SelectItem key={g.id} value={String(g.id)}>
                                                 {g.name}{g.categoryName ? ` (${g.categoryName})` : ""}
