@@ -18,4 +18,5 @@ verify_jwt = false
 [functions.shopify-webhook-test]
 verify_jwt = false
 
-
+[functions.render-label]
+verify_jwt = false
