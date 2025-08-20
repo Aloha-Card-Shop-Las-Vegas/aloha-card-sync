@@ -307,23 +307,75 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                   style={{ aspectRatio: "2 / 1" }}
                   aria-label="Label preview"
                 >
-                  <div className="absolute left-2 top-1 text-xs leading-tight">
-                    <div className="truncate max-w-[95%]" title={editableLabel.title}>{editableLabel.title}</div>
-                  </div>
-                  <div className="absolute left-2 top-6 text-xs">
-                    <span className="opacity-80">{editableLabel.lot}</span>
-                  </div>
-                  {editableLabel.grade && (
-                    <div className="absolute left-2 top-10 text-xs font-medium">
-                      <span className="bg-primary text-primary-foreground px-1 rounded text-[10px]">{editableLabel.grade}</span>
-                    </div>
-                  )}
-                  <div className="absolute right-2 top-6 text-xs font-medium">
-                    {editableLabel.price}
-                  </div>
-                  <div className="absolute left-2 right-2 bottom-1">
-                    <BarcodeLabel value={editableLabel.barcode} showPrintButton={false} />
-                  </div>
+                  {/* Template-aware rendering */}
+                  {(() => {
+                    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+                    const elements = selectedTemplate?.canvas?.elements || [];
+                    
+                    if (elements.length === 0) {
+                      // Fallback to generic layout if no template elements
+                      return (
+                        <>
+                          <div className="absolute left-2 top-1 text-xs leading-tight">
+                            <div className="truncate max-w-[95%]" title={editableLabel.title}>{editableLabel.title}</div>
+                          </div>
+                          <div className="absolute left-2 top-6 text-xs">
+                            <span className="opacity-80">{editableLabel.lot}</span>
+                          </div>
+                          <div className="absolute right-2 top-6 text-xs font-medium">
+                            {editableLabel.price}
+                          </div>
+                          <div className="absolute left-2 right-2 bottom-1">
+                            <BarcodeLabel value={editableLabel.barcode} showPrintButton={false} />
+                          </div>
+                        </>
+                      );
+                    }
+                    
+                    // Render based on template elements
+                    return elements.map((element: any) => {
+                      const style = {
+                        position: 'absolute' as const,
+                        left: `${(element.x / 384) * 100}%`,
+                        top: `${(element.y / 192) * 100}%`,
+                        width: `${(element.width / 384) * 100}%`,
+                        height: `${(element.height / 192) * 100}%`,
+                        fontSize: `${Math.max(element.fontSize * 0.8, 10)}px`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        overflow: 'hidden'
+                      };
+                      
+                      const getFieldValue = (field: string) => {
+                        switch (field) {
+                          case 'subject': return editableLabel.title;
+                          case 'price': return editableLabel.price;
+                          case 'sku': return editableLabel.sku || editableLabel.barcode;
+                          case 'variant': return editableLabel.condition || 'Raw';
+                          default: return '';
+                        }
+                      };
+                      
+                      if (element.type === 'barcode') {
+                        return (
+                          <div key={element.id} style={style}>
+                            <BarcodeLabel value={getFieldValue(element.field)} showPrintButton={false} />
+                          </div>
+                        );
+                      }
+                      
+                      return (
+                        <div 
+                          key={element.id} 
+                          style={style}
+                          className="truncate text-foreground"
+                          title={getFieldValue(element.field)}
+                        >
+                          {getFieldValue(element.field)}
+                        </div>
+                      );
+                    });
+                  })()}
                 </div>
               </div>
               
