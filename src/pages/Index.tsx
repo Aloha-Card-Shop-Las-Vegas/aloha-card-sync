@@ -254,11 +254,9 @@ const Index = () => {
   useEffect(() => {
     const loadData = async () => {
       const { data, error } = await supabase
-        .from('card_inventory')
-        .select(`
-          *,
-          game:games(name, category:categories(name))
-        `)
+        .from('intake_items')
+        .select('*')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -268,24 +266,24 @@ const Index = () => {
 
       const mapped = data?.map((row: any) => ({
         id: row.id,
-        title: row.title || "",
-        set: row.set || "",
-        player: row.player || "",
+        title: row.subject || "",
+        set: row.category || "",
+        player: row.subject || "", 
         year: row.year?.toString() || "",
         grade: row.grade || "",
-        psaCert: row.psa_cert_number || "",
-        price: row.price || "",
+        psaCert: row.psa_cert || "",
+        price: row.price?.toString() || "",
         lot: row.lot_number || "",
         sku: row.sku || "",
-        cost: row.cost || "",
+        cost: row.cost?.toString() || "",
         brandTitle: row.brand_title || "",
         subject: row.subject || "",
-        category: row.game?.category?.name || "",
+        category: row.category || "",
         variant: row.variant || "",
-        labelType: row.label_type || "",
+        labelType: "graded",
         cardNumber: row.card_number || "",
         quantity: row.quantity || 1,
-        condition: row.condition || "",
+        condition: "Near Mint",
         printedAt: row.printed_at,
         pushedAt: row.pushed_at,
       })) || [];
@@ -307,12 +305,11 @@ const Index = () => {
 
     const loadGames = async () => {
       const { data, error } = await supabase
-        .from('games')
+        .from('groups')
         .select(`
           id,
           name,
-          category_id,
-          category:categories(name)
+          category_id
         `)
         .order('name');
       
@@ -321,7 +318,7 @@ const Index = () => {
           id: g.id,
           name: g.name,
           categoryId: g.category_id,
-          categoryName: g.category?.name || null
+          categoryName: null
         }));
         setGames(gameOptions);
       }
@@ -428,7 +425,8 @@ const Index = () => {
           title,
           lot: item.lot || '',
           price: item.price || '',
-          barcode: item.sku || item.id || 'NO-SKU'
+          barcode: item.sku || item.id || 'NO-SKU',
+          tspl: '' // Add empty tspl for now
         });
       }
       
@@ -620,17 +618,17 @@ const Index = () => {
     
     try {
       const { error } = await supabase
-        .from('card_inventory')
+        .from('intake_items')
         .update({
-          year: editYear ? parseInt(editYear) : null,
+          year: editYear,
           brand_title: editBrandTitle,
           subject: editSubject,
           variant: editVariant,
           card_number: editCardNumber,
           grade: editGrade,
-          psa_cert_number: editPsaCert,
-          price: editPrice,
-          cost: editCost,
+          psa_cert: editPsaCert,
+          price: editPrice ? parseFloat(editPrice) : null,
+          cost: editCost ? parseFloat(editCost) : null,
           quantity: editQty,
           sku: editSku,
         })
@@ -669,8 +667,8 @@ const Index = () => {
   const deleteFromBatch = async (id: string) => {
     try {
       const { error } = await supabase
-        .from('card_inventory')
-        .delete()
+        .from('intake_items')
+        .update({ deleted_at: new Date().toISOString(), deleted_reason: 'Manual deletion' })
         .eq('id', id);
       
       if (error) throw error;
@@ -778,7 +776,7 @@ const Index = () => {
                   <Button onClick={addToBatch} className="w-full">Add to Batch</Button>
                 </>
               ) : (
-                <RawIntake onAddToBatch={(newItem) => {
+                <RawIntake onAdded={(newItem) => {
                   setBatch(prev => [newItem, ...prev]);
                   toast.success("Added to batch");
                 }} />
