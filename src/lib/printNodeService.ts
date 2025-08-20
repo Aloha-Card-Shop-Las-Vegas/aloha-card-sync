@@ -111,6 +111,40 @@ class PrintNodeService {
     }
   }
 
+  async printRAW(
+    rawText: string,
+    printerId: number,
+    options: PrintJobOptions = {}
+  ): Promise<PrintJobResult> {
+    try {
+      const rawBase64 = btoa(rawText);
+      const printJob = {
+        printerId,
+        title: options.title || 'Label RAW',
+        contentType: 'raw_base64',
+        content: rawBase64,
+        source: 'web-app',
+        qty: options.copies || 1
+      };
+
+      const result = await this.makeRequest<PrintNodeJob>('/printjobs', {
+        method: 'POST',
+        body: JSON.stringify(printJob),
+      });
+
+      return {
+        jobId: result.id,
+        success: true
+      };
+    } catch (error) {
+      return {
+        jobId: -1,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
   async getJobStatus(jobId: number): Promise<PrintNodeJob> {
     return this.makeRequest<PrintNodeJob>(`/printjobs/${jobId}`);
   }

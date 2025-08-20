@@ -654,7 +654,7 @@ const Index = () => {
     };
   }
 
-  // PrintNode printing using database templates with Fabric canvas rendering
+  // PrintNode RAW printing using TSPL/ZPL
   const printNodeLabels = async (items: CardItem[]): Promise<boolean> => {
     if (!selectedPrinterId) {
       toast.error('No PrintNode printer selected');
@@ -662,78 +662,79 @@ const Index = () => {
     }
 
     try {
-      // Load the default template from database
-      const { data: templates, error } = await supabase
-        .from('label_templates')
-        .select('*')
-        .eq('is_default', true)
-        .limit(1);
-
-      if (error) {
-        console.error('Failed to load template:', error);
-        toast.error('Failed to load label template');
-        return false;
-      }
-
-      const template = templates?.[0];
-      if (!template) {
-        toast.error('No default template found. Please set a default template in Label Designer.');
-        return false;
-      }
-
-      const { jsPDF } = await import('jspdf');
-      const { Canvas: FabricCanvas } = await import('fabric');
+      // Get printer info to determine language
+      const printers = await printNodeService.getPrinters();
+      const printer = printers.find(p => p.id === selectedPrinterId);
+      const isZebra = printer?.name.toLowerCase().includes('zebra') || 
+                     printer?.description.toLowerCase().includes('zebra');
+      const printerLang = isZebra ? 'ZPL' : 'TSPL';
       
-      // Create multi-page PDF with one label per page (2x1 labels)
-      const doc = new jsPDF({ orientation: 'landscape', unit: 'in', format: [2, 1] });
-
-      let isFirstPage = true;
-      let validItems = 0;
-
+      console.log(`=== SENDING TO PRINTNODE ===`);
+      console.log(`Printer: ${printer?.name} (ID: ${selectedPrinterId})`);
+      console.log(`Language: ${printerLang}`);
+      console.log(`Items: ${items.length}`);
+      
+      let successCount = 0;
+      
       for (const item of items) {
         if (!item.id) continue;
-
-        if (!isFirstPage) {
-          doc.addPage();
+        
+        const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+        
+        try {
+          // Call edge function to render label
+          const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+            body: {
+              title,
+              lot_number: item.lot,
+              price: item.price?.toString(),
+              grade: item.grade,
+              sku: item.sku,
+              id: item.id,
+              printerLang
+            }
+          });
+          
+          if (error) {
+            console.error('Label render error:', error);
+            toast.error(`Failed to render label for ${title}`);
+            continue;
+          }
+          
+          const { program, correlationId } = labelData;
+          const barcodeValue = item.sku || item.id || 'NO-SKU';
+          
+          console.log(`CorrelationId: ${correlationId}`);
+          console.log(`Barcode: ${barcodeValue}`);
+          console.log(`Pages: 1`);
+          
+          // Send to PrintNode
+          const result = await printNodeService.printRAW(program, selectedPrinterId, {
+            title: `Label RAW · ${correlationId}`,
+            copies: 1
+          });
+          
+          if (result.success) {
+            console.log(`PrintNode Response: Job ID ${result.jobId}`);
+            successCount++;
+          } else {
+            console.error(`PrintNode Error:`, result.error);
+            toast.error(`Print failed: ${title}`);
+          }
+          
+        } catch (itemError) {
+          console.error(`Error processing item ${item.id}:`, itemError);
+          toast.error(`Error printing: ${title}`);
         }
-        isFirstPage = false;
-        validItems++;
-
-        // Use offscreen Fabric canvas for proper template rendering
-        await renderLabelWithFabric(doc, template, item);
       }
-
-      if (validItems === 0) {
-        toast.error("No valid items to print");
+      
+      if (successCount > 0) {
+        toast.success(`Printed ${successCount} label(s)`);
+        return true;
+      } else {
         return false;
       }
-
-      // Guard against double export/POST with once()
-      const finishAndSend = once(async () => {
-        const pdfBlob = doc.output('blob');
-        const reader = new FileReader();
-        
-        return new Promise<boolean>((resolve) => {
-          reader.onload = async () => {
-            try {
-              const base64 = (reader.result as string).split(',')[1];
-              await printNodeService.printPDF(base64, selectedPrinterId!, {
-                title: `Label Print ${new Date().toLocaleTimeString()}`,
-                copies: 1
-              });
-              resolve(true);
-            } catch (e) {
-              console.error('PrintNode error:', e);
-              toast.error('PrintNode request failed');
-              resolve(false);
-            }
-          };
-          reader.readAsDataURL(pdfBlob);
-        });
-      });
-
-      const ok = await finishAndSend();
-      return !!ok;
+      
     } catch (e) {
       console.error(e);
       toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
@@ -741,162 +742,7 @@ const Index = () => {
     }
   };
 
-  // Helper function to render label using offscreen Fabric canvas
-  const renderLabelWithFabric = async (doc: any, template: any, item: CardItem) => {
-    try {
-      const canvasData = template.canvas;
-      if (!canvasData) {
-        console.warn('Template missing canvas data, using fallback');
-        await drawSimpleFallback(doc, item);
-        return;
-      }
-
-      const { Canvas: FabricCanvas } = await import('fabric');
-      
-      // Create offscreen canvas with label dimensions (2x1 inch at 203 DPI)
-      const offscreenCanvas = document.createElement('canvas');
-      offscreenCanvas.width = 406; // 2 inches * 203 DPI
-      offscreenCanvas.height = 203; // 1 inch * 203 DPI
-      
-      const fabricCanvas = new FabricCanvas(offscreenCanvas, {
-        width: 406,
-        height: 203,
-        backgroundColor: '#ffffff'
-      });
-
-      // Load template data into canvas
-      await new Promise<void>((resolve, reject) => {
-        fabricCanvas.loadFromJSON(canvasData, async () => {
-          try {
-            // Process all objects to replace variables and generate barcodes
-            const objects = fabricCanvas.getObjects();
-            
-            for (const obj of objects) {
-              // Skip border or excluded objects
-              if ((obj as any).excludeFromExport || (obj as any).name === 'border') {
-                obj.visible = false;
-                continue;
-              }
-
-              // Handle text objects with variable replacement
-              if (obj.type === 'textbox' || obj.type === 'text') {
-                let text = (obj as any).text || '';
-                
-                // Replace template variables with actual item data
-                text = text.replace(/\{title\}/g, item.title || '');
-                text = text.replace(/\{price\}/g, item.price ? `$${item.price}` : '');
-                text = text.replace(/\{sku\}/g, item.sku || '');
-                text = text.replace(/\{lot\}/g, item.lot || '');
-                text = text.replace(/\{grade\}/g, item.grade || '');
-                text = text.replace(/\{condition\}/g, item.grade || '');
-                
-                (obj as any).text = text;
-              }
-              
-              // Handle barcode images
-              else if (obj.type === 'image' && (obj as any).meta?.type === 'barcode') {
-                const barcodeData = item.sku || item.id || 'NO-SKU';
-                const barcodeImage = await generateBarcodeImage(barcodeData, obj.width || 100, obj.height || 50);
-                (obj as any).setSrc(barcodeImage, () => {
-                  fabricCanvas.renderAll();
-                });
-              }
-            }
-            
-            fabricCanvas.renderAll();
-            
-            // Wait a moment for rendering to complete
-            setTimeout(() => {
-              // Convert canvas to image and add to PDF
-              const imageData = fabricCanvas.toDataURL({
-                format: 'png',
-                quality: 1,
-                multiplier: 1
-              });
-              
-              // Add image to PDF (2x1 inch)
-              doc.addImage(imageData, 'PNG', 0, 0, 2, 1);
-              
-              fabricCanvas.dispose();
-              resolve();
-            }, 100);
-            
-          } catch (error) {
-            console.error('Error processing template objects:', error);
-            reject(error);
-          }
-        });
-      });
-
-    } catch (error) {
-      console.error('Fabric rendering error:', error);
-      await drawSimpleFallback(doc, item);
-    }
-  };
-
-  // Helper to generate barcode image
-  const generateBarcodeImage = async (data: string, width: number, height: number): Promise<string> => {
-    const JsBarcode: any = (await import("jsbarcode")).default;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-
-    JsBarcode(canvas, data, {
-      format: "CODE128",
-      displayValue: false,
-      width: 1,
-      height: height * 0.8,
-      margin: 2,
-    });
-
-    return canvas.toDataURL("image/png");
-  };
-
-  // Helper to add barcode at specific position
-  const addBarcodeToPosition = async (doc: any, data: string, x: number, y: number, width: number, height: number) => {
-    const JsBarcode: any = (await import("jsbarcode")).default;
-    const canvas = document.createElement("canvas");
-    canvas.width = width * 203; // Convert back to pixels for canvas
-    canvas.height = height * 203;
-
-    JsBarcode(canvas, data, {
-      format: "CODE128",
-      displayValue: false,
-      width: 1,
-      height: canvas.height * 0.8,
-      margin: 2,
-    });
-
-    const imgData = canvas.toDataURL("image/png");
-    doc.addImage(imgData, "PNG", x, y, width, height);
-  };
-
-  // Simple fallback if template is missing or corrupted
-  const drawSimpleFallback = async (doc: any, item: CardItem) => {
-    // Title
-    if (item.title) {
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
-      doc.text(item.title.substring(0, 25), 0.05, 0.15);
-    }
-    
-    // Price
-    if (item.price) {
-      doc.setFontSize(12);
-      doc.text(`$${item.price}`, 1.5, 0.15, { align: 'right' });
-    }
-    
-    // SKU/LOT
-    doc.setFontSize(6);
-    let details = '';
-    if (item.sku) details += `SKU: ${item.sku}`;
-    if (item.lot) details += (details ? ' | ' : '') + `LOT: ${item.lot}`;
-    if (details) doc.text(details, 0.05, 0.3);
-    
-    // Barcode
-    const barcodeData = item.sku || item.id || 'NO-SKU';
-    await addBarcodeToPosition(doc, barcodeData, 1.2, 0.5, 0.75, 0.4);
-  };
+  // Legacy Fabric/PDF code removed - now using TSPL/ZPL RAW printing
 
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
