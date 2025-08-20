@@ -72,43 +72,48 @@ export class LabelPdfGenerator {
   private static async renderDefaultLayout(pdf: jsPDF, data: LabelData): Promise<void> {
     const isGraded = data.grade && data.grade !== '';
     
-    // Title (top, larger font)
-    pdf.setFontSize(12);
+    // Title - centered at top with proper wrapping
+    pdf.setFontSize(10);
     pdf.setFont('helvetica', 'bold');
     const titleLines = this.wrapText(pdf, data.title, this.LABEL_WIDTH_MM - 10);
-    let yPos = 15;
+    let yPos = 12;
     titleLines.forEach(line => {
       pdf.text(line, this.LABEL_WIDTH_MM / 2, yPos, { align: 'center' });
-      yPos += 5;
+      yPos += 4;
     });
 
-    // Lot number (left side)
-    pdf.setFontSize(10);
+    // Add some space after title
+    yPos += 3;
+
+    // LOT and Price on same line
+    pdf.setFontSize(8);
     pdf.setFont('helvetica', 'normal');
-    pdf.text(`LOT: ${data.lot}`, 5, yPos + 8);
-
-    // Price (right side)
+    pdf.text(`LOT: ${data.lot}`, 8, yPos);
+    
     if (data.price) {
-      pdf.setFontSize(14);
-      pdf.setFont('helvetica', 'bold');
-      pdf.text(data.price, this.LABEL_WIDTH_MM - 5, yPos + 8, { align: 'right' });
-    }
-
-    // Grade (if present)
-    if (isGraded) {
       pdf.setFontSize(12);
       pdf.setFont('helvetica', 'bold');
-      pdf.text(`Grade: ${data.grade}`, this.LABEL_WIDTH_MM / 2, yPos + 15, { align: 'center' });
+      pdf.text(data.price, this.LABEL_WIDTH_MM - 8, yPos, { align: 'right' });
     }
 
-    // Condition (if present and not graded)
-    if (data.condition && !isGraded) {
-      pdf.setFontSize(10);
-      pdf.text(`Condition: ${this.abbreviateCondition(data.condition)}`, 5, yPos + 20);
+    yPos += 8;
+
+    // Grade or Condition
+    pdf.setFontSize(9);
+    pdf.setFont('helvetica', 'normal');
+    if (isGraded && data.grade) {
+      pdf.text(`Grade: ${data.grade}`, 8, yPos);
+    } else if (data.condition) {
+      pdf.text(`Condition: ${this.abbreviateCondition(data.condition)}`, 8, yPos);
     }
 
-    // Barcode (bottom center)
-    await this.renderBarcode(pdf, data.barcode, this.LABEL_WIDTH_MM / 2 - 20, this.LABEL_HEIGHT_MM - 20, 40, 10);
+    // Barcode at bottom - properly sized and positioned
+    const barcodeY = this.LABEL_HEIGHT_MM - 20;
+    const barcodeWidth = 50;
+    const barcodeHeight = 12;
+    const barcodeX = (this.LABEL_WIDTH_MM - barcodeWidth) / 2;
+    
+    await this.renderBarcode(pdf, data.barcode, barcodeX, barcodeY, barcodeWidth, barcodeHeight);
   }
 
   private static async renderTextElement(pdf: jsPDF, element: TemplateElement, data: LabelData): Promise<void> {
@@ -165,18 +170,32 @@ export class LabelPdfGenerator {
     return new Promise((resolve) => {
       // Create canvas for barcode generation
       const canvas = document.createElement('canvas');
-      JsBarcode(canvas, text, {
-        format: 'CODE128',
-        width: 2,
-        height: 40,
-        displayValue: true,
-        fontSize: 10,
-        margin: 0
-      });
+      canvas.width = 400; // Higher resolution for better quality
+      canvas.height = 80;
+      
+      try {
+        JsBarcode(canvas, text, {
+          format: 'CODE128',
+          width: 2,
+          height: 50,
+          displayValue: true,
+          fontSize: 12,
+          margin: 5,
+          background: '#ffffff',
+          lineColor: '#000000'
+        });
 
-      // Add barcode image to PDF
-      const imgData = canvas.toDataURL('image/png');
-      pdf.addImage(imgData, 'PNG', x, y, width, height);
+        // Add barcode image to PDF
+        const imgData = canvas.toDataURL('image/png');
+        pdf.addImage(imgData, 'PNG', x, y, width, height);
+      } catch (error) {
+        console.error('Barcode generation failed:', error);
+        // Fallback: just print the text
+        pdf.setFontSize(8);
+        pdf.setFont('helvetica', 'normal');
+        pdf.text(text, x + width/2, y + height/2, { align: 'center' });
+      }
+      
       resolve();
     });
   }
