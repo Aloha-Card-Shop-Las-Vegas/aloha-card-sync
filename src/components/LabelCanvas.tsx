@@ -28,6 +28,7 @@ interface LabelCanvasProps {
   lot: string;
   price: string;
   condition: string;
+  grade?: string;
   selectedFontFamily: string;
   onCanvasReady: (canvas: FabricCanvas) => void;
 }
@@ -37,7 +38,8 @@ export const LabelCanvas = ({
   title, 
   lot, 
   price, 
-  condition, 
+  condition,
+  grade,
   selectedFontFamily,
   onCanvasReady 
 }: LabelCanvasProps) => {
@@ -218,6 +220,7 @@ export const LabelCanvas = ({
         <Button onClick={() => addText(condMap[condition] || condition)}>Add Condition</Button>
         <Button onClick={() => addText(lot)}>Add Lot</Button>
         <Button onClick={() => addText(price)}>Add Price</Button>
+        {grade && <Button onClick={() => addText(`Grade: ${grade}`)}>Add Grade</Button>}
         <Button variant="outline" onClick={addBarcode}>Add Barcode</Button>
         <Button variant="outline" onClick={addVerticalLine}>Add Line</Button>
         <Button variant="outline" onClick={deleteSelected}>Delete Selected</Button>

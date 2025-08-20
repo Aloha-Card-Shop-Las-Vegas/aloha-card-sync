@@ -44,6 +44,14 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
   const [currentTspl, setCurrentTspl] = useState(initialTspl);
   const [templateName, setTemplateName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  
+  // Local state for editing label data
+  const [editableLabel, setEditableLabel] = useState(label);
+
+  // Update editable label when prop changes
+  useEffect(() => {
+    setEditableLabel(label);
+  }, [label]);
 
   // Load templates when dialog opens
   useEffect(() => {
@@ -211,21 +219,21 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                   aria-label="Label preview (approximate)"
                 >
                   <div className="absolute left-2 top-1 text-xs leading-tight">
-                    <div className="truncate max-w-[95%]" title={label.title}>{label.title}</div>
+                    <div className="truncate max-w-[95%]" title={editableLabel.title}>{editableLabel.title}</div>
                   </div>
                   <div className="absolute left-2 top-6 text-xs">
-                    <span className="opacity-80">{label.lot}</span>
+                    <span className="opacity-80">{editableLabel.lot}</span>
                   </div>
-                  {label.grade && (
+                  {editableLabel.grade && (
                     <div className="absolute left-2 top-10 text-xs font-semibold text-blue-600">
-                      Grade: {label.grade}
+                      Grade: {editableLabel.grade}
                     </div>
                   )}
                   <div className="absolute right-2 top-6 text-xs font-medium">
-                    {label.price}
+                    {editableLabel.price}
                   </div>
                   <div className="absolute left-2 right-2 bottom-1 text-center">
-                    <div className="text-xs font-mono">{label.barcode}</div>
+                    <div className="text-xs font-mono">{editableLabel.barcode}</div>
                     <div className="text-xs opacity-60">QR/Barcode</div>
                   </div>
                 </div>
@@ -234,15 +242,69 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
               {/* Template Editor (conditionally shown) */}
               {isEditing && (
                 <div className="space-y-4">
+                  {/* Label Data Editor */}
+                  <div className="space-y-3 p-4 border rounded-lg bg-muted/50">
+                    <Label className="text-sm font-medium">Label Data</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label htmlFor="edit-title" className="text-xs">Title</Label>
+                        <Input
+                          id="edit-title"
+                          value={editableLabel.title}
+                          onChange={(e) => setEditableLabel(prev => ({ ...prev, title: e.target.value }))}
+                          className="text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="edit-lot" className="text-xs">Lot</Label>
+                        <Input
+                          id="edit-lot"
+                          value={editableLabel.lot}
+                          onChange={(e) => setEditableLabel(prev => ({ ...prev, lot: e.target.value }))}
+                          className="text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="edit-price" className="text-xs">Price</Label>
+                        <Input
+                          id="edit-price"
+                          value={editableLabel.price}
+                          onChange={(e) => setEditableLabel(prev => ({ ...prev, price: e.target.value }))}
+                          className="text-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="edit-grade" className="text-xs">Grade</Label>
+                        <Input
+                          id="edit-grade"
+                          value={editableLabel.grade || ""}
+                          onChange={(e) => setEditableLabel(prev => ({ ...prev, grade: e.target.value }))}
+                          placeholder="e.g., PSA 10, BGS 9.5"
+                          className="text-xs"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <Label htmlFor="edit-barcode" className="text-xs">Barcode</Label>
+                        <Input
+                          id="edit-barcode"
+                          value={editableLabel.barcode}
+                          onChange={(e) => setEditableLabel(prev => ({ ...prev, barcode: e.target.value }))}
+                          className="text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  
                   <div>
                     <Label>Template Editor</Label>
                     <div className="border rounded-lg p-4 bg-background">
                       <LabelCanvas
-                        barcodeValue={label.barcode}
-                        title={label.title}
-                        lot={label.lot}
-                        price={label.price}
-                        condition={label.condition || 'Near Mint'}
+                        barcodeValue={editableLabel.barcode}
+                        title={editableLabel.title}
+                        lot={editableLabel.lot}
+                        price={editableLabel.price}
+                        grade={editableLabel.grade}
+                        condition={editableLabel.condition || 'Near Mint'}
                         selectedFontFamily="Arial"
                         onCanvasReady={handleCanvasReady}
                       />
