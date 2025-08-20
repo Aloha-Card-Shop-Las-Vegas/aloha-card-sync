@@ -168,7 +168,8 @@ function renderTemplateToTSPL(template: any, data: {
               text = data.title; // fallback to title
               break;
             case 'variant':
-              text = data.grade; // fallback to grade
+              // Use grade as fallback if variant is empty, or show "Raw" as default
+              text = data.grade || 'Raw';
               break;
             case 'card_number':
               text = ''; // not provided in current data
@@ -187,14 +188,17 @@ function renderTemplateToTSPL(template: any, data: {
           }
         }
         
+        console.log(`Processing element ${element.id}: field=${element.field}, text="${text}"`);
+        
         if (element.type === 'barcode') {
           // Render as barcode
           const barcodeHeight = Math.max(30, height);
           commands.push(`BARCODE ${x},${y},"128",${barcodeHeight},1,0,2,2,"${sanitize(text || data.barcode)}"`);
         } else {
-          // Render as text
-          if (text) {
-            commands.push(`TEXT ${x},${y},"FONT001",0,${fontSize},${fontSize},"${sanitize(text)}"`);
+          // Render as text - always render even if empty, but with placeholder
+          const displayText = text || (element.field ? `[${element.field}]` : '');
+          if (displayText) {
+            commands.push(`TEXT ${x},${y},"FONT001",0,${fontSize},${fontSize},"${sanitize(displayText)}"`);
           }
         }
       });
