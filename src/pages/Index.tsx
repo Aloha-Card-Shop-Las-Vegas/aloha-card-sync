@@ -259,6 +259,7 @@ const Index = () => {
           category: row.category || "",
           variant: row.variant || "",
           cardNumber: row.card_number || "",
+          quantity: row.quantity || 1,
           id: row.id,
           printedAt: row.printed_at || null,
           pushedAt: row.pushed_at || null,
@@ -380,6 +381,7 @@ const Index = () => {
         category: row.category || "",
         variant: row.variant || "",
         cardNumber: row.card_number || "",
+        quantity: row.quantity || 1,
         id: row.id,
         printedAt: row.printed_at || null,
         pushedAt: row.pushed_at || null,
@@ -406,6 +408,108 @@ const Index = () => {
       window.removeEventListener("intake:item-added", handler);
     };
   }, []);
+
+  // Add Realtime subscription as backup for intake_items inserts
+  useEffect(() => {
+    console.log("Setting up Realtime subscription for intake_items");
+    const channel = supabase
+      .channel('intake_items_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'intake_items'
+        },
+        (payload) => {
+          console.log('Realtime INSERT received:', payload);
+          const row = payload.new;
+          if (!row) return;
+          
+          const next: CardItem = {
+            title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
+            set: "",
+            year: row.year || "",
+            grade: row.grade || "",
+            psaCert: row.psa_cert || "",
+            price: row?.price != null ? String(row.price) : "",
+            cost: row?.cost != null ? String(row.cost) : "",
+            lot: row.lot_number || "",
+            sku: row.sku || "",
+            brandTitle: row.brand_title || "",
+            subject: row.subject || "",
+            category: row.category || "",
+            variant: row.variant || "",
+            cardNumber: row.card_number || "",
+            quantity: row.quantity || 1,
+            id: row.id,
+            printedAt: row.printed_at || null,
+            pushedAt: row.pushed_at || null,
+          };
+          
+          console.log('Adding realtime item to batch:', next);
+          if (!next.pushedAt) {
+            setBatch((b) => {
+              // Check if item already exists to avoid duplicates
+              const exists = b.find(item => item.id === next.id);
+              if (exists) {
+                console.log('Item already in batch, skipping');
+                return b;
+              }
+              console.log('Adding new item to batch via realtime');
+              return [next, ...b];
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('Removing Realtime subscription');
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const refreshBatch = async () => {
+    console.log("Manually refreshing batch");
+    try {
+      const { data, error } = await supabase
+        .from("intake_items")
+        .select("*")
+        .is("deleted_at", null)
+        .is("pushed_at", null)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+
+      const mapped: CardItem[] = (data || []).map((row: any) => ({
+        title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
+        set: "",
+        year: row.year || "",
+        grade: row.grade || "",
+        psaCert: row.psa_cert || "",
+        price: row?.price != null ? String(row.price) : "",
+        cost: row?.cost != null ? String(row.cost) : "",
+        lot: row.lot_number || "",
+        sku: row.sku || "",
+        brandTitle: row.brand_title || "",
+        subject: row.subject || "",
+        category: row.category || "",
+        variant: row.variant || "",
+        cardNumber: row.card_number || "",
+        quantity: row.quantity || 1,
+        id: row.id,
+        printedAt: row.printed_at || null,
+        pushedAt: row.pushed_at || null,
+      }));
+
+      setBatch(mapped);
+      toast.success(`Refreshed batch - ${mapped.length} items`);
+    } catch (error) {
+      console.error('Failed to refresh batch:', error);
+      toast.error('Failed to refresh batch');
+    }
+  };
 
   const addToBatch = async () => {
     if (!item.psaCert) {
@@ -461,6 +565,7 @@ const Index = () => {
         variant: data?.variant || "",
         labelType: item.labelType || "",
         cardNumber: data?.card_number || "",
+        quantity: data?.quantity || item.quantity || 1,
         id: data?.id,
         printedAt: data?.printed_at || null,
         pushedAt: data?.pushed_at || null,
@@ -1216,6 +1321,9 @@ const Index = () => {
               <div className="flex items-center justify-between gap-3">
                 <CardTitle>Batch Queue ({batch.length})</CardTitle>
                 <div className="flex flex-wrap gap-2">
+                  <Button variant="secondary" size="sm" onClick={refreshBatch}>
+                    Refresh
+                  </Button>
                   <Button variant="outline" onClick={handlePrintAll} disabled={jobInFlight || printingAll || batch.length === 0}>
                     {printingAll ? "Printing…" : "Print All"}
                   </Button>
