@@ -103,7 +103,7 @@ function renderTemplateToTSPL(template: any, data: {
 }): string {
   try {
     const canvas = template.canvas;
-    if (!canvas || !canvas.objects) {
+    if (!canvas) {
       throw new Error('Invalid template canvas data');
     }
 
@@ -126,63 +126,143 @@ function renderTemplateToTSPL(template: any, data: {
     commands.push("DIRECTION 1");
     commands.push("CLS");
 
-    // Process canvas objects
-    canvas.objects.forEach((obj: any) => {
-      if (obj.excludeFromExport || obj.name === 'border') return;
-
-      // Text objects
-      if (obj.type === 'textbox' || obj.type === 'text') {
-        let text = obj.text || '';
-        
-        // Replace template variables with actual data
-        text = text.replace(/\{title\}/g, sanitize(data.title));
-        text = text.replace(/\{lot_number\}/g, sanitize(data.lot_number));
-        text = text.replace(/\{price\}/g, sanitize(formatPrice(data.price)));
-        text = text.replace(/\{grade\}/g, sanitize(data.grade));
-        text = text.replace(/\{sku\}/g, sanitize(data.sku));
-        text = text.replace(/\{barcode\}/g, sanitize(data.barcode));
-
-        const x = Math.round(obj.left || 0);
-        const y = Math.round(obj.top || 0);
-        const fontSize = Math.min(5, Math.max(1, Math.round((obj.fontSize || 12) / 6)));
-        const rotation = Math.round((obj.angle || 0) / 90) * 90;
-
-        commands.push(`TEXT ${x},${y},"FONT001",${rotation},${fontSize},${fontSize},"${text}"`);
-      }
+    // Check if we have new template elements format
+    if (canvas.elements && Array.isArray(canvas.elements)) {
+      console.log('Processing template elements:', canvas.elements.length);
       
-      // Rectangle/Line objects as bars
-      else if (obj.type === 'rect' || obj.type === 'line') {
-        const x = Math.round(obj.left || 0);
-        const y = Math.round(obj.top || 0);
-        const width = Math.round((obj.width || 1) * (obj.scaleX || 1));
-        const height = Math.round((obj.height || 1) * (obj.scaleY || 1));
+      // Process new template elements format
+      canvas.elements.forEach((element: any) => {
+        const x = Math.round(element.x || 0);
+        const y = Math.round(element.y || 0);
+        const width = Math.round(element.width || 100);
+        const height = Math.round(element.height || 20);
+        const fontSize = Math.min(5, Math.max(1, Math.round((element.fontSize || 12) / 6)));
         
-        commands.push(`BAR ${x},${y},${width},${height}`);
-      }
+        let text = '';
+        
+        // Get data based on element field mapping
+        if (element.type === 'text') {
+          text = element.text || '';
+        } else if (element.field) {
+          switch (element.field) {
+            case 'subject':
+            case 'title':
+              text = data.title;
+              break;
+            case 'lot_number':
+              text = data.lot_number;
+              break;
+            case 'price':
+              text = formatPrice(data.price);
+              break;
+            case 'grade':
+              text = data.grade;
+              break;
+            case 'sku':
+              text = data.sku;
+              break;
+            case 'barcode':
+              text = data.barcode;
+              break;
+            case 'brand_title':
+              text = data.title; // fallback to title
+              break;
+            case 'variant':
+              text = data.grade; // fallback to grade
+              break;
+            case 'card_number':
+              text = ''; // not provided in current data
+              break;
+            case 'year':
+              text = ''; // not provided in current data
+              break;
+            case 'quantity':
+              text = '1'; // default
+              break;
+            case 'created_at':
+              text = new Date().toLocaleDateString();
+              break;
+            default:
+              text = element.field;
+          }
+        }
+        
+        if (element.type === 'barcode') {
+          // Render as barcode
+          const barcodeHeight = Math.max(30, height);
+          commands.push(`BARCODE ${x},${y},"128",${barcodeHeight},1,0,2,2,"${sanitize(text || data.barcode)}"`);
+        } else {
+          // Render as text
+          if (text) {
+            commands.push(`TEXT ${x},${y},"FONT001",0,${fontSize},${fontSize},"${sanitize(text)}"`);
+          }
+        }
+      });
+    }
+    // Fallback to legacy Fabric.js objects format
+    else if (canvas.objects && Array.isArray(canvas.objects)) {
+      console.log('Processing legacy Fabric.js objects:', canvas.objects.length);
       
-      // Barcode objects
-      else if (obj.type === 'image' && obj.meta?.type === 'barcode') {
-        const x = Math.round(obj.left || 0);
-        const y = Math.round(obj.top || 0);
-        const height = Math.round(obj.height || 90);
+      // Process legacy canvas objects
+      canvas.objects.forEach((obj: any) => {
+        if (obj.excludeFromExport || obj.name === 'border') return;
+
+        // Text objects
+        if (obj.type === 'textbox' || obj.type === 'text') {
+          let text = obj.text || '';
+          
+          // Replace template variables with actual data
+          text = text.replace(/\{title\}/g, sanitize(data.title));
+          text = text.replace(/\{lot_number\}/g, sanitize(data.lot_number));
+          text = text.replace(/\{price\}/g, sanitize(formatPrice(data.price)));
+          text = text.replace(/\{grade\}/g, sanitize(data.grade));
+          text = text.replace(/\{sku\}/g, sanitize(data.sku));
+          text = text.replace(/\{barcode\}/g, sanitize(data.barcode));
+
+          const x = Math.round(obj.left || 0);
+          const y = Math.round(obj.top || 0);
+          const fontSize = Math.min(5, Math.max(1, Math.round((obj.fontSize || 12) / 6)));
+          const rotation = Math.round((obj.angle || 0) / 90) * 90;
+
+          commands.push(`TEXT ${x},${y},"FONT001",${rotation},${fontSize},${fontSize},"${text}"`);
+        }
         
-        commands.push(`BARCODE ${x},${y},"128",${height},1,0,2,2,"${sanitize(data.barcode)}"`);
-      }
-      
-      // QR Code objects  
-      else if (obj.type === 'image' && obj.meta?.type === 'qrcode') {
-        const x = Math.round(obj.left || 0);
-        const y = Math.round(obj.top || 0);
-        const size = obj.width <= 40 ? 3 : (obj.width <= 80 ? 4 : 6);
+        // Rectangle/Line objects as bars
+        else if (obj.type === 'rect' || obj.type === 'line') {
+          const x = Math.round(obj.left || 0);
+          const y = Math.round(obj.top || 0);
+          const width = Math.round((obj.width || 1) * (obj.scaleX || 1));
+          const height = Math.round((obj.height || 1) * (obj.scaleY || 1));
+          
+          commands.push(`BAR ${x},${y},${width},${height}`);
+        }
         
-        let qrData = obj.meta?.data || data.barcode;
-        // Replace template variables in QR data
-        qrData = qrData.replace(/\{barcode\}/g, data.barcode);
-        qrData = qrData.replace(/\{sku\}/g, data.sku);
+        // Barcode objects
+        else if (obj.type === 'image' && obj.meta?.type === 'barcode') {
+          const x = Math.round(obj.left || 0);
+          const y = Math.round(obj.top || 0);
+          const height = Math.round(obj.height || 90);
+          
+          commands.push(`BARCODE ${x},${y},"128",${height},1,0,2,2,"${sanitize(data.barcode)}"`);
+        }
         
-        commands.push(`QRCODE ${x},${y},M,${size},A,0,"${sanitize(qrData)}"`);
-      }
-    });
+        // QR Code objects  
+        else if (obj.type === 'image' && obj.meta?.type === 'qrcode') {
+          const x = Math.round(obj.left || 0);
+          const y = Math.round(obj.top || 0);
+          const size = obj.width <= 40 ? 3 : (obj.width <= 80 ? 4 : 6);
+          
+          let qrData = obj.meta?.data || data.barcode;
+          // Replace template variables in QR data
+          qrData = qrData.replace(/\{barcode\}/g, data.barcode);
+          qrData = qrData.replace(/\{sku\}/g, data.sku);
+          
+          commands.push(`QRCODE ${x},${y},M,${size},A,0,"${sanitize(qrData)}"`);
+        }
+      });
+    } else {
+      throw new Error('No valid template elements or objects found');
+    }
 
     commands.push("PRINT 1,1");
     
