@@ -19,7 +19,7 @@ serve(async (req: Request) => {
       );
     }
 
-    const { title, lot_number, price, grade, sku, id, template } = await req.json();
+    const { title, lot_number, price, grade, sku, id, template, condition, variant } = await req.json();
     const barcode = sku || id || "NO-SKU";
 
     let tspl: string;
@@ -34,7 +34,9 @@ serve(async (req: Request) => {
         price: price || "",
         grade: grade || "",
         sku: sku || "",
-        barcode: barcode
+        barcode: barcode,
+        condition: condition || "",
+        variant: variant || ""
       });
     } else {
       // Fallback to legacy fixed layout
@@ -92,6 +94,38 @@ serve(async (req: Request) => {
   }
 });
 
+// Condition abbreviation mapping
+const getConditionAbbr = (condition: string): string => {
+  const conditionMap: Record<string, string> = {
+    'Near Mint': 'NM',
+    'Lightly Played': 'LP', 
+    'Moderately Played': 'MP',
+    'Heavily Played': 'HP',
+    'Damaged': 'DMG',
+    'Poor': 'P'
+  };
+  return conditionMap[condition] || condition.slice(0, 3).toUpperCase();
+};
+
+// Auto-fitting text scale calculation
+const getOptimalTextScale = (text: string, elementWidth: number): number => {
+  if (!text || elementWidth <= 0) return 1;
+  
+  // TSPL FONT001 approximate character widths per scale (in dots at 203dpi)
+  const charWidths = { 1: 6, 2: 12, 3: 18, 4: 24, 5: 30 };
+  const padding = 4; // Small padding for margins
+  const availableWidth = elementWidth - padding;
+  
+  // Find largest scale that fits
+  for (let scale = 5; scale >= 1; scale--) {
+    const textWidth = text.length * charWidths[scale as keyof typeof charWidths];
+    if (textWidth <= availableWidth) {
+      return scale;
+    }
+  }
+  return 1; // Minimum scale as fallback
+};
+
 // Template-based TSPL renderer
 function renderTemplateToTSPL(template: any, data: {
   title: string;
@@ -100,6 +134,8 @@ function renderTemplateToTSPL(template: any, data: {
   grade: string;
   sku: string;
   barcode: string;
+  condition: string;
+  variant: string;
 }): string {
   try {
     const canvas = template.canvas;
@@ -136,7 +172,6 @@ function renderTemplateToTSPL(template: any, data: {
         const y = Math.round(element.y || 0);
         const width = Math.round(element.width || 100);
         const height = Math.round(element.height || 20);
-        const fontSize = Math.min(5, Math.max(1, Math.round((element.fontSize || 12) / 6)));
         
         let text = '';
         
@@ -167,9 +202,11 @@ function renderTemplateToTSPL(template: any, data: {
             case 'brand_title':
               text = data.title; // fallback to title
               break;
+            case 'condition':
+              text = getConditionAbbr(data.condition);
+              break;
             case 'variant':
-              // Use grade as fallback if variant is empty, or show "Raw" as default
-              text = data.grade || 'Raw';
+              text = data.variant || (data.grade ? 'Graded' : 'Raw');
               break;
             case 'card_number':
               text = ''; // not provided in current data
@@ -195,10 +232,11 @@ function renderTemplateToTSPL(template: any, data: {
           const barcodeHeight = Math.max(30, height);
           commands.push(`BARCODE ${x},${y},"128",${barcodeHeight},1,0,2,2,"${sanitize(text || data.barcode)}"`);
         } else {
-          // Render as text - always render even if empty, but with placeholder
+          // Render as text with auto-fitting scale
           const displayText = text || (element.field ? `[${element.field}]` : '');
           if (displayText) {
-            commands.push(`TEXT ${x},${y},"FONT001",0,${fontSize},${fontSize},"${sanitize(displayText)}"`);
+            const optimalScale = getOptimalTextScale(displayText, width);
+            commands.push(`TEXT ${x},${y},"FONT001",0,${optimalScale},${optimalScale},"${sanitize(displayText)}"`);
           }
         }
       });

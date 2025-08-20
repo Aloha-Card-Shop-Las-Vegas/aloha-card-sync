@@ -97,6 +97,8 @@ const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({
             grade: '', // Add grade extraction if needed
             sku: item.barcode,
             id: item.id,
+            condition: 'Near Mint', // Default condition
+            variant: 'Raw', // Default variant
             template: selectedTemplate
           }
         });

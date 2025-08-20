@@ -893,6 +893,8 @@ const Index = () => {
               grade: item.grade,
               sku: item.sku,
               id: item.id,
+              condition: item.condition || 'Near Mint',
+              variant: isGraded ? 'Graded' : 'Raw',
               template: template // Pass template data
             }
           });
@@ -963,6 +965,8 @@ const Index = () => {
           grade: b.grade,
           sku: b.sku,
           id: b.id,
+          condition: b.condition || 'Near Mint',
+          variant: isGraded ? 'Graded' : 'Raw',
           template: template // Pass template data
         }
       });
@@ -1116,6 +1120,8 @@ const Index = () => {
             grade: item.grade,
             sku: item.sku,
             id: item.id,
+            condition: item.condition || 'Near Mint',
+            variant: isGraded ? 'Graded' : 'Raw',
             template: template // Pass template data
           }
         });
@@ -1213,6 +1219,8 @@ const Index = () => {
             grade: item.grade,
             sku: item.sku,
             id: item.id,
+            condition: item.condition || 'Near Mint',
+            variant: isGraded ? 'Graded' : 'Raw',
             template: template
           }
         });
@@ -1292,6 +1300,8 @@ const Index = () => {
             grade: item.grade,
             sku: item.sku,
             id: item.id,
+            condition: item.condition || 'Near Mint',
+            variant: isGraded ? 'Graded' : 'Raw',
             template: template
           }
         });

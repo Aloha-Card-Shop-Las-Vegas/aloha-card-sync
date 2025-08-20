@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import BarcodeLabel from "@/components/BarcodeLabel";
+import { FitText } from "@/components/FitText";
 import { supabase } from "@/integrations/supabase/client";
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -93,6 +94,8 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     try {
       const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
       
+      const variant = editableLabel.grade || editableLabel.condition ? 'Graded' : 'Raw';
+      
       const { data: labelData, error } = await supabase.functions.invoke('render-label', {
         body: {
           title: editableLabel.title,
@@ -101,6 +104,8 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
           grade: editableLabel.grade,
           sku: editableLabel.sku,
           id: editableLabel.barcode,
+          condition: editableLabel.condition || 'Near Mint',
+          variant: variant,
           template: selectedTemplate
         }
       });
@@ -351,7 +356,8 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                           case 'subject': return editableLabel.title;
                           case 'price': return editableLabel.price;
                           case 'sku': return editableLabel.sku || editableLabel.barcode;
-                          case 'variant': return editableLabel.condition || 'Raw';
+                          case 'condition': return editableLabel.condition || 'Near Mint';
+                          case 'variant': return editableLabel.grade || editableLabel.condition ? 'Graded' : 'Raw';
                           default: return '';
                         }
                       };
@@ -364,14 +370,27 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                         );
                       }
                       
+                      const fieldValue = getFieldValue(element.field);
+                      const needsFitting = ['condition', 'price', 'subject'].includes(element.field);
+                      
+                      if (needsFitting) {
+                        return (
+                          <div key={element.id} style={style}>
+                            <FitText maxFontSize={Math.max(element.fontSize * 0.8, 10)} minFontSize={8}>
+                              {fieldValue}
+                            </FitText>
+                          </div>
+                        );
+                      }
+                      
                       return (
                         <div 
                           key={element.id} 
                           style={style}
                           className="truncate text-foreground"
-                          title={getFieldValue(element.field)}
+                          title={fieldValue}
                         >
-                          {getFieldValue(element.field)}
+                          {fieldValue}
                         </div>
                       );
                     });
