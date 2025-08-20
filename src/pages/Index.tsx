@@ -215,11 +215,20 @@ const Index = () => {
     "GEM MT 10",
   ];
 
-  // Persist printer selection
+  // Listen for printer setting changes from PrinterPanel
   useEffect(() => {
-    if (selectedPrinterId) {
-      localStorage.setItem('printnode-selected-printer', String(selectedPrinterId));
-    }
+    const handleStorageChange = () => {
+      const printerSettings = localStorage.getItem('printerSettings');
+      if (printerSettings) {
+        const parsed = JSON.parse(printerSettings);
+        if (parsed.selectedPrinterId && parsed.selectedPrinterId !== selectedPrinterId) {
+          setSelectedPrinterId(parsed.selectedPrinterId);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, [selectedPrinterId]);
 
   // StrictMode guards
@@ -277,11 +286,17 @@ const Index = () => {
         setPrinters(printerList);
         setPrintNodeConnected(true);
         
-        // Auto-select saved printer or first printer if available
-        const saved = localStorage.getItem('printnode-selected-printer');
-        if (saved && printerList.find(p => p.id === parseInt(saved))) {
-          setSelectedPrinterId(parseInt(saved));
-        } else if (printerList.length > 0) {
+        // Load printer selection from PrinterPanel's localStorage settings
+        const printerSettings = localStorage.getItem('printerSettings');
+        if (printerSettings) {
+          const parsed = JSON.parse(printerSettings);
+          if (parsed.selectedPrinterId && printerList.find(p => p.id === parsed.selectedPrinterId)) {
+            setSelectedPrinterId(parsed.selectedPrinterId);
+          }
+        }
+        
+        // Fallback: Auto-select first printer if no saved selection
+        if (!selectedPrinterId && printerList.length > 0) {
           setSelectedPrinterId(printerList[0].id);
         }
         
@@ -1032,9 +1047,9 @@ const Index = () => {
         lot: previewLabel?.lot || '',
         price: previewLabel?.price || '',
         barcode: previewLabel?.barcode || '',
-        sku: previewLabel?.sku || previewLabel?.barcode || '',
-        condition: previewLabel?.condition || 'Near Mint',
-        grade: previewLabel?.grade || ''
+        sku: (previewLabel as any)?.sku || previewLabel?.barcode || '',
+        condition: (previewLabel as any)?.condition || 'Near Mint',
+        grade: (previewLabel as any)?.grade || ''
       };
       
       const { LabelPdfGenerator } = await import('@/lib/labelPdf');

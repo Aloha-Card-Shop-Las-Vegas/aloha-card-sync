@@ -53,20 +53,41 @@ export function PrinterPanel() {
 
   const loadPrinterSettings = async () => {
     try {
-      const id = crypto.randomUUID().substring(0, 8);
+      // Use the same workstation ID generation as printerService
+      const { generateWorkstationId } = await import('@/lib/printerService');
+      const id = generateWorkstationId();
       setWorkstationId(id);
       
+      // Load from localStorage first for immediate UI update
+      const localSettings = localStorage.getItem('printerSettings');
+      if (localSettings) {
+        const parsed = JSON.parse(localSettings);
+        if (parsed.selectedPrinterId) {
+          const printerId = parseInt(parsed.selectedPrinterId);
+          setSelectedPrinter({ id: printerId, name: parsed.printerName || 'Unknown' });
+        }
+      }
+      
+      // Then load from Supabase
       const { data: settings } = await supabase
         .from('printer_settings')
         .select('*')
         .eq('workstation_id', id)
         .single();
         
-      if (settings && settings.selected_printer_id && settings.selected_printer_name) {
+      if (settings && settings.selected_printer_id) {
+        const printerId = settings.selected_printer_id;
         setSelectedPrinter({
-          id: settings.selected_printer_id,
-          name: settings.selected_printer_name
+          id: printerId,
+          name: settings.selected_printer_name || 'Unknown'
         });
+        
+        // Update localStorage with Supabase data
+        localStorage.setItem('printerSettings', JSON.stringify({
+          workstationId: id,
+          selectedPrinterId: printerId,
+          printerName: settings.selected_printer_name
+        }));
       }
     } catch (error) {
       console.error('Failed to load printer settings:', error);
@@ -77,14 +98,22 @@ export function PrinterPanel() {
     if (!selectedPrinter) return;
     
     try {
+      // Save to Supabase using correct field names from existing schema
       await supabase
         .from('printer_settings')
         .upsert({
           workstation_id: workstationId,
           selected_printer_id: selectedPrinter.id,
           selected_printer_name: selectedPrinter.name,
-          use_printnode: true,
+          use_printnode: true
         });
+      
+      // Also save to localStorage for immediate access
+      localStorage.setItem('printerSettings', JSON.stringify({
+        workstationId,
+        selectedPrinterId: selectedPrinter.id,
+        printerName: selectedPrinter.name
+      }));
         
       toast.success("Printer settings saved");
     } catch (error) {

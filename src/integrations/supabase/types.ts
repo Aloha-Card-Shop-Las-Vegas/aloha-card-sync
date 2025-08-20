@@ -189,6 +189,7 @@ export type Database = {
           created_at: string | null
           error_message: string | null
           id: string
+          payload_type: string | null
           printer_id: number | null
           printer_name: string | null
           printnode_job_id: number | null
@@ -201,6 +202,7 @@ export type Database = {
           created_at?: string | null
           error_message?: string | null
           id?: string
+          payload_type?: string | null
           printer_id?: number | null
           printer_name?: string | null
           printnode_job_id?: number | null
@@ -213,6 +215,7 @@ export type Database = {
           created_at?: string | null
           error_message?: string | null
           id?: string
+          payload_type?: string | null
           printer_id?: number | null
           printer_name?: string | null
           printnode_job_id?: number | null
