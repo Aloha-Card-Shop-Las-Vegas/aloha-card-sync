@@ -654,7 +654,7 @@ const Index = () => {
     };
   }
 
-  // PrintNode RAW printing using TSPL/ZPL
+  // PrintNode RAW printing using TSPL only
   const printNodeLabels = async (items: CardItem[]): Promise<boolean> => {
     if (!selectedPrinterId) {
       toast.error('No PrintNode printer selected');
@@ -662,17 +662,12 @@ const Index = () => {
     }
 
     try {
-      // Get printer info to determine language
       const printers = await printNodeService.getPrinters();
       const printer = printers.find(p => p.id === selectedPrinterId);
-      const isZebra = printer?.name.toLowerCase().includes('zebra') || 
-                     printer?.description.toLowerCase().includes('zebra');
-      const printerLang = isZebra ? 'ZPL' : 'TSPL';
       
-      console.log(`=== SENDING TO PRINTNODE ===`);
+      console.log(`=== SENDING TO PRINTNODE RAW ===`);
       console.log(`Printer: ${printer?.name} (ID: ${selectedPrinterId})`);
-      console.log(`Language: ${printerLang}`);
-      console.log(`Items: ${items.length}`);
+      console.log(`Pages: ${items.length}`);
       
       let successCount = 0;
       
@@ -682,7 +677,7 @@ const Index = () => {
         const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
         
         try {
-          // Call edge function to render label
+          // Call edge function to render TSPL label
           const { data: labelData, error } = await supabase.functions.invoke('render-label', {
             body: {
               title,
@@ -690,8 +685,7 @@ const Index = () => {
               price: item.price?.toString(),
               grade: item.grade,
               sku: item.sku,
-              id: item.id,
-              printerLang
+              id: item.id
             }
           });
           
@@ -742,7 +736,7 @@ const Index = () => {
     }
   };
 
-  // Legacy Fabric/PDF code removed - now using TSPL/ZPL RAW printing
+  // Legacy Fabric/PDF code removed - now using TSPL RAW printing only
 
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
