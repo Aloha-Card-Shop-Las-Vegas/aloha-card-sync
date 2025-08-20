@@ -18,6 +18,7 @@ interface PrintJob {
   copies: number;
   language: string;
   payload: string;
+  payload_type?: 'tspl' | 'pdf_base64';
   error?: string;
   created_at: string;
 }
@@ -102,7 +103,8 @@ export default function PrintLogs() {
           status: 'queued',
           copies: job.copies,
           language: job.language,
-          payload: job.payload
+          payload: job.payload,
+          payload_type: job.payload_type || 'tspl'
         })
         .select()
         .single();
@@ -110,8 +112,30 @@ export default function PrintLogs() {
       if (insertError) throw insertError;
 
       try {
-        // Send to printer (assuming default settings)
-        await sendTSPL(job.payload, { copies: job.copies });
+        // Handle different payload types
+        if (job.payload_type === 'pdf_base64') {
+          // Use PrintNode for PDF reprints
+          const { printNodeService } = await import('@/lib/printNodeService');
+          const settings = localStorage.getItem('printerSettings');
+          const parsedSettings = settings ? JSON.parse(settings) : null;
+          const printerId = parsedSettings?.selectedPrinterId;
+          
+          if (!printerId) {
+            throw new Error('No PrintNode printer configured for PDF reprint');
+          }
+          
+          const result = await printNodeService.printPDF(job.payload, printerId, {
+            title: `Reprint Job ${job.id}`,
+            copies: job.copies
+          });
+          
+          if (!result.success) {
+            throw new Error(result.error || 'PrintNode reprint failed');
+          }
+        } else {
+          // Use local printer for TSPL
+          await sendTSPL(job.payload, { copies: job.copies });
+        }
         
         // Update new job status
         await (supabase as any)
@@ -324,10 +348,17 @@ export default function PrintLogs() {
               )}
 
               <div>
-                <strong>TSPL Payload:</strong>
-                <pre className="mt-2 p-3 bg-muted rounded-lg text-xs font-mono overflow-auto max-h-64">
-                  {selectedJob.payload}
-                </pre>
+                <strong>{selectedJob.payload_type === 'pdf_base64' ? 'PDF Payload:' : 'TSPL Payload:'}</strong>
+                {selectedJob.payload_type === 'pdf_base64' ? (
+                  <div className="mt-2 p-3 bg-muted rounded-lg text-xs">
+                    <p>PDF Base64 payload ({selectedJob.payload.length} characters)</p>
+                    <p className="text-muted-foreground">Preview not available for binary data</p>
+                  </div>
+                ) : (
+                  <pre className="mt-2 p-3 bg-muted rounded-lg text-xs font-mono overflow-auto max-h-64">
+                    {selectedJob.payload}
+                  </pre>
+                )}
               </div>
 
               <div className="flex justify-end gap-2">

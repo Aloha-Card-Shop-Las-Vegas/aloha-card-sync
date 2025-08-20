@@ -1026,8 +1026,21 @@ const Index = () => {
     if (!acquireRowLock(previewItemId)) { releaseGlobalLock(); return; }
     
     try {
-      // Send TSPL directly to PrintNode
-      const result = await printNodeService.printRAW(tspl, selectedPrinterId, {
+      // Convert TSPL to PDF for PrintNode compatibility
+      const labelData = {
+        title: previewLabel?.title || '',
+        lot: previewLabel?.lot || '',
+        price: previewLabel?.price || '',
+        barcode: previewLabel?.barcode || '',
+        sku: previewLabel?.sku || previewLabel?.barcode || '',
+        condition: previewLabel?.condition || 'Near Mint',
+        grade: previewLabel?.grade || ''
+      };
+      
+      const { LabelPdfGenerator } = await import('@/lib/labelPdf');
+      const pdfBase64 = await LabelPdfGenerator.generatePDF(labelData);
+      
+      const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
         title: 'Batch Queue Print',
         copies: 1
       });
@@ -1156,17 +1169,36 @@ const Index = () => {
     setBulkPreviewBusy(true);
     
     try {
+      const { LabelPdfGenerator } = await import('@/lib/labelPdf');
       let successCount = 0;
+      
       for (const preview of bulkPreviewItems) {
-        const result = await printNodeService.printRAW(preview.tspl, selectedPrinterId, {
-          title: `Label RAW · ${preview.id}`,
-          copies: 1
-        });
-        
-        if (result.success) {
-          successCount++;
-        } else {
-          console.error(`Print failed for ${preview.id}:`, result.error);
+        try {
+          // Convert preview data to PDF
+          const labelData = {
+            title: preview.title,
+            lot: preview.lot,
+            price: preview.price,
+            barcode: preview.barcode,
+            sku: preview.barcode, // Use barcode as SKU fallback
+            condition: 'Near Mint', // Default condition
+            grade: '' // Will be determined by template
+          };
+          
+          const pdfBase64 = await LabelPdfGenerator.generatePDF(labelData);
+          
+          const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
+            title: `Label PDF · ${preview.id}`,
+            copies: 1
+          });
+          
+          if (result.success) {
+            successCount++;
+          } else {
+            console.error(`Print failed for ${preview.id}:`, result.error);
+          }
+        } catch (itemError) {
+          console.error(`PDF generation failed for ${preview.id}:`, itemError);
         }
       }
       
