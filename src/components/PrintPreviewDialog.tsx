@@ -275,37 +275,23 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
-            {/* Visual Label Preview */}
+            {/* Visual Label Preview - Always show the canvas */}
             <div className="space-y-4">
-              <Label>Label Preview</Label>
-              <div className="rounded-md border bg-background p-4">
-                <div
-                  className="relative mx-auto w-full overflow-hidden rounded-sm border bg-card"
-                  style={{ aspectRatio: "2 / 1" }}
-                  aria-label="Label preview (approximate)"
-                >
-                  <div className="absolute left-2 top-1 text-xs leading-tight">
-                    <div className="truncate max-w-[95%]" title={editableLabel.title}>{editableLabel.title}</div>
-                  </div>
-                  <div className="absolute left-2 top-6 text-xs">
-                    <span className="opacity-80">{editableLabel.lot}</span>
-                  </div>
-                  {editableLabel.grade && (
-                    <div className="absolute left-2 top-10 text-xs font-semibold text-blue-600">
-                      Grade: {editableLabel.grade}
-                    </div>
-                  )}
-                  <div className="absolute right-2 top-6 text-xs font-medium">
-                    {editableLabel.price}
-                  </div>
-                  <div className="absolute left-2 right-2 bottom-1 text-center">
-                    <div className="text-xs font-mono">{editableLabel.barcode}</div>
-                    <div className="text-xs opacity-60">QR/Barcode</div>
-                  </div>
-                </div>
+              <Label>Label Preview {isEditing ? '& Editor' : ''}</Label>
+              <div className="border rounded-lg p-4 bg-background">
+                <LabelCanvas
+                  barcodeValue={editableLabel.barcode}
+                  title={editableLabel.title}
+                  lot={editableLabel.lot}
+                  price={editableLabel.price}
+                  grade={editableLabel.grade}
+                  condition={editableLabel.condition || 'Near Mint'}
+                  selectedFontFamily="Arial"
+                  onCanvasReady={handleCanvasReady}
+                />
               </div>
               
-              {/* Template Editor (conditionally shown) */}
+              {/* Template Editor Controls (conditionally shown) */}
               {isEditing && (
                 <div className="space-y-4">
                   {/* Label Data Editor */}
@@ -361,22 +347,6 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                     </div>
                   </div>
                   
-                  <div>
-                    <Label>Template Editor</Label>
-                    <div className="border rounded-lg p-4 bg-background">
-                      <LabelCanvas
-                        barcodeValue={editableLabel.barcode}
-                        title={editableLabel.title}
-                        lot={editableLabel.lot}
-                        price={editableLabel.price}
-                        grade={editableLabel.grade}
-                        condition={editableLabel.condition || 'Near Mint'}
-                        selectedFontFamily="Arial"
-                        onCanvasReady={handleCanvasReady}
-                      />
-                    </div>
-                  </div>
-                  
                   {/* Save Template Controls */}
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
@@ -410,7 +380,7 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                 aria-label="TSPL program"
               />
               <p className="text-xs text-muted-foreground">
-                Generated TSPL for Rollo printer. Check Rollo manual if issues occur.
+                Generated TSPL for Rollo printer. The canvas above shows exactly what this TSPL represents.
               </p>
             </div>
           </div>
