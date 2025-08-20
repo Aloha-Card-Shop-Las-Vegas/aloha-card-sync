@@ -108,13 +108,13 @@ const getConditionAbbr = (condition: string): string => {
 };
 
 // Auto-fitting text scale calculation
-const getOptimalTextScale = (text: string, elementWidth: number, elementHeight: number): number => {
+const getOptimalTextScale = (text: string, elementWidth: number, elementHeight: number, aggressive: boolean = false): number => {
   if (!text || elementWidth <= 0 || elementHeight <= 0) return 1;
   
   // TSPL FONT001 approximate dimensions per scale (in dots at 203dpi)
   const charWidths = { 1: 6, 2: 12, 3: 18, 4: 24, 5: 30 };
   const charHeights = { 1: 8, 2: 16, 3: 24, 4: 32, 5: 40 };
-  const padding = 4; // Small padding for margins
+  const padding = aggressive ? 2 : 4; // Less padding for condition/price to maximize size
   
   const availableWidth = elementWidth - padding;
   const availableHeight = elementHeight - padding;
@@ -125,12 +125,12 @@ const getOptimalTextScale = (text: string, elementWidth: number, elementHeight: 
     const textHeight = charHeights[scale as keyof typeof charHeights];
     
     if (textWidth <= availableWidth && textHeight <= availableHeight) {
-      console.log(`Text "${text}" - Scale: ${scale}, Width: ${textWidth}/${availableWidth}, Height: ${textHeight}/${availableHeight}`);
+      console.log(`Text "${text}" - Scale: ${scale}, Width: ${textWidth}/${availableWidth}, Height: ${textHeight}/${availableHeight}, Aggressive: ${aggressive}`);
       return scale;
     }
   }
   
-  console.log(`Text "${text}" - Fallback to scale 1, Width: ${availableWidth}, Height: ${availableHeight}`);
+  console.log(`Text "${text}" - Fallback to scale 1, Width: ${availableWidth}, Height: ${availableHeight}, Aggressive: ${aggressive}`);
   return 1; // Minimum scale as fallback
 };
 
@@ -259,14 +259,21 @@ function renderTemplateToTSPL(template: any, data: {
         console.log(`Processing element ${element.id}: field=${element.field}, text="${text}"`);
         
         if (element.type === 'barcode') {
-          // Render as barcode
-          const barcodeHeight = Math.max(30, height);
+          // Render as barcode - 20% smaller than element height
+          const barcodeHeight = Math.max(30, Math.round(height * 0.8));
           commands.push(`BARCODE ${x},${y},"128",${barcodeHeight},1,0,2,2,"${sanitize(text || data.barcode)}"`);
         } else {
           // Render as text with auto-fitting scale
           const displayText = text || (element.field ? `[${element.field}]` : '');
           if (displayText) {
-            const optimalScale = getOptimalTextScale(displayText, width, height);
+            // For condition and price in top area, maximize scaling
+            let optimalScale;
+            if (element.field === 'condition' || element.field === 'price') {
+              // For top area elements, use more aggressive scaling
+              optimalScale = getOptimalTextScale(displayText, width, height, true);
+            } else {
+              optimalScale = getOptimalTextScale(displayText, width, height);
+            }
             commands.push(`TEXT ${x},${y},"FONT001",0,${optimalScale},${optimalScale},"${sanitize(displayText)}"`);
           }
         }
@@ -314,7 +321,8 @@ function renderTemplateToTSPL(template: any, data: {
         else if (obj.type === 'image' && obj.meta?.type === 'barcode') {
           const x = Math.round(obj.left || 0);
           const y = Math.round(obj.top || 0);
-          const height = Math.round(obj.height || 90);
+          // Make barcode 20% smaller
+          const height = Math.round((obj.height || 90) * 0.8);
           
           commands.push(`BARCODE ${x},${y},"128",${height},1,0,2,2,"${sanitize(data.barcode)}"`);
         }
