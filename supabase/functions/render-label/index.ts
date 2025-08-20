@@ -199,10 +199,23 @@ function renderTemplateToTSPL(template: any, data: {
       
       // Process new template elements format
       canvas.elements.forEach((element: any) => {
-        const x = Math.round(element.x || 0);
-        const y = Math.round(element.y || 0);
-        const width = Math.round(element.width || 100);
-        const height = Math.round(element.height || 20);
+        let x = Math.round(element.x || 0);
+        let y = Math.round(element.y || 0);
+        let width = Math.round(element.width || 100);
+        let height = Math.round(element.height || 20);
+        
+        // Auto-adjust condition and price for 50/50 top area split
+        if (element.field === 'condition' || element.field === 'variant') {
+          x = 10;
+          y = 8;
+          width = 180; // Left half minus margin
+          height = 48;
+        } else if (element.field === 'price') {
+          x = 200;
+          y = 8; 
+          width = 174; // Right half minus margin
+          height = 48;
+        }
         
         let text = '';
         
