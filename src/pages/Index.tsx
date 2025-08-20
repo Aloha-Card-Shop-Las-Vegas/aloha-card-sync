@@ -15,6 +15,7 @@ import { cleanupAuthState } from "@/lib/auth";
 import { printNodeService } from "@/lib/printNodeService";
 import PrintPreviewDialog, { PreviewLabelData } from "@/components/PrintPreviewDialog";
 import PrintAllPreviewDialog, { BulkPreviewItem } from "@/components/PrintAllPreviewDialog";
+import { PrinterPanel } from "@/components/PrinterPanel";
 
 
 type CardItem = {
@@ -1353,7 +1354,9 @@ const Index = () => {
       </header>
 
       <main className="container mx-auto px-6 pb-24">
-        <section className="grid md:grid-cols-2 gap-6 -mt-8">
+        <section className="grid md:grid-cols-3 gap-6 -mt-8">
+          <PrinterPanel />
+          
           <Card className="shadow-aloha">
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
