@@ -1208,6 +1208,7 @@ const Index = () => {
 
   const printAllFromPreview = async () => {
     if (!selectedPrinterId) { toast.error('Select a PrintNode printer'); return; }
+    console.log(`🖨️ Starting batch print to printer ID: ${selectedPrinterId} (should be Rollo Printer)`);
     setBulkPreviewBusy(true);
     
     try {
@@ -1226,34 +1227,37 @@ const Index = () => {
           };
           
           // Generate PDF using the existing LabelPdfGenerator
-          console.log(`Generating PDF for item ${preview.id}: ${preview.title}`);
+          console.log(`📄 Generating PDF for item ${preview.id}: ${preview.title}`);
           const pdfBase64 = await LabelPdfGenerator.generatePDF(labelData);
+          console.log(`✅ PDF generated, length: ${pdfBase64.length} chars`);
           
-          // Send PDF to printer
+          // Send PDF to printer - FORCE PDF METHOD
+          console.log(`📤 Sending PDF to printer ID: ${selectedPrinterId}`);
           const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
             title: `Label Print · ${preview.title}`,
             copies: 1
           });
           
-          console.log(`Bulk print job ${result.jobId} for item ${preview.id} sent to printer ID: ${selectedPrinterId}, success: ${result.success}`);
+          console.log(`📋 Bulk print job ${result.jobId} for item ${preview.id} sent to printer ID: ${selectedPrinterId}, success: ${result.success}`);
           
           if (result.success) {
             successCount++;
+            console.log(`✅ Item ${preview.id} printed successfully`);
           } else {
-            console.error(`Print failed for ${preview.id}:`, result.error);
+            console.error(`❌ Print failed for ${preview.id}:`, result.error);
           }
         } catch (itemError) {
-          console.error(`PDF generation failed for ${preview.id}:`, itemError);
+          console.error(`💥 PDF generation failed for ${preview.id}:`, itemError);
         }
       }
       
       if (successCount > 0) {
         const ids = bulkPreviewItems.map(p => p.id);
         await markPrinted(ids);
-        toast.success(`Printed ${successCount} label(s) via PDF`);
+        toast.success(`Printed ${successCount} label(s) via PDF to printer ${selectedPrinterId}`);
         setBulkPreviewOpen(false);
       } else {
-        toast.error('All prints failed');
+        toast.error('All prints failed - check console for details');
       }
     } catch (e) {
       console.error('Bulk print error:', e);
