@@ -1382,9 +1382,13 @@ const Index = () => {
         <PrintPreviewDialog
           open={previewOpen}
           onOpenChange={setPreviewOpen}
-          label={previewLabel}
+          label={{
+            ...previewLabel,
+            condition: batch.find(b => b.id === previewItemId)?.grade ? 'Graded' : 'Near Mint'
+          }}
           tspl={previewProgram}
           onPrint={printFromPreview}
+          templateType={batch.find(b => b.id === previewItemId)?.grade ? 'graded' : 'raw'}
         />
       )}
       
