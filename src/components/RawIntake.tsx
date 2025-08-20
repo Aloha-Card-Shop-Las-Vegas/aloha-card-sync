@@ -108,12 +108,27 @@ export default function RawIntake() {
       const cardToUse = inputCard || trailingCard;
 
       try {
+        // Add timeout handling
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+
         const { data: products, error } = await (supabase as any)
           .from("products")
           .select("id,name,group_id,tcgcsv_data")
           .ilike("name", `%${baseName || rawName}%`)
-          .limit(15);
-        if (error) throw error;
+          .limit(15)
+          .abortSignal(controller.signal);
+          
+        clearTimeout(timeoutId);
+        
+        if (error) {
+          if (error.name === 'AbortError') {
+            console.log("Product search timed out");
+            if (active) setSuggestions([]);
+            return;
+          }
+          throw error;
+        }
 
         const groupIds = Array.from(new Set((products || []).map((p: any) => p.group_id).filter(Boolean)));
         let groupsMap: Record<string, string> = {};
@@ -223,6 +238,9 @@ export default function RawIntake() {
       toast.error("Name is required to add to batch");
       return;
     }
+    
+    console.log("Adding to batch:", form);
+    
     const insertPayload = {
       year: null,
       brand_title: form.set || form.game || null,
@@ -235,21 +253,43 @@ export default function RawIntake() {
       price: form.price_each ? Number(form.price_each) : null,
       cost: form.cost_each ? Number(form.cost_each) : null,
       sku: form.sku || autoSku,
+      quantity: form.quantity || 1,
     } as const;
 
     try {
+      console.log("Inserting payload:", insertPayload);
+      
       const { data, error } = await (supabase as any)
         .from("intake_items")
         .insert(insertPayload)
         .select("*")
         .single();
-      if (error) throw error;
+        
+      if (error) {
+        console.error("Database error:", error);
+        throw error;
+      }
+      
+      console.log("Successfully added to batch:", data);
+      
       // Notify listeners (e.g., batch queue) that an item was added
       window.dispatchEvent(new CustomEvent('intake:item-added', { detail: data }));
       toast.success(`Added to batch (Lot ${data?.lot_number || ''})`);
+      
+      // Clear the form after successful addition
+      setForm(f => ({
+        ...f,
+        name: "",
+        card_number: "",
+        price_each: "",
+        cost_each: "",
+        sku: autoSku,
+        product_id: undefined
+      }));
+      
     } catch (e) {
-      console.error(e);
-      toast.error("Failed to add to batch");
+      console.error("Failed to add to batch:", e);
+      toast.error(`Failed to add to batch: ${e instanceof Error ? e.message : 'Unknown error'}`);
     }
   };
 
