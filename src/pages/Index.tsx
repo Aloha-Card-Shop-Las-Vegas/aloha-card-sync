@@ -981,6 +981,35 @@ const Index = () => {
     }
   };
 
+  const onPreviewPrint = async (tspl: string) => {
+    if (!previewItemId || !printNodeConnected || !selectedPrinterId) return;
+    
+    if (!acquireGlobalLock()) return;
+    if (!acquireRowLock(previewItemId)) { releaseGlobalLock(); return; }
+    
+    try {
+      // Send TSPL directly to PrintNode
+      const result = await printNodeService.printRAW(tspl, selectedPrinterId, {
+        title: 'Batch Queue Print',
+        copies: 1
+      });
+
+      if (result.success) {
+        await markPrinted([previewItemId]);
+        setPreviewOpen(false);
+        toast.success(`Label printed successfully (Job ID: ${result.jobId})`);
+      } else {
+        throw new Error(result.error || 'Print failed');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error(`Print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    } finally {
+      releaseRowLock(previewItemId);
+      releaseGlobalLock();
+    }
+  };
+
   const handlePrintRow = async (b: CardItem) => {
     if (!b.id) return;
     if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
