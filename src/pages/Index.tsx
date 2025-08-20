@@ -197,7 +197,7 @@ const Index = () => {
   };
 
   const gradeOptions = [
-    "none",
+    "",
     "Authentic",
     "PR 1",
     "FR 1.5", 
@@ -757,9 +757,10 @@ const Index = () => {
                           <SelectValue placeholder="Select grade" />
                         </SelectTrigger>
                         <SelectContent>
-                          {gradeOptions.map(grade => (
-                            <SelectItem key={grade} value={grade}>{grade === "none" ? "No Grade" : grade}</SelectItem>
+                          {gradeOptions.filter(grade => grade !== "").map(grade => (
+                            <SelectItem key={grade} value={grade}>{grade}</SelectItem>
                           ))}
+                          <SelectItem key="no-grade" value="">No Grade</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -866,9 +867,10 @@ const Index = () => {
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {gradeOptions.map(grade => (
-                                          <SelectItem key={grade} value={grade}>{grade === "none" ? "No Grade" : grade}</SelectItem>
+                                        {gradeOptions.filter(grade => grade !== "").map(grade => (
+                                          <SelectItem key={grade} value={grade}>{grade}</SelectItem>
                                         ))}
+                                        <SelectItem key="no-grade" value="">No Grade</SelectItem>
                                       </SelectContent>
                                     </Select>
                                   </div>
