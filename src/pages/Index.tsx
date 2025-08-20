@@ -1056,26 +1056,15 @@ const Index = () => {
     if (!acquireRowLock(previewItemId)) { releaseGlobalLock(); return; }
     
     try {
-      // Convert TSPL to PDF for PrintNode compatibility
-      const labelData = {
-        title: previewLabel?.title || '',
-        lot: previewLabel?.lot || '',
-        price: previewLabel?.price || '',
-        barcode: previewLabel?.barcode || '',
-        sku: (previewLabel as any)?.sku || previewLabel?.barcode || '',
-        condition: (previewLabel as any)?.condition || 'Near Mint',
-        grade: (previewLabel as any)?.grade || ''
-      };
+      // Send TSPL directly to printer for exact preview match
+      console.log(`Sending TSPL to printer ${selectedPrinterId}:`, tspl.substring(0, 100) + '...');
       
-      const { LabelPdfGenerator } = await import('@/lib/labelPdf');
-      const pdfBase64 = await LabelPdfGenerator.generatePDF(labelData);
-      
-      const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
-        title: 'Batch Queue Print',
+      const result = await printNodeService.printRAW(tspl, selectedPrinterId, {
+        title: 'Label Print',
         copies: 1
       });
 
-      console.log(`Batch print sent to printer ID: ${selectedPrinterId}, result:`, result);
+      console.log(`Print job ${result.jobId} sent to printer ID: ${selectedPrinterId}, success: ${result.success}`);
 
       if (result.success) {
         await markPrinted([previewItemId]);
@@ -1201,30 +1190,19 @@ const Index = () => {
     setBulkPreviewBusy(true);
     
     try {
-      const { LabelPdfGenerator } = await import('@/lib/labelPdf');
       let successCount = 0;
       
       for (const preview of bulkPreviewItems) {
         try {
-          // Convert preview data to PDF
-          const labelData = {
-            title: preview.title,
-            lot: preview.lot,
-            price: preview.price,
-            barcode: preview.barcode,
-            sku: preview.barcode, // Use barcode as SKU fallback
-            condition: 'Near Mint', // Default condition
-            grade: '' // Will be determined by template
-          };
+          // Send TSPL directly to printer for exact preview match
+          console.log(`Bulk printing item ${preview.id} with TSPL:`, preview.tspl.substring(0, 100) + '...');
           
-          const pdfBase64 = await LabelPdfGenerator.generatePDF(labelData);
-          
-          const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
-            title: `Label PDF · ${preview.id}`,
+          const result = await printNodeService.printRAW(preview.tspl, selectedPrinterId, {
+            title: `Label Print · ${preview.id}`,
             copies: 1
           });
           
-          console.log(`Bulk print item ${preview.id} sent to printer ID: ${selectedPrinterId}, result:`, result);
+          console.log(`Bulk print job ${result.jobId} for item ${preview.id} sent to printer ID: ${selectedPrinterId}, success: ${result.success}`);
           
           if (result.success) {
             successCount++;
