@@ -70,6 +70,35 @@ const Index = () => {
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
   const [defaultTemplates, setDefaultTemplates] = useState<{graded?: any, raw?: any}>({});
 
+  // Load default templates
+  useEffect(() => {
+    const loadDefaultTemplates = async () => {
+      try {
+        const { data: templates } = await supabase
+          .from('label_templates')
+          .select('*')
+          .eq('is_default', true);
+        
+        if (templates) {
+          const templateMap: {graded?: any, raw?: any} = {};
+          templates.forEach((template: any) => {
+            if (template.template_type === 'graded') {
+              templateMap.graded = template;
+            } else if (template.template_type === 'raw') {
+              templateMap.raw = template;
+            }
+          });
+          setDefaultTemplates(templateMap);
+          console.log('Loaded default templates:', templateMap);
+        }
+      } catch (error) {
+        console.error('Failed to load default templates:', error);
+      }
+    };
+
+    loadDefaultTemplates();
+  }, []);
+
   // New UI state for bulk actions
   const [printingAll, setPrintingAll] = useState(false);
   const [pushingAll, setPushingAll] = useState(false);
@@ -691,6 +720,10 @@ const Index = () => {
         const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
         
         try {
+          // Determine template to use based on item type
+          const isGraded = item.grade || item.psaCert;
+          const template = isGraded ? defaultTemplates.graded : defaultTemplates.raw;
+          
           // Call edge function to render TSPL label
           const { data: labelData, error } = await supabase.functions.invoke('render-label', {
             body: {
@@ -699,7 +732,8 @@ const Index = () => {
               price: item.price?.toString(),
               grade: item.grade,
               sku: item.sku,
-              id: item.id
+              id: item.id,
+              template: template // Pass template data
             }
           });
           
@@ -756,6 +790,11 @@ const Index = () => {
   const openPreviewForRow = async (b: CardItem) => {
     try {
       const title = buildTitleFromParts(b.year, b.brandTitle, b.cardNumber, b.subject, b.variant);
+      
+      // Determine template to use based on item type
+      const isGraded = b.grade || b.psaCert;
+      const template = isGraded ? defaultTemplates.graded : defaultTemplates.raw;
+      
       const { data: labelData, error } = await supabase.functions.invoke('render-label', {
         body: {
           title,
@@ -763,7 +802,8 @@ const Index = () => {
           price: b.price?.toString(),
           grade: b.grade,
           sku: b.sku,
-          id: b.id
+          id: b.id,
+          template: template // Pass template data
         }
       });
 
@@ -874,6 +914,11 @@ const Index = () => {
       
       for (const item of items) {
         const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+        
+        // Determine template to use based on item type
+        const isGraded = item.grade || item.psaCert;
+        const template = isGraded ? defaultTemplates.graded : defaultTemplates.raw;
+        
         const { data: labelData, error } = await supabase.functions.invoke('render-label', {
           body: {
             title,
@@ -881,7 +926,8 @@ const Index = () => {
             price: item.price?.toString(),
             grade: item.grade,
             sku: item.sku,
-            id: item.id
+            id: item.id,
+            template: template // Pass template data
           }
         });
         

@@ -100,7 +100,10 @@ export default function LabelDesigner() {
 
     setPrintLoading(true);
     try {
-      // Call render-label edge function like the main app
+      // Get the selected template for rendering
+      const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+      
+      // Call render-label edge function with template data
       const { data: labelResponse, error } = await supabase.functions.invoke('render-label', {
         body: {
           title: labelData.title,
@@ -108,7 +111,8 @@ export default function LabelDesigner() {
           price: labelData.price,
           grade: labelData.condition,
           sku: labelData.sku,
-          id: labelData.barcodeValue
+          id: labelData.barcodeValue,
+          template: selectedTemplate // Pass template data
         }
       });
 
