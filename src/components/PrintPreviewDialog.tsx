@@ -199,54 +199,80 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
             </Button>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Template Editor (conditionally shown) */}
-            {isEditing && (
-              <div className="space-y-4">
-                <div>
-                  <Label>Template Editor</Label>
-                  <div className="border rounded-lg p-4 bg-background">
-                    <LabelCanvas
-                      barcodeValue={label.barcode}
-                      title={label.title}
-                      lot={label.lot}
-                      price={label.price}
-                      condition={label.condition || 'Near Mint'}
-                      selectedFontFamily="Arial"
-                      onCanvasReady={handleCanvasReady}
-                    />
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Visual Label Preview */}
+            <div className="space-y-4">
+              <Label>Label Preview</Label>
+              <div className="rounded-md border bg-background p-4">
+                <div
+                  className="relative mx-auto w-full overflow-hidden rounded-sm border bg-card"
+                  style={{ aspectRatio: "2 / 1" }}
+                  aria-label="Label preview (approximate)"
+                >
+                  <div className="absolute left-2 top-1 text-xs leading-tight">
+                    <div className="truncate max-w-[95%]" title={label.title}>{label.title}</div>
+                  </div>
+                  <div className="absolute left-2 top-6 text-xs">
+                    <span className="opacity-80">{label.lot}</span>
+                  </div>
+                  <div className="absolute right-2 top-6 text-xs font-medium">
+                    {label.price}
+                  </div>
+                  <div className="absolute left-2 right-2 bottom-1 text-center">
+                    <div className="text-xs font-mono">{label.barcode}</div>
+                    <div className="text-xs opacity-60">QR/Barcode</div>
                   </div>
                 </div>
-                
-                {/* Save Template Controls */}
-                <div className="flex items-end gap-2">
-                  <div className="flex-1">
-                    <Label htmlFor="template-name">Save as Template</Label>
-                    <Input
-                      id="template-name"
-                      value={templateName}
-                      onChange={(e) => setTemplateName(e.target.value)}
-                      placeholder="Template name"
-                    />
+              </div>
+              
+              {/* Template Editor (conditionally shown) */}
+              {isEditing && (
+                <div className="space-y-4">
+                  <div>
+                    <Label>Template Editor</Label>
+                    <div className="border rounded-lg p-4 bg-background">
+                      <LabelCanvas
+                        barcodeValue={label.barcode}
+                        title={label.title}
+                        lot={label.lot}
+                        price={label.price}
+                        condition={label.condition || 'Near Mint'}
+                        selectedFontFamily="Arial"
+                        onCanvasReady={handleCanvasReady}
+                      />
+                    </div>
                   </div>
-                  <Button onClick={saveTemplate} disabled={!templateName.trim()}>
-                    Save
+                  
+                  {/* Save Template Controls */}
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <Label htmlFor="template-name">Save as Template</Label>
+                      <Input
+                        id="template-name"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        placeholder="Template name"
+                      />
+                    </div>
+                    <Button onClick={saveTemplate} disabled={!templateName.trim()}>
+                      Save
+                    </Button>
+                  </div>
+                  
+                  <Button onClick={regenerateTSPL} variant="outline" className="w-full">
+                    Regenerate TSPL from Canvas
                   </Button>
                 </div>
-                
-                <Button onClick={regenerateTSPL} variant="outline" className="w-full">
-                  Regenerate TSPL from Canvas
-                </Button>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* TSPL Preview */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 lg:col-span-2">
               <Label>Raw TSPL Program</Label>
               <textarea
                 value={currentTspl}
                 readOnly
-                className="min-h-[300px] w-full rounded-md border bg-background p-3 font-mono text-xs"
+                className="min-h-[400px] w-full rounded-md border bg-background p-3 font-mono text-xs"
                 aria-label="TSPL program"
               />
               <p className="text-xs text-muted-foreground">
