@@ -16,6 +16,7 @@ import { printNodeService } from "@/lib/printNodeService";
 import PrintPreviewDialog, { PreviewLabelData } from "@/components/PrintPreviewDialog";
 import PrintAllPreviewDialog, { BulkPreviewItem } from "@/components/PrintAllPreviewDialog";
 import { PrinterPanel } from "@/components/PrinterPanel";
+import { LabelPdfGenerator, LabelData } from "@/lib/labelPdf";
 
 
 type CardItem = {
@@ -1214,11 +1215,23 @@ const Index = () => {
       
       for (const preview of bulkPreviewItems) {
         try {
-          // Send TSPL directly to printer for exact preview match
-          console.log(`Bulk printing item ${preview.id} with TSPL:`, preview.tspl.substring(0, 100) + '...');
+          // Convert preview item to LabelData format
+          const labelData: LabelData = {
+            title: preview.title,
+            lot: preview.lot,
+            price: preview.price,
+            barcode: preview.barcode,
+            grade: '', // Extract grade if available in the future
+            condition: 'Near Mint' // Default condition
+          };
           
-          const result = await printNodeService.printRAW(preview.tspl, selectedPrinterId, {
-            title: `Label Print · ${preview.id}`,
+          // Generate PDF using the existing LabelPdfGenerator
+          console.log(`Generating PDF for item ${preview.id}: ${preview.title}`);
+          const pdfBase64 = await LabelPdfGenerator.generatePDF(labelData);
+          
+          // Send PDF to printer
+          const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
+            title: `Label Print · ${preview.title}`,
             copies: 1
           });
           
@@ -1237,7 +1250,7 @@ const Index = () => {
       if (successCount > 0) {
         const ids = bulkPreviewItems.map(p => p.id);
         await markPrinted(ids);
-        toast.success(`Printed ${successCount} label(s)`);
+        toast.success(`Printed ${successCount} label(s) via PDF`);
         setBulkPreviewOpen(false);
       } else {
         toast.error('All prints failed');
