@@ -218,9 +218,33 @@ export function PrinterPanel() {
           <label className="text-sm font-medium">Selected Printer:</label>
           <Select 
             value={selectedPrinter?.id.toString() || ''} 
-            onValueChange={(value) => {
+            onValueChange={async (value) => {
               const printer = printers.find(p => p.id.toString() === value);
               setSelectedPrinter(printer || null);
+              
+              // Auto-save selection immediately
+              if (printer) {
+                const settings = {
+                  selectedPrinterId: printer.id,
+                  printerName: printer.name,
+                  workstationId
+                };
+                
+                // Save to localStorage immediately
+                localStorage.setItem('printerSettings', JSON.stringify(settings));
+                
+                // Dispatch custom event for same-window updates
+                window.dispatchEvent(new CustomEvent('printerSelectionChanged', { 
+                  detail: settings 
+                }));
+                
+                // Save to Supabase in background (don't await to keep UI responsive)
+                savePrinterSettings().catch(error => {
+                  console.error('Background save failed:', error);
+                });
+                
+                toast.success(`Selected printer: ${printer.name}`);
+              }
             }}
             disabled={!printNodeOnline}
           >

@@ -229,9 +229,17 @@ const Index = () => {
 
     // Also check for updates via custom events (for same-window updates)
     const handlePrinterUpdate = (e: CustomEvent) => {
-      if (e.detail.selectedPrinterId && e.detail.selectedPrinterId !== selectedPrinterId) {
-        setSelectedPrinterId(e.detail.selectedPrinterId);
-        console.log(`Updated printer selection from event: ${e.detail.printerName} (ID: ${e.detail.selectedPrinterId})`);
+      const newPrinterId = e.detail.selectedPrinterId;
+      const newPrinterName = e.detail.printerName;
+      
+      // Guard against invalid selections - only update if printer exists in filtered list
+      const validPrinter = printers.find(p => p.id === newPrinterId);
+      if (validPrinter && newPrinterId !== selectedPrinterId) {
+        setSelectedPrinterId(newPrinterId);
+        console.log(`Updated printer selection from event: ${newPrinterName} (ID: ${newPrinterId})`);
+      } else if (!validPrinter && newPrinterId) {
+        console.log(`Ignored invalid printer selection: ${newPrinterName} (ID: ${newPrinterId})`);
+        toast.error(`Printer "${newPrinterName}" is not available for batch printing`);
       }
     };
 
@@ -296,26 +304,38 @@ const Index = () => {
     const loadPrintNode = async () => {
       try {
         const printerList = await printNodeService.getPrinters();
-        setPrinters(printerList);
+        
+        // Filter out the specific Rollo X1040 printer
+        const filteredPrinters = printerList.filter(p => 
+          !p.name.includes('Rollo X1040') && !p.name.includes('X1243221259')
+        );
+        
+        setPrinters(filteredPrinters);
         setPrintNodeConnected(true);
         
         // Load printer selection from PrinterPanel's localStorage settings
         const printerSettings = localStorage.getItem('printerSettings');
         if (printerSettings) {
           const parsed = JSON.parse(printerSettings);
-          if (parsed.selectedPrinterId && printerList.find(p => p.id === parsed.selectedPrinterId)) {
+          const savedPrinter = filteredPrinters.find(p => p.id === parsed.selectedPrinterId);
+          
+          if (savedPrinter) {
             setSelectedPrinterId(parsed.selectedPrinterId);
             console.log(`Loaded saved printer: ${parsed.printerName} (ID: ${parsed.selectedPrinterId})`);
+          } else if (parsed.selectedPrinterId) {
+            // Saved printer was filtered out or no longer available
+            console.log(`Saved printer (${parsed.printerName}) is no longer available or was filtered`);
+            toast.error(`Previously selected printer "${parsed.printerName}" is no longer available`);
           }
         }
         
-        // Fallback: Auto-select first printer if no saved selection
-        if (!selectedPrinterId && printerList.length > 0) {
-          setSelectedPrinterId(printerList[0].id);
-          console.log(`Auto-selected first printer: ${printerList[0].name} (ID: ${printerList[0].id})`);
+        // Auto-select first available printer if no valid saved selection
+        if (!selectedPrinterId && filteredPrinters.length > 0) {
+          setSelectedPrinterId(filteredPrinters[0].id);
+          console.log(`Auto-selected first printer: ${filteredPrinters[0].name} (ID: ${filteredPrinters[0].id})`);
         }
         
-        console.log(`PrintNode connected - Found ${printerList.length} printer(s)`);
+        console.log(`PrintNode connected - Found ${filteredPrinters.length} printer(s) (${printerList.length - filteredPrinters.length} filtered)`);
       } catch (e) {
         console.error("PrintNode connection failed:", e);
         setPrintNodeConnected(false);

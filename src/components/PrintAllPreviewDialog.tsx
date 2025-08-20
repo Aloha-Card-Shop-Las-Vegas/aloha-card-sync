@@ -52,13 +52,23 @@ const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [previewItems, setPreviewItems] = useState<BulkPreviewItem[]>(initialItems);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedPrinterName, setSelectedPrinterName] = useState<string>("");
   
   const totalLabels = previewItems.length;
 
-  // Load templates when dialog opens
+  // Load templates and printer info when dialog opens
   useEffect(() => {
     if (open) {
       fetchTemplates();
+      
+      // Load current printer selection
+      const printerSettings = localStorage.getItem('printerSettings');
+      if (printerSettings) {
+        const parsed = JSON.parse(printerSettings);
+        setSelectedPrinterName(parsed.printerName || 'Unknown Printer');
+      } else {
+        setSelectedPrinterName('No printer selected');
+      }
     }
   }, [open, templateType]);
 
@@ -149,6 +159,8 @@ const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({
           <DialogTitle>Print All Preview ({totalLabels} labels)</DialogTitle>
           <DialogDescription>
             Review all labels before sending to printer. Each label will be printed once.
+            <br />
+            <strong>Target Printer:</strong> {selectedPrinterName}
           </DialogDescription>
         </DialogHeader>
 
