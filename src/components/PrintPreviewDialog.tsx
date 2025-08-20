@@ -28,6 +28,19 @@ interface PrintPreviewDialogProps {
   templateType?: 'graded' | 'raw';
 }
 
+const abbreviateCondition = (condition: string): string => {
+  const conditionMap: { [key: string]: string } = {
+    'Near Mint': 'NM',
+    'Lightly Played': 'LP', 
+    'Moderately Played': 'MP',
+    'Heavily Played': 'HP',
+    'Damaged': 'DMG',
+    'Poor': 'P',
+    'Mint': 'M'
+  };
+  return conditionMap[condition] || condition;
+};
+
 const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({ 
   open, 
   onOpenChange, 
@@ -94,7 +107,7 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     try {
       const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
       
-      const variant = editableLabel.grade || editableLabel.condition ? 'Graded' : 'Raw';
+      const variant = templateType === 'graded' || editableLabel.grade ? 'Graded' : 'Raw';
       
       const { data: labelData, error } = await supabase.functions.invoke('render-label', {
         body: {
@@ -356,8 +369,8 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                           case 'subject': return editableLabel.title;
                           case 'price': return editableLabel.price;
                           case 'sku': return editableLabel.sku || editableLabel.barcode;
-                          case 'condition': return editableLabel.condition || 'Near Mint';
-                          case 'variant': return editableLabel.grade || editableLabel.condition ? 'Graded' : 'Raw';
+                          case 'condition': return abbreviateCondition(editableLabel.condition || 'Near Mint');
+                          case 'variant': return templateType === 'graded' || editableLabel.grade ? 'Graded' : 'Raw';
                           default: return '';
                         }
                       };
@@ -374,9 +387,10 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                       const needsFitting = ['condition', 'price', 'subject'].includes(element.field);
                       
                       if (needsFitting) {
+                        const maxFontSize = Math.max(element.height * 0.9, 12);
                         return (
                           <div key={element.id} style={style}>
-                            <FitText maxFontSize={Math.max(element.fontSize * 0.8, 10)} minFontSize={8}>
+                            <FitText maxFontSize={maxFontSize} minFontSize={8}>
                               {fieldValue}
                             </FitText>
                           </div>

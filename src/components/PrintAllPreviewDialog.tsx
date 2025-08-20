@@ -27,6 +27,19 @@ interface PrintAllPreviewDialogProps {
   templateType?: 'graded' | 'raw';
 }
 
+const abbreviateCondition = (condition: string): string => {
+  const conditionMap: { [key: string]: string } = {
+    'Near Mint': 'NM',
+    'Lightly Played': 'LP', 
+    'Moderately Played': 'MP',
+    'Heavily Played': 'HP',
+    'Damaged': 'DMG',
+    'Poor': 'P',
+    'Mint': 'M'
+  };
+  return conditionMap[condition] || condition;
+};
+
 const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({ 
   open, 
   onOpenChange, 
@@ -98,7 +111,7 @@ const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({
             sku: item.barcode,
             id: item.id,
             condition: 'Near Mint', // Default condition
-            variant: 'Raw', // Default variant
+            variant: templateType === 'graded' ? 'Graded' : 'Raw',
             template: selectedTemplate
           }
         });
