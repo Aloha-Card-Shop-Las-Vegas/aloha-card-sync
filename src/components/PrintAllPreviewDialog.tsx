@@ -1,8 +1,13 @@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import BarcodeLabel from "@/components/BarcodeLabel";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import React from "react";
+import { supabase } from "@/integrations/supabase/client";
+import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 
 export interface BulkPreviewItem {
   id: string;
@@ -17,22 +22,114 @@ interface PrintAllPreviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: BulkPreviewItem[];
-  onPrintAll: () => void | Promise<void>;
+  onPrintAll: (items: BulkPreviewItem[]) => void | Promise<void>;
   loading?: boolean;
+  templateType?: 'graded' | 'raw';
 }
 
 const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({ 
   open, 
   onOpenChange, 
-  items, 
+  items: initialItems, 
   onPrintAll,
-  loading = false 
+  loading = false,
+  templateType = 'graded'
 }) => {
-  const totalLabels = items.length;
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [previewItems, setPreviewItems] = useState<BulkPreviewItem[]>(initialItems);
+  const [refreshing, setRefreshing] = useState(false);
+  
+  const totalLabels = previewItems.length;
+
+  // Load templates when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchTemplates();
+    }
+  }, [open, templateType]);
+
+  // Update preview items when initial items change
+  useEffect(() => {
+    setPreviewItems(initialItems);
+  }, [initialItems]);
+
+  const fetchTemplates = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('label_templates')
+        .select('*')
+        .eq('template_type', templateType)
+        .order('is_default', { ascending: false });
+      
+      if (error) throw error;
+      
+      setTemplates(data || []);
+      
+      // Auto-select default template
+      const defaultTemplate = data?.find(t => t.is_default);
+      if (defaultTemplate) {
+        setSelectedTemplateId(defaultTemplate.id);
+      }
+    } catch (error) {
+      console.error('Error fetching templates:', error);
+      toast.error('Failed to load templates');
+    }
+  };
+
+  const refreshPreview = async () => {
+    if (!selectedTemplateId) {
+      toast.error('Please select a template first');
+      return;
+    }
+    
+    setRefreshing(true);
+    try {
+      const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+      const refreshedItems: BulkPreviewItem[] = [];
+      
+      for (const item of initialItems) {
+        const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+          body: {
+            title: item.title,
+            lot_number: item.lot,
+            price: item.price.replace('$', ''),
+            grade: '', // Add grade extraction if needed
+            sku: item.barcode,
+            id: item.id,
+            template: selectedTemplate
+          }
+        });
+        
+        if (error) {
+          console.error('Label render error:', error);
+          toast.error(`Failed to render label for ${item.title}`);
+          return;
+        }
+        
+        refreshedItems.push({
+          ...item,
+          tspl: (labelData as any)?.program || ""
+        });
+      }
+      
+      setPreviewItems(refreshedItems);
+      toast.success('Preview refreshed with selected template');
+    } catch (error) {
+      console.error('Error refreshing preview:', error);
+      toast.error('Failed to refresh preview');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handlePrintAll = () => {
+    onPrintAll(previewItems);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-5xl max-h-[80vh]">
+      <DialogContent className="sm:max-w-6xl max-h-[85vh]">
         <DialogHeader>
           <DialogTitle>Print All Preview ({totalLabels} labels)</DialogTitle>
           <DialogDescription>
@@ -40,9 +137,41 @@ const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Template Selector */}
+        <div className="flex items-center gap-4 pb-4 border-b">
+          <div className="flex-1">
+            <Label htmlFor="template-select">Template for All Labels</Label>
+            <Select 
+              value={selectedTemplateId} 
+              onValueChange={setSelectedTemplateId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select template" />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name} {template.is_default ? '(Default)' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            onClick={refreshPreview}
+            disabled={refreshing || !selectedTemplateId}
+          >
+            {refreshing ? 'Refreshing...' : 'Refresh Preview'}
+          </Button>
+          
+          {refreshing && <Badge variant="secondary">Updating...</Badge>}
+        </div>
+
         <ScrollArea className="max-h-[500px] w-full">
           <div className="space-y-6">
-            {items.map((item, index) => (
+            {previewItems.map((item, index) => (
               <div key={item.id} className="grid gap-4 sm:grid-cols-2 border-b pb-4 last:border-b-0">
                 {/* Visual label mock */}
                 <div>
@@ -92,7 +221,7 @@ const PrintAllPreviewDialog: React.FC<PrintAllPreviewDialogProps> = ({
             <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
-            <Button onClick={onPrintAll} disabled={loading}>
+            <Button onClick={handlePrintAll} disabled={loading || refreshing}>
               {loading ? 'Printing...' : `Print All ${totalLabels} Labels`}
             </Button>
           </div>

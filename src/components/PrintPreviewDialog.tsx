@@ -3,12 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LabelCanvas } from "@/components/LabelCanvas";
-import { TemplateManager } from "@/components/TemplateManager";
-import { fabricToTSPL } from "@/lib/fabricToTspl";
+import { Badge } from "@/components/ui/badge";
+import BarcodeLabel from "@/components/BarcodeLabel";
 import { supabase } from "@/integrations/supabase/client";
-import { Canvas as FabricCanvas } from "fabric";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 export interface PreviewLabelData {
@@ -25,8 +23,7 @@ interface PrintPreviewDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   label: PreviewLabelData;
-  tspl: string;
-  onPrint: () => void | Promise<void>;
+  onPrint: (tspl: string) => void | Promise<void>;
   templateType?: 'graded' | 'raw';
 }
 
@@ -34,16 +31,15 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
   open, 
   onOpenChange, 
   label, 
-  tspl: initialTspl, 
   onPrint,
   templateType = 'graded'
 }) => {
   const [templates, setTemplates] = useState<any[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  const [currentTspl, setCurrentTspl] = useState(initialTspl);
+  const [currentTspl, setCurrentTspl] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [isEditing, setIsEditing] = useState(false);
+  const [loading, setLoading] = useState(false);
   
   // Local state for editing label data
   const [editableLabel, setEditableLabel] = useState(label);
@@ -53,17 +49,19 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     setEditableLabel(label);
   }, [label]);
 
-  // Load templates when dialog opens
+  // Load templates and auto-generate TSPL when dialog opens
   useEffect(() => {
     if (open) {
       fetchTemplates();
     }
   }, [open, templateType]);
 
-  // Update TSPL when initial value changes
+  // Generate TSPL when dialog opens or when template/label changes
   useEffect(() => {
-    setCurrentTspl(initialTspl);
-  }, [initialTspl]);
+    if (open && selectedTemplateId) {
+      generateTSPL();
+    }
+  }, [open, selectedTemplateId, editableLabel]);
 
   const fetchTemplates = async () => {
     try {
@@ -88,47 +86,43 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     }
   };
 
-  const handleCanvasReady = useCallback((canvas: FabricCanvas) => {
-    setFabricCanvas(canvas);
-  }, []);
-
-  const regenerateTSPL = useCallback(() => {
-    if (!fabricCanvas) return;
+  const generateTSPL = async () => {
+    if (!selectedTemplateId) return;
+    setLoading(true);
     
     try {
-      const newTspl = fabricToTSPL(fabricCanvas, {
-        density: 10,
-        speed: 4,
-        gapInches: 0
+      const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+      
+      const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+        body: {
+          title: editableLabel.title,
+          lot_number: editableLabel.lot,
+          price: editableLabel.price,
+          grade: editableLabel.grade,
+          sku: editableLabel.sku,
+          id: editableLabel.barcode,
+          template: selectedTemplate
+        }
       });
-      setCurrentTspl(newTspl);
-      toast.success('TSPL regenerated from canvas');
+      
+      if (error) {
+        console.error('Label render error:', error);
+        toast.error('Failed to render label');
+        return;
+      }
+      
+      setCurrentTspl((labelData as any)?.program || "");
     } catch (error) {
       console.error('Error generating TSPL:', error);
       toast.error('Failed to generate TSPL');
+    } finally {
+      setLoading(false);
     }
-  }, [fabricCanvas]);
+  };
 
-  const loadTemplate = async (templateId: string) => {
-    if (!templateId || !fabricCanvas) return;
-    
-    try {
-      const template = templates.find(t => t.id === templateId);
-      if (!template) return;
-      
-      // Clear canvas and load template
-      fabricCanvas.clear();
-      
-      if (template.canvas) {
-        await fabricCanvas.loadFromJSON(template.canvas);
-        fabricCanvas.renderAll();
-        regenerateTSPL();
-        toast.success(`Loaded template: ${template.name}`);
-      }
-    } catch (error) {
-      console.error('Error loading template:', error);
-      toast.error('Failed to load template');
-    }
+  const refreshPreview = () => {
+    generateTSPL();
+    toast.success('Preview refreshed');
   };
 
   const setAsDefault = async (templateId: string) => {
@@ -176,20 +170,22 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
   };
 
   const saveTemplate = async () => {
-    if (!fabricCanvas || !templateName.trim()) {
+    if (!templateName.trim()) {
       toast.error('Please enter a template name');
       return;
     }
     
     try {
-      const canvasData = fabricCanvas.toJSON();
+      // Use current selected template as base or create minimal template
+      const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+      const templateData = selectedTemplate?.canvas || { objects: [], version: "6.0.0" };
       
       const { data, error } = await supabase
         .from('label_templates')
         .insert({
           name: templateName.trim(),
           template_type: templateType,
-          canvas: canvasData,
+          canvas: templateData,
           is_default: false
         })
         .select('*')
@@ -210,18 +206,20 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
   };
 
   const updateTemplate = async () => {
-    if (!fabricCanvas || !selectedTemplateId) {
+    if (!selectedTemplateId) {
       toast.error('Please select a template to update');
       return;
     }
     
     try {
-      const canvasData = fabricCanvas.toJSON();
+      // Get current template data and update it
+      const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
+      const templateData = selectedTemplate?.canvas || { objects: [], version: "6.0.0" };
       
       const { error } = await supabase
         .from('label_templates')
         .update({
-          canvas: canvasData,
+          canvas: templateData,
           updated_at: new Date().toISOString()
         })
         .eq('id', selectedTemplateId);
@@ -237,8 +235,11 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
   };
 
   const handlePrint = () => {
-    // Use the current TSPL (either original or regenerated)
-    onPrint();
+    if (!currentTspl) {
+      toast.error('No TSPL generated. Please select a template first.');
+      return;
+    }
+    onPrint(currentTspl);
   };
 
   return (
@@ -252,16 +253,13 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Template Selector */}
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
+          {/* Template Selector and Actions */}
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex-1 min-w-[200px]">
               <Label htmlFor="template-select">Template</Label>
               <Select 
                 value={selectedTemplateId} 
-                onValueChange={(value) => {
-                  setSelectedTemplateId(value);
-                  loadTemplate(value);
-                }}
+                onValueChange={setSelectedTemplateId}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select template" />
@@ -276,27 +274,13 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
               </Select>
             </div>
             
-            {/* Template Actions */}
-            {selectedTemplateId && (
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setAsDefault(selectedTemplateId)}
-                  disabled={templates.find(t => t.id === selectedTemplateId)?.is_default}
-                >
-                  Set Default
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => deleteTemplate(selectedTemplateId)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  Delete
-                </Button>
-              </div>
-            )}
+            <Button 
+              variant="outline" 
+              onClick={refreshPreview}
+              disabled={loading}
+            >
+              Refresh Preview
+            </Button>
             
             <Button 
               variant="outline" 
@@ -307,28 +291,44 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
           </div>
 
           <div className="grid gap-6 lg:grid-cols-3">
-            {/* Visual Label Preview - Always show the canvas */}
+            {/* Visual Label Preview */}
             <div className="space-y-4">
-              <Label>Label Preview {isEditing ? '& Editor' : ''}</Label>
+              <div className="flex items-center justify-between">
+                <Label>Label Preview</Label>
+                {loading && <Badge variant="secondary">Loading...</Badge>}
+              </div>
               <div className="border rounded-lg p-4 bg-background">
-                <LabelCanvas
-                  barcodeValue={editableLabel.barcode}
-                  title={editableLabel.title}
-                  lot={editableLabel.lot}
-                  price={editableLabel.price}
-                  grade={editableLabel.grade}
-                  condition={editableLabel.condition || 'Near Mint'}
-                  selectedFontFamily="Arial"
-                  onCanvasReady={handleCanvasReady}
-                />
+                <div
+                  className="relative mx-auto w-full max-w-sm overflow-hidden rounded-sm border bg-card"
+                  style={{ aspectRatio: "2 / 1" }}
+                  aria-label="Label preview"
+                >
+                  <div className="absolute left-2 top-1 text-xs leading-tight">
+                    <div className="truncate max-w-[95%]" title={editableLabel.title}>{editableLabel.title}</div>
+                  </div>
+                  <div className="absolute left-2 top-6 text-xs">
+                    <span className="opacity-80">{editableLabel.lot}</span>
+                  </div>
+                  {editableLabel.grade && (
+                    <div className="absolute left-2 top-10 text-xs font-medium">
+                      <span className="bg-primary text-primary-foreground px-1 rounded text-[10px]">{editableLabel.grade}</span>
+                    </div>
+                  )}
+                  <div className="absolute right-2 top-6 text-xs font-medium">
+                    {editableLabel.price}
+                  </div>
+                  <div className="absolute left-2 right-2 bottom-1">
+                    <BarcodeLabel value={editableLabel.barcode} showPrintButton={false} />
+                  </div>
+                </div>
               </div>
               
-              {/* Template Editor Controls (conditionally shown) */}
+              {/* Label Editor (conditionally shown) */}
               {isEditing && (
                 <div className="space-y-4">
                   {/* Label Data Editor */}
                   <div className="space-y-3 p-4 border rounded-lg bg-muted/50">
-                    <Label className="text-sm font-medium">Label Data</Label>
+                    <Label className="text-sm font-medium">Edit Label Data</Label>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label htmlFor="edit-title" className="text-xs">Title</Label>
@@ -379,32 +379,51 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                     </div>
                   </div>
                   
-                  {/* Template Actions */}
-                  <div className="flex items-center gap-2">
+                  {/* Template Management */}
+                  <div className="space-y-3 p-4 border rounded-lg bg-muted/50">
+                    <Label className="text-sm font-medium">Template Management</Label>
+                    
+                    {/* Template Actions */}
                     {selectedTemplateId && (
-                      <Button onClick={updateTemplate} variant="default" className="flex-1">
-                        Update "{templates.find(t => t.id === selectedTemplateId)?.name}"
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setAsDefault(selectedTemplateId)}
+                          disabled={templates.find(t => t.id === selectedTemplateId)?.is_default}
+                        >
+                          Set Default
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => deleteTemplate(selectedTemplateId)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          Delete
+                        </Button>
+                        <Button onClick={updateTemplate} variant="default" size="sm">
+                          Update Template
+                        </Button>
+                      </div>
                     )}
-                    <Button onClick={regenerateTSPL} variant="outline" className="flex-1">
-                      Regenerate TSPL
-                    </Button>
-                  </div>
-                  
-                  {/* Save as New Template */}
-                  <div className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <Label htmlFor="template-name">Save as New Template</Label>
-                      <Input
-                        id="template-name"
-                        value={templateName}
-                        onChange={(e) => setTemplateName(e.target.value)}
-                        placeholder="New template name"
-                      />
+                    
+                    {/* Save as New Template */}
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <Label htmlFor="template-name" className="text-xs">Save as New Template</Label>
+                        <Input
+                          id="template-name"
+                          value={templateName}
+                          onChange={(e) => setTemplateName(e.target.value)}
+                          placeholder="New template name"
+                          className="text-xs"
+                        />
+                      </div>
+                      <Button onClick={saveTemplate} disabled={!templateName.trim()} size="sm">
+                        Save New
+                      </Button>
                     </div>
-                    <Button onClick={saveTemplate} disabled={!templateName.trim()}>
-                      Save New
-                    </Button>
                   </div>
                 </div>
               )}
@@ -412,15 +431,16 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
 
             {/* TSPL Preview */}
             <div className="flex flex-col gap-2 lg:col-span-2">
-              <Label>Raw TSPL Program</Label>
+              <Label>Generated TSPL Program</Label>
               <textarea
                 value={currentTspl}
                 readOnly
                 className="min-h-[400px] w-full rounded-md border bg-background p-3 font-mono text-xs"
                 aria-label="TSPL program"
+                placeholder={loading ? "Generating TSPL..." : "Select a template to generate TSPL"}
               />
               <p className="text-xs text-muted-foreground">
-                Generated TSPL for Rollo printer. The canvas above shows exactly what this TSPL represents.
+                This TSPL program will be sent to your thermal printer. The preview above shows exactly what will be printed.
               </p>
             </div>
           </div>
@@ -430,8 +450,8 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
           <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          <Button onClick={handlePrint}>
-            Print with Current TSPL
+          <Button onClick={handlePrint} disabled={!currentTspl || loading}>
+            Print Label
           </Button>
         </DialogFooter>
       </DialogContent>

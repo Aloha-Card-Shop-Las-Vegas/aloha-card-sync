@@ -13,7 +13,7 @@ import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
 import { printNodeService } from "@/lib/printNodeService";
-import PrintPreviewDialog from "@/components/PrintPreviewDialog";
+import PrintPreviewDialog, { PreviewLabelData } from "@/components/PrintPreviewDialog";
 import PrintAllPreviewDialog, { BulkPreviewItem } from "@/components/PrintAllPreviewDialog";
 
 
@@ -35,6 +35,7 @@ type CardItem = {
   labelType?: string;
   cardNumber?: string;
   quantity?: number;
+  condition?: string;
   id?: string;
   printedAt?: string | null;
   pushedAt?: string | null;
@@ -985,6 +986,18 @@ const Index = () => {
     if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
 
     // Show preview dialog instead of printing directly
+    const title = buildTitleFromParts(b.year, b.brandTitle, b.cardNumber, b.subject, b.variant);
+    const previewData: PreviewLabelData = {
+      title,
+      lot: b.lot || "",
+      price: b.price ? `$${Number(b.price).toFixed(2)}` : "",
+      barcode: b.sku || b.id || "NO-SKU",
+      sku: b.sku,
+      condition: b.condition,
+      grade: b.grade
+    };
+    
+    setPreviewLabel(previewData);
     setPreviewItemId(b.id);
     setPreviewOpen(true);
   };
@@ -1565,17 +1578,17 @@ const Index = () => {
             </CardContent>
           </Card>
         </section>
-      {previewLabel && (
+      {previewOpen && previewLabel && (
         <PrintPreviewDialog
           open={previewOpen}
           onOpenChange={setPreviewOpen}
-          label={{
-            ...previewLabel,
-            condition: batch.find(b => b.id === previewItemId)?.grade ? 'Graded' : 'Near Mint'
+          label={previewLabel}
+          onPrint={(tspl: string) => {
+            if (previewItemId) {
+              onPreviewPrint(tspl);
+            }
           }}
-          tspl={previewProgram}
-          onPrint={printFromPreview}
-          templateType={batch.find(b => b.id === previewItemId)?.grade ? 'graded' : 'raw'}
+          templateType={previewLabel.grade ? 'graded' : 'raw'}
         />
       )}
       
