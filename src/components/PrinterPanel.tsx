@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Printer, Cloud, WifiOff } from "lucide-react";
+import { Printer, Cloud, WifiOff, TestTube, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { printNodeService } from "@/lib/printNodeService";
 import { supabase } from "@/integrations/supabase/client";
+import jsPDF from 'jspdf';
 
 
 interface PrintNodePrinter {
@@ -21,6 +22,8 @@ export function PrinterPanel() {
   const [selectedPrinter, setSelectedPrinter] = useState<PrintNodePrinter | null>(null);
   const [printNodeOnline, setPrintNodeOnline] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [testPrinting, setTestPrinting] = useState<boolean>(false);
+  const [testingPDF, setTestingPDF] = useState<boolean>(false);
   const [keySource, setKeySource] = useState<string>('');
   const [connectionError, setConnectionError] = useState<string>('');
 
@@ -34,7 +37,11 @@ export function PrinterPanel() {
     const interval = setInterval(async () => {
       try {
         const printerList = await printNodeService.getPrinters();
-        const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
+        // Filter out the specific Rollo X1040 printer
+        const filteredPrinters = printerList.filter(p => 
+          !p.name.includes('Rollo X1040') && !p.name.includes('X1243221259')
+        );
+        const formattedPrinters = filteredPrinters.map(p => ({id: p.id, name: p.name}));
         setPrinters(formattedPrinters);
         setPrintNodeOnline(true);
         setConnectionError('');
@@ -131,7 +138,11 @@ export function PrinterPanel() {
     setConnectionError('');
     try {
       const printerList = await printNodeService.getPrinters();
-      const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
+      // Filter out the specific Rollo X1040 printer
+      const filteredPrinters = printerList.filter(p => 
+        !p.name.includes('Rollo X1040') && !p.name.includes('X1243221259')
+      );
+      const formattedPrinters = filteredPrinters.map(p => ({id: p.id, name: p.name}));
       setPrinters(formattedPrinters);
       setPrintNodeOnline(true);
       
@@ -249,10 +260,65 @@ export function PrinterPanel() {
 
         <Separator className="my-4" />
 
+        {/* Test Printing */}
+        <div className="space-y-3">
+          <label className="text-sm font-medium">Test Printing:</label>
+          
+          <Button 
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              if (!selectedPrinter) {
+                toast.error("No printer selected");
+                return;
+              }
+              setTestingPDF(true);
+              try {
+                const doc = new jsPDF({
+                  unit: 'in',
+                  format: [2.0, 1.0],
+                  orientation: 'landscape',
+                  putOnlyUsedFonts: true,
+                  compress: false
+                });
+                doc.setTextColor(0, 0, 0);
+                doc.setFontSize(12);
+                doc.text('2x1" TEST', 0.1, 0.3);
+                doc.setFontSize(10);
+                doc.text('PDF Format', 0.1, 0.5);
+                doc.setFontSize(8);
+                doc.text(`${new Date().toLocaleTimeString()}`, 0.1, 0.7);
+                const pdfBase64 = doc.output('datauristring').split(',')[1];
+                
+                const result = await printNodeService.printPDF(pdfBase64, selectedPrinter.id, {
+                  title: `PDF Test - ${new Date().toLocaleTimeString()}`,
+                  copies: 1
+                });
+                
+                if (result.success) {
+                  toast.success(`PDF Test Sent - Job ID: ${result.jobId}`);
+                } else {
+                  throw new Error(result.error || 'PDF print failed');
+                }
+              } catch (error) {
+                console.error('PDF test error:', error);
+                toast.error(error instanceof Error ? error.message : "PDF test failed");
+              } finally {
+                setTestingPDF(false);
+              }
+            }}
+            disabled={!printNodeOnline || !selectedPrinter || testingPDF}
+            className="w-full"
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            {testingPDF ? "Testing..." : "Quick PDF Test"}
+          </Button>
+        </div>
+
 
         {/* PrintNode Info */}
         <div className="text-xs text-muted-foreground pt-2 border-t">
-          Optimized for TSPL RAW label printing.
+          Supports both TSPL RAW and PDF printing.
           <br />
           {printers.length > 0 && `${printers.length} printer(s) available`}
         </div>
