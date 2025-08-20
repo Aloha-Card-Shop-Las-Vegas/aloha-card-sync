@@ -32,17 +32,20 @@ serve(async (req: Request) => {
     const WIDE = 2;       // leave = NARROW unless you need wider ratios
     const BAR_H = 90;     // bar height in dots; 90–120 typical
 
-    const tspl = `SIZE 50 mm,25 mm
-GAP 3 mm,0
-DENSITY ${DENSITY}
-SPEED ${SPEED}
-DIRECTION 1
-CLS
-TEXT 10,8,"FONT001",0,1,1,"${sanitize(title)}"
-TEXT 10,45,"FONT001",0,1,1,"${sanitize(lot_number || "")}"
-TEXT 300,45,"FONT001",0,1,1,"${formatPrice(price)}"
-BARCODE 10,70,"128",${BAR_H},1,0,${NARROW},${WIDE},"${sanitize(barcode)}"
-PRINT 1,1`.trim();
+    // Use inches and CRLF line endings for Rollo compatibility
+    const tspl = [
+      "SIZE 2.0,1.0",
+      "GAP 0.12,0", 
+      `DENSITY ${DENSITY}`,
+      `SPEED ${SPEED}`,
+      "DIRECTION 1",
+      "CLS",
+      `TEXT 10,8,"FONT001",0,1,1,"${sanitize(title)}"`,
+      `TEXT 10,45,"FONT001",0,1,1,"${sanitize(lot_number || "")}"`,
+      `TEXT 300,45,"FONT001",0,1,1,"${formatPrice(price)}"`,
+      `BARCODE 10,70,"128",${BAR_H},1,0,${NARROW},${WIDE},"${sanitize(barcode)}"`,
+      "PRINT 1,1"
+    ].join("\r\n");
 
     const correlationId = `idx-${Date.now()}-${barcode}`;
     
