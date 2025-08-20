@@ -131,6 +131,50 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     }
   };
 
+  const setAsDefault = async (templateId: string) => {
+    try {
+      const { error } = await supabase.rpc('set_template_default', {
+        template_id: templateId,
+        template_type_param: templateType
+      });
+      
+      if (error) throw error;
+      
+      toast.success('Template set as default');
+      await fetchTemplates();
+    } catch (error) {
+      console.error('Error setting default template:', error);
+      toast.error('Failed to set template as default');
+    }
+  };
+
+  const deleteTemplate = async (templateId: string) => {
+    if (!confirm('Are you sure you want to delete this template?')) {
+      return;
+    }
+    
+    try {
+      const { error } = await supabase
+        .from('label_templates')
+        .delete()
+        .eq('id', templateId);
+      
+      if (error) throw error;
+      
+      toast.success('Template deleted');
+      
+      // Reset selection if we deleted the selected template
+      if (templateId === selectedTemplateId) {
+        setSelectedTemplateId("");
+      }
+      
+      await fetchTemplates();
+    } catch (error) {
+      console.error('Error deleting template:', error);
+      toast.error('Failed to delete template');
+    }
+  };
+
   const saveTemplate = async () => {
     if (!fabricCanvas || !templateName.trim()) {
       toast.error('Please enter a template name');
@@ -199,6 +243,28 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                 </SelectContent>
               </Select>
             </div>
+            
+            {/* Template Actions */}
+            {selectedTemplateId && (
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setAsDefault(selectedTemplateId)}
+                  disabled={templates.find(t => t.id === selectedTemplateId)?.is_default}
+                >
+                  Set Default
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => deleteTemplate(selectedTemplateId)}
+                  className="text-destructive hover:text-destructive"
+                >
+                  Delete
+                </Button>
+              </div>
+            )}
             
             <Button 
               variant="outline" 
