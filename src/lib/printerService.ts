@@ -109,15 +109,22 @@ export async function upsertPrinterSettings(settings: Partial<PrinterSettings>):
   if (error) throw error;
 }
 
-export async function insertPrintJob(job: Omit<PrintJob, 'id' | 'created_at'>): Promise<string> {
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) throw new Error('Not authenticated');
-
-  const { data, error } = await (supabase as any)
+export async function insertPrintJob(job: {
+  workstation_id: string;
+  status: string;
+  copies: number;
+  language: string;
+  payload: string;
+  printer_name?: string;
+}): Promise<string> {
+  const { data, error } = await supabase
     .from('print_jobs')
     .insert({
-      ...job,
-      user_id: user.user.id
+      workstation_id: job.workstation_id,
+      status: job.status,
+      tspl_code: job.payload, // Map payload to tspl_code field
+      printer_name: job.printer_name,
+      payload_type: job.language,
     })
     .select('id')
     .single();
@@ -128,13 +135,13 @@ export async function insertPrintJob(job: Omit<PrintJob, 'id' | 'created_at'>): 
 
 export async function updatePrintJobStatus(
   id: string, 
-  status: PrintJob['status'], 
-  error?: string
+  status: string, 
+  errorMessage?: string
 ): Promise<void> {
   const updateData: any = { status };
-  if (error !== undefined) updateData.error = error;
+  if (errorMessage !== undefined) updateData.error_message = errorMessage;
 
-  const { error: updateError } = await (supabase as any)
+  const { error: updateError } = await supabase
     .from('print_jobs')
     .update(updateData)
     .eq('id', id);
@@ -142,56 +149,42 @@ export async function updatePrintJobStatus(
   if (updateError) throw updateError;
 }
 
-// Batch printing with error handling
-export async function printBatch(
-  jobs: TSPLJob[], 
-  context: {
+// Queue-based print job creation (no direct printing)
+export async function queuePrintJob(job: {
+  workstationId: string;
+  tsplCode: string;
+  printerName?: string;
+  copies?: number;
+}): Promise<string> {
+  const jobId = await insertPrintJob({
+    workstation_id: job.workstationId,
+    status: 'queued',
+    copies: job.copies || 1,
+    language: 'ROLLO_AGENT',
+    payload: job.tsplCode,
+    printer_name: job.printerName
+  });
+
+  console.log(`Queued print job ${jobId} for workstation ${job.workstationId}`);
+  return jobId;
+}
+
+// Queue multiple print jobs
+export async function queuePrintBatch(
+  jobs: Array<{
     workstationId: string;
+    tsplCode: string;
     printerName?: string;
-    port?: number;
-    onProgress?: (current: number, total: number) => void;
-    onError?: (error: string) => void;
+    copies?: number;
+  }>
+): Promise<string[]> {
+  const jobIds: string[] = [];
+  
+  for (const job of jobs) {
+    const jobId = await queuePrintJob(job);
+    jobIds.push(jobId);
   }
-): Promise<{ success: number; failed: number }> {
-  let success = 0;
-  let failed = 0;
-
-  for (let i = 0; i < jobs.length; i++) {
-    const job = jobs[i];
-    
-    try {
-      // Insert job record
-      const jobId = await insertPrintJob({
-        workstation_id: context.workstationId,
-        status: 'queued',
-        copies: job.copies || 1,
-        language: 'TSPL',
-        payload: job.tspl
-      });
-
-      try {
-        // Send to printer
-        await sendTSPL(job.tspl, {
-          printerName: context.printerName,
-          copies: job.copies,
-          port: context.port
-        });
-
-        await updatePrintJobStatus(jobId, 'sent');
-        success++;
-      } catch (printError) {
-        const errorMsg = printError instanceof Error ? printError.message : 'Print failed';
-        await updatePrintJobStatus(jobId, 'error', errorMsg);
-        context.onError?.(errorMsg);
-        failed++;
-      }
-    } catch (dbError) {
-      context.onError?.(dbError instanceof Error ? dbError.message : 'Database error');
-      failed++;
-    }
-
-    context.onProgress?.(i + 1, jobs.length);
-  }
-
-  return { success, failed };
+  
+  console.log(`Queued ${jobIds.length} print jobs`);
+  return jobIds;
 }

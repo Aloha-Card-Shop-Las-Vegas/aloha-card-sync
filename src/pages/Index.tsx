@@ -12,9 +12,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
-import { sendTSPL, generateWorkstationId, insertPrintJob, updatePrintJobStatus } from "@/lib/printerService";
-import { RolloAgentPanel } from "@/components/RolloAgentPanel";
-import { detectAgent, printLabel, printBatch, getToken, getTarget, getTemplateId, type PrintJob, type PrintResponse, type BatchPrintResponse } from "@/lib/rolloAgent";
+import { generateWorkstationId, queuePrintJob, queuePrintBatch } from "@/lib/printerService";
+import { Printer } from "lucide-react";
 
 type CardItem = {
   title: string;
@@ -64,14 +63,21 @@ const Index = () => {
   const [lookupCert, setLookupCert] = useState("");
   const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
 
-  // Local printer state
+  // Print queue state
   const [workstationId, setWorkstationId] = useState<string>('');
   const [defaultTemplates, setDefaultTemplates] = useState<{graded?: any, raw?: any}>({});
+  const [printerName, setPrinterName] = useState<string>('');
 
-  // Initialize workstation ID
+  // Initialize workstation ID and printer settings
   useEffect(() => {
     const id = generateWorkstationId();
     setWorkstationId(id);
+    
+    // Load saved printer name
+    const savedPrinter = localStorage.getItem('selectedPrinter');
+    if (savedPrinter) {
+      setPrinterName(savedPrinter);
+    }
   }, []);
 
   // Load default templates
@@ -342,64 +348,21 @@ const Index = () => {
     loadCategoriesAndGames();
   }, []);
 
-  // TSPL Printing Functions using Rollo Agent
-  const printRolloLabel = async (cardItem: CardItem): Promise<boolean> => {
+  // Queue-based printing functions
+  const queueLabel = async (cardItem: CardItem): Promise<boolean> => {
     if (!cardItem.id) return false;
 
     try {
-      // Check if agent is available
-      const agentOnline = await detectAgent();
-      if (!agentOnline) {
-        toast.error('Rollo Print Agent is not running. Please start the agent and try again.');
-        return false;
-      }
-
-      const token = getToken();
-      const target = getTarget();
-      const templateId = getTemplateId();
-
-      if (!token) {
-        toast.error('No agent token configured. Please set up the Rollo Agent first.');
-        return false;
-      }
-
-      if (!target) {
-        toast.error('No printer target configured. Please set up the Rollo Agent first.');
-        return false;
-      }
-
       const title = buildTitleFromParts(cardItem.year, cardItem.brandTitle, cardItem.cardNumber, cardItem.subject, cardItem.variant);
       
-      console.log(`=== PRINTING ROLLO LABEL ===`);
+      console.log(`=== QUEUEING PRINT JOB ===`);
       console.log(`Title: ${title}`);
-      console.log(`Target: ${target.ip ? `IP: ${target.ip}` : `Printer: ${target.printer_name}`}`);
-      console.log(`Template: ${templateId}`);
-      
-      // Create print job record
-      const jobId = await insertPrintJob({
-        workstation_id: workstationId,
-        status: 'queued',
-        copies: 1,
-        language: 'ROLLO_AGENT',
-        payload: JSON.stringify({ 
-          template_id: templateId,
-          data: {
-            product_name: title,
-            price: cardItem.price || '0.00',
-            sku: cardItem.sku || cardItem.id || 'NO-SKU',
-            variant: cardItem.grade || (cardItem.condition || 'Raw'),
-            lot: cardItem.lot || '',
-            subject: cardItem.subject || '',
-            brand: cardItem.brandTitle || ''
-          },
-          target,
-          copies: 1
-        })
-      });
+      console.log(`Workstation: ${workstationId}`);
+      console.log(`Printer: ${printerName || 'Default'}`);
 
-      // Prepare print job for Rollo Agent
-      const printJobData: PrintJob = {
-        template_id: templateId,
+      // Create print data payload
+      const printData = {
+        template_id: "price-2x1-v1", // Default template
         data: {
           product_name: title,
           price: cardItem.price || '0.00',
@@ -409,23 +372,25 @@ const Index = () => {
           subject: cardItem.subject || '',
           brand: cardItem.brandTitle || ''
         },
-        target,
+        target: printerName ? { printer_name: printerName } : { ip: "192.168.1.100" },
         copies: 1
       };
 
-      // Send to Rollo Agent
-      const result: PrintResponse = await printLabel(printJobData, token);
+      // Queue the print job
+      const jobId = await queuePrintJob({
+        workstationId,
+        tsplCode: JSON.stringify(printData),
+        printerName: printerName || undefined,
+        copies: 1
+      });
       
-      // Update job status
-      await updatePrintJobStatus(jobId, 'sent');
-      
-      console.log(`Rollo Agent Response: ${result.status}, ${result.bytes} bytes, ${result.copies} copies`);
+      console.log(`Queued print job: ${jobId}`);
       return true;
       
     } catch (error) {
-      console.error(`Error printing Rollo label:`, error);
+      console.error(`Error queueing print job:`, error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`Print failed: ${errorMsg}`);
+      toast.error(`Failed to queue print job: ${errorMsg}`);
       return false;
     }
   };
@@ -435,19 +400,19 @@ const Index = () => {
     if (!cardItem.id) return;
     
     if (!acquireRowLock(cardItem.id)) {
-      toast.error('Item already being printed');
+      toast.error('Item already being queued');
       return;
     }
     
     setPrintingItemId(cardItem.id);
     
     try {
-      const success = await printRolloLabel(cardItem);
+      const success = await queueLabel(cardItem);
       
       if (success) {
-        // Mark as printed in database
+        // Mark as printed in database (ready for agent pickup)
         await markPrinted([cardItem.id]);
-        toast.success('Label printed successfully');
+        toast.success('Print job queued successfully - agent will process it shortly');
       }
       
     } finally {
@@ -459,7 +424,7 @@ const Index = () => {
   // Handle bulk print
   const handlePrintAll = async () => {
     if (!acquireGlobalLock()) {
-      toast.error('Another print job is in progress');
+      toast.error('Another batch job is in progress');
       return;
     }
     
@@ -471,88 +436,62 @@ const Index = () => {
         toast.error('No items to print');
         return;
       }
-
-      // Check if agent is available
-      const agentOnline = await detectAgent();
-      if (!agentOnline) {
-        toast.error('Rollo Print Agent is not running. Please start the agent and try again.');
-        return;
-      }
-
-      const token = getToken();
-      const target = getTarget();
-      const templateId = getTemplateId();
-
-      if (!token || !target) {
-        toast.error('Rollo Agent not configured. Please set up the agent first.');
-        return;
-      }
       
       let successCount = 0;
       const totalItems = unprintedItems.length;
       
-      // For batch printing, we can either:
-      // 1. Use individual print calls (current approach)
-      // 2. Use printBatch() for better performance (preferred)
+      console.log(`=== QUEUEING BATCH PRINT JOBS ===`);
+      console.log(`Items: ${totalItems}`);
+      console.log(`Workstation: ${workstationId}`);
       
-      if (totalItems > 1) {
-        // Use batch printing for better performance
-        const batchJobs: PrintJob[] = unprintedItems.map(item => {
-          const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
-          
-          return {
-            template_id: templateId,
-            data: {
-              product_name: title,
-              price: item.price || '0.00',
-              sku: item.sku || item.id || 'NO-SKU',
-              variant: item.grade || (item.condition || 'Raw'),
-              lot: item.lot || '',
-              subject: item.subject || '',
-              brand: item.brandTitle || ''
-            },
-            target,
-            copies: 1
-          };
-        });
+      // Prepare batch jobs
+      const batchJobs = unprintedItems.map(item => {
+        const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+        
+        const printData = {
+          template_id: "price-2x1-v1",
+          data: {
+            product_name: title,
+            price: item.price || '0.00',
+            sku: item.sku || item.id || 'NO-SKU',
+            variant: item.grade || (item.condition || 'Raw'),
+            lot: item.lot || '',
+            subject: item.subject || '',
+            brand: item.brandTitle || ''
+          },
+          target: printerName ? { printer_name: printerName } : { ip: "192.168.1.100" },
+          copies: 1
+        };
 
-        try {
-          const result: BatchPrintResponse = await printBatch(batchJobs, token);
-          successCount = totalItems; // Assume all succeeded if batch call succeeded
-          
-          // Mark all as printed
-          const itemIds = unprintedItems.map(item => item.id!).filter(Boolean);
-          await markPrinted(itemIds);
-          
-          console.log(`Batch print result:`, result);
-        } catch (error) {
-          console.error(`Batch print failed:`, error);
-          throw error;
-        }
-      } else {
-        // Single item - use individual print
-        for (const item of unprintedItems) {
-          if (!item.id) continue;
-          
-          try {
-            const success = await printRolloLabel(item);
-            if (success) {
-              successCount++;
-              // Mark as printed
-              await markPrinted([item.id]);
-            }
-          } catch (error) {
-            console.error(`Failed to print item ${item.id}:`, error);
-          }
-        }
+        return {
+          workstationId,
+          tsplCode: JSON.stringify(printData),
+          printerName: printerName || undefined,
+          copies: 1
+        };
+      });
+
+      try {
+        // Queue all jobs
+        const jobIds = await queuePrintBatch(batchJobs);
+        successCount = jobIds.length;
+        
+        // Mark all as printed (queued for processing)
+        const itemIds = unprintedItems.map(item => item.id!).filter(Boolean);
+        await markPrinted(itemIds);
+        
+        console.log(`Queued ${successCount} print jobs:`, jobIds);
+      } catch (error) {
+        console.error(`Batch queue failed:`, error);
+        throw error;
       }
       
       if (successCount > 0) {
-        toast.success(`Printed ${successCount}/${totalItems} labels successfully`);
+        toast.success(`Queued ${successCount}/${totalItems} print jobs - agent will process them shortly`);
         // Reload batch to reflect printed status
         window.location.reload();
       } else {
-        toast.error('No labels were printed successfully');
+        toast.error('No print jobs were queued');
       }
       
     } finally {
@@ -734,7 +673,40 @@ const Index = () => {
 
       <main className="container mx-auto px-6 pb-24">
         <section className="grid md:grid-cols-3 gap-6 -mt-8">
-          <RolloAgentPanel />
+          <Card className="shadow-aloha">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Printer className="h-5 w-5" />
+                Print Queue Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="workstation">Workstation ID</Label>
+                <Input 
+                  id="workstation" 
+                  value={workstationId} 
+                  disabled 
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div>
+                <Label htmlFor="printer">Printer Name (Optional)</Label>
+                <Input 
+                  id="printer" 
+                  value={printerName} 
+                  onChange={(e) => {
+                    setPrinterName(e.target.value);
+                    localStorage.setItem('selectedPrinter', e.target.value);
+                  }}
+                  placeholder="e.g., Rollo_USB or leave blank for IP printing"
+                />
+              </div>
+              <div className="text-sm text-muted-foreground">
+                Print jobs are queued in the database. The desktop agent will process them automatically.
+              </div>
+            </CardContent>
+          </Card>
           
           <Card className="shadow-aloha">
             <CardHeader>
@@ -838,9 +810,9 @@ const Index = () => {
                 <div className="flex gap-2">
                   <Button 
                     onClick={handlePrintAll}
-                    disabled={printingAll || batch.filter(b => !b.printedAt).length === 0}
-                  >
-                    {printingAll ? 'Printing...' : `Print All (${batch.filter(b => !b.printedAt).length})`}
+                     disabled={printingAll || batch.filter(b => !b.printedAt).length === 0}
+                   >
+                     {printingAll ? 'Queueing...' : `Queue All (${batch.filter(b => !b.printedAt).length})`}
                   </Button>
                 </div>
               </div>
@@ -884,9 +856,9 @@ const Index = () => {
                               <Button
                                 size="sm"
                                 onClick={() => handlePrintRow(b)}
-                                disabled={!!b.printedAt || printingItemId === b.id}
-                              >
-                                {printingItemId === b.id ? 'Printing...' : 'Print'}
+                                 disabled={!!b.printedAt || printingItemId === b.id}
+                               >
+                                 {printingItemId === b.id ? 'Queueing...' : 'Queue Print'}
                               </Button>
                               <Button
                                 size="sm"
