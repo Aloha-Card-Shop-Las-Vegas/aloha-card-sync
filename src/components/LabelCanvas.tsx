@@ -73,7 +73,7 @@ export const LabelCanvas = ({
     });
     borderRef.current = border;
 
-    // Initial layout
+    // Initial layout (use current props only once on mount to avoid re-initialization)
     const titleBox = new Textbox(withCondition(title, condition), { 
       left: 6, 
       top: 6, 
@@ -108,7 +108,7 @@ export const LabelCanvas = ({
     return () => {
       canvas.dispose();
     };
-  }, [title, lot, price, condition]);
+  }, []);
 
   const addText = (text: string) => {
     if (!fabricCanvas) return;

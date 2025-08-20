@@ -184,19 +184,24 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
     try {
       const canvasData = fabricCanvas.toJSON();
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('label_templates')
         .insert({
           name: templateName.trim(),
           template_type: templateType,
           canvas: canvasData,
           is_default: false
-        });
+        })
+        .select('*')
+        .single();
       
       if (error) throw error;
       
       toast.success('Template saved successfully');
       setTemplateName("");
+      if (data?.id) {
+        setSelectedTemplateId(data.id);
+      }
       await fetchTemplates();
     } catch (error) {
       console.error('Error saving template:', error);
