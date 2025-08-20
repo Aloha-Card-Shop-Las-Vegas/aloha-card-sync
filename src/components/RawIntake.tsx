@@ -32,7 +32,7 @@ const gameAbbr = (g: string) => {
   return "GEN";
 };
 
-export default function RawIntake() {
+export default function RawIntake({ onAdded }: { onAdded?: (row: any) => void }) {
   const [form, setForm] = useState<RawTradeInForm>({
     game: "Pokémon",
     name: "",
@@ -274,6 +274,8 @@ export default function RawIntake() {
       
       // Notify listeners (e.g., batch queue) that an item was added
       window.dispatchEvent(new CustomEvent('intake:item-added', { detail: data }));
+      // Direct parent callback for immediate UI update
+      onAdded?.(data);
       toast.success(`Added to batch (Lot ${data?.lot_number || ''})`);
       
       // Clear the form after successful addition

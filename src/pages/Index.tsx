@@ -392,7 +392,11 @@ const Index = () => {
       if (!next.pushedAt) {
         console.log("Adding item to batch");
         setBatch((b) => {
-          console.log("Current batch length:", b.length);
+          const exists = b.some(item => item.id === next.id);
+          if (exists) {
+            console.log('Item already in batch (event), skipping');
+            return b;
+          }
           const newBatch = [next, ...b];
           console.log("New batch length:", newBatch.length);
           return newBatch;
@@ -470,6 +474,35 @@ const Index = () => {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  const handleRawAdded = (row: any) => {
+    if (!row) return;
+    const next: CardItem = {
+      title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
+      set: "",
+      year: row.year || "",
+      grade: row.grade || "",
+      psaCert: row.psa_cert || "",
+      price: row?.price != null ? String(row.price) : "",
+      cost: row?.cost != null ? String(row.cost) : "",
+      lot: row.lot_number || "",
+      sku: row.sku || "",
+      brandTitle: row.brand_title || "",
+      subject: row.subject || "",
+      category: row.category || "",
+      variant: row.variant || "",
+      cardNumber: row.card_number || "",
+      quantity: row.quantity || 1,
+      id: row.id,
+      printedAt: row.printed_at || null,
+      pushedAt: row.pushed_at || null,
+    };
+    setBatch((b) => {
+      const exists = b.some(item => item.id === next.id);
+      if (exists) return b;
+      return [next, ...b];
+    });
+  };
 
   const refreshBatch = async () => {
     console.log("Manually refreshing batch");
@@ -1394,7 +1427,7 @@ const Index = () => {
                   </div>
                 </>
               ) : (
-                <RawIntake />
+                <RawIntake onAdded={handleRawAdded} />
               )}
             </CardContent>
           </Card>
