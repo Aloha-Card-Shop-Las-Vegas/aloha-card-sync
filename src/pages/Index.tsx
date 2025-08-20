@@ -13,7 +13,8 @@ import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
 import { sendTSPL, generateWorkstationId, insertPrintJob, updatePrintJobStatus } from "@/lib/printerService";
-import { LocalPrinterPanel } from "@/components/LocalPrinterPanel";
+import { RolloAgentPanel } from "@/components/RolloAgentPanel";
+import { detectAgent, printLabel, printBatch, getToken, getTarget, getTemplateId, type PrintJob, type PrintResponse, type BatchPrintResponse } from "@/lib/rolloAgent";
 
 type CardItem = {
   title: string;
@@ -285,84 +286,88 @@ const Index = () => {
     loadCategoriesAndGames();
   }, []);
 
-  // TSPL Printing Functions
-  const printTSPLLabel = async (cardItem: CardItem): Promise<boolean> => {
+  // TSPL Printing Functions using Rollo Agent
+  const printRolloLabel = async (cardItem: CardItem): Promise<boolean> => {
     if (!cardItem.id) return false;
 
     try {
+      // Check if agent is available
+      const agentOnline = await detectAgent();
+      if (!agentOnline) {
+        toast.error('Rollo Print Agent is not running. Please start the agent and try again.');
+        return false;
+      }
+
+      const token = getToken();
+      const target = getTarget();
+      const templateId = getTemplateId();
+
+      if (!token) {
+        toast.error('No agent token configured. Please set up the Rollo Agent first.');
+        return false;
+      }
+
+      if (!target) {
+        toast.error('No printer target configured. Please set up the Rollo Agent first.');
+        return false;
+      }
+
       const title = buildTitleFromParts(cardItem.year, cardItem.brandTitle, cardItem.cardNumber, cardItem.subject, cardItem.variant);
       
-      // Determine template to use based on item type
-      const isGraded = cardItem.grade || cardItem.psaCert;
-      const template = isGraded ? defaultTemplates.graded : defaultTemplates.raw;
-      
-      console.log(`=== PRINTING TSPL LABEL ===`);
+      console.log(`=== PRINTING ROLLO LABEL ===`);
       console.log(`Title: ${title}`);
-      console.log(`Template: ${isGraded ? 'Graded' : 'Raw'}`);
+      console.log(`Target: ${target.ip ? `IP: ${target.ip}` : `Printer: ${target.printer_name}`}`);
+      console.log(`Template: ${templateId}`);
       
       // Create print job record
       const jobId = await insertPrintJob({
         workstation_id: workstationId,
         status: 'queued',
         copies: 1,
-        language: 'TSPL',
-        payload: '' // Will be updated after rendering
+        language: 'ROLLO_AGENT',
+        payload: JSON.stringify({ 
+          template_id: templateId,
+          data: {
+            product_name: title,
+            price: cardItem.price || '0.00',
+            sku: cardItem.sku || cardItem.id || 'NO-SKU',
+            variant: cardItem.grade || (cardItem.condition || 'Raw'),
+            lot: cardItem.lot || '',
+            subject: cardItem.subject || '',
+            brand: cardItem.brandTitle || ''
+          },
+          target,
+          copies: 1
+        })
       });
 
-      // Call edge function to render TSPL label
-      const { data: labelData, error } = await supabase.functions.invoke('render-label', {
-        body: {
-          title,
-          lot_number: cardItem.lot,
-          price: cardItem.price?.toString(),
-          grade: cardItem.grade,
-          sku: cardItem.sku,
-          id: cardItem.id,
-          condition: cardItem.condition || 'Near Mint',
-          variant: isGraded ? 'Graded' : 'Raw',
-          template: template // Pass template data
-        }
-      });
-      
-      if (error) {
-        console.error('Label render error:', error);
-        await updatePrintJobStatus(jobId, 'error', 'Failed to render label');
-        toast.error(`Failed to render label for ${title}`);
-        return false;
-      }
-      
-      const tsplProgram = (labelData as any)?.program;
-      if (!tsplProgram) {
-        await updatePrintJobStatus(jobId, 'error', 'No TSPL program generated');
-        toast.error('No TSPL program generated');
-        return false;
-      }
+      // Prepare print job for Rollo Agent
+      const printJobData: PrintJob = {
+        template_id: templateId,
+        data: {
+          product_name: title,
+          price: cardItem.price || '0.00',
+          sku: cardItem.sku || cardItem.id || 'NO-SKU',
+          variant: cardItem.grade || (cardItem.condition || 'Raw'),
+          lot: cardItem.lot || '',
+          subject: cardItem.subject || '',
+          brand: cardItem.brandTitle || ''
+        },
+        target,
+        copies: 1
+      };
 
-      // Update job with TSPL payload
-      await supabase
-        .from('print_jobs')
-        .update({ tspl_code: tsplProgram })
-        .eq('id', jobId);
-      
-      // Get local printer settings
-      const settings = localStorage.getItem('localPrinterSettings');
-      const printerSettings = settings ? JSON.parse(settings) : {};
-      
-      // Send TSPL to local printer
-      await sendTSPL(tsplProgram, { 
-        printerName: printerSettings.printerName || undefined, 
-        copies: 1, 
-        port: printerSettings.port || 17777 
-      });
+      // Send to Rollo Agent
+      const result: PrintResponse = await printLabel(printJobData, token);
       
       // Update job status
       await updatePrintJobStatus(jobId, 'sent');
       
-      console.log(`TSPL label sent successfully: ${title}`);
+      console.log(`Rollo Agent Response: ${result.status}, ${result.bytes} bytes, ${result.copies} copies`);
       return true;
       
     } catch (error) {
-      console.error(`Error printing TSPL label:`, error);
+      console.error(`Error printing Rollo label:`, error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       toast.error(`Print failed: ${errorMsg}`);
       return false;
@@ -381,7 +386,7 @@ const Index = () => {
     setPrintingItemId(cardItem.id);
     
     try {
-      const success = await printTSPLLabel(cardItem);
+      const success = await printRolloLabel(cardItem);
       
       if (success) {
         // Mark as printed in database
@@ -410,22 +415,79 @@ const Index = () => {
         toast.error('No items to print');
         return;
       }
+
+      // Check if agent is available
+      const agentOnline = await detectAgent();
+      if (!agentOnline) {
+        toast.error('Rollo Print Agent is not running. Please start the agent and try again.');
+        return;
+      }
+
+      const token = getToken();
+      const target = getTarget();
+      const templateId = getTemplateId();
+
+      if (!token || !target) {
+        toast.error('Rollo Agent not configured. Please set up the agent first.');
+        return;
+      }
       
       let successCount = 0;
       const totalItems = unprintedItems.length;
       
-      for (const item of unprintedItems) {
-        if (!item.id) continue;
-        
+      // For batch printing, we can either:
+      // 1. Use individual print calls (current approach)
+      // 2. Use printBatch() for better performance (preferred)
+      
+      if (totalItems > 1) {
+        // Use batch printing for better performance
+        const batchJobs: PrintJob[] = unprintedItems.map(item => {
+          const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+          
+          return {
+            template_id: templateId,
+            data: {
+              product_name: title,
+              price: item.price || '0.00',
+              sku: item.sku || item.id || 'NO-SKU',
+              variant: item.grade || (item.condition || 'Raw'),
+              lot: item.lot || '',
+              subject: item.subject || '',
+              brand: item.brandTitle || ''
+            },
+            target,
+            copies: 1
+          };
+        });
+
         try {
-          const success = await printTSPLLabel(item);
-          if (success) {
-            successCount++;
-            // Mark as printed
-            await markPrinted([item.id]);
-          }
+          const result: BatchPrintResponse = await printBatch(batchJobs, token);
+          successCount = totalItems; // Assume all succeeded if batch call succeeded
+          
+          // Mark all as printed
+          const itemIds = unprintedItems.map(item => item.id!).filter(Boolean);
+          await markPrinted(itemIds);
+          
+          console.log(`Batch print result:`, result);
         } catch (error) {
-          console.error(`Failed to print item ${item.id}:`, error);
+          console.error(`Batch print failed:`, error);
+          throw error;
+        }
+      } else {
+        // Single item - use individual print
+        for (const item of unprintedItems) {
+          if (!item.id) continue;
+          
+          try {
+            const success = await printRolloLabel(item);
+            if (success) {
+              successCount++;
+              // Mark as printed
+              await markPrinted([item.id]);
+            }
+          } catch (error) {
+            console.error(`Failed to print item ${item.id}:`, error);
+          }
         }
       }
       
@@ -602,7 +664,7 @@ const Index = () => {
 
       <main className="container mx-auto px-6 pb-24">
         <section className="grid md:grid-cols-3 gap-6 -mt-8">
-          <LocalPrinterPanel />
+          <RolloAgentPanel />
           
           <Card className="shadow-aloha">
             <CardHeader>
