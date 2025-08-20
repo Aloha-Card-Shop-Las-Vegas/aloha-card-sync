@@ -357,9 +357,14 @@ const Index = () => {
     if (didInitIntakeListenerRef.current) return;
     didInitIntakeListenerRef.current = true;
     const handler = (e: Event) => {
+      console.log("Received intake:item-added event:", e);
       const any = e as CustomEvent;
       const row: any = any.detail;
-      if (!row) return;
+      console.log("Event detail:", row);
+      if (!row) {
+        console.log("No row data in event");
+        return;
+      }
       const next: CardItem = {
         title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
         set: "",
@@ -379,11 +384,27 @@ const Index = () => {
         printedAt: row.printed_at || null,
         pushedAt: row.pushed_at || null,
       };
-      if (!next.pushedAt) setBatch((b) => [next, ...b]);
+      console.log("Built CardItem:", next);
+      console.log("pushedAt check:", next.pushedAt, "will add:", !next.pushedAt);
+      if (!next.pushedAt) {
+        console.log("Adding item to batch");
+        setBatch((b) => {
+          console.log("Current batch length:", b.length);
+          const newBatch = [next, ...b];
+          console.log("New batch length:", newBatch.length);
+          return newBatch;
+        });
+      } else {
+        console.log("Item already pushed, skipping");
+      }
     };
 
+    console.log("Setting up intake:item-added listener");
     window.addEventListener("intake:item-added", handler);
-    return () => window.removeEventListener("intake:item-added", handler);
+    return () => {
+      console.log("Removing intake:item-added listener");
+      window.removeEventListener("intake:item-added", handler);
+    };
   }, []);
 
   const addToBatch = async () => {
