@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,12 +7,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
-import { Canvas as FabricCanvas, Textbox, Image as FabricImage, Rect } from "fabric";
+import { Canvas as FabricCanvas } from "fabric";
 import { supabase } from "@/integrations/supabase/client";
 import { printNodeService } from "@/lib/printNodeService";
-import { PrinterPanel } from "@/components/PrinterPanel";
+import { LabelCanvas } from "@/components/LabelCanvas";
+import { TemplateManager } from "@/components/TemplateManager";
+import { useLabelDesigner } from "@/hooks/useLabelDesigner";
 
-function useSEO(opts: { title: string; description?: string; canonical?: string }) {
+function useSEO(opts: { title: string; description?: string }) {
   useEffect(() => {
     document.title = opts.title;
     const metaDesc = document.querySelector('meta[name="description"]');
@@ -23,488 +25,48 @@ function useSEO(opts: { title: string; description?: string; canonical?: string 
       m.content = opts.description;
       document.head.appendChild(m);
     }
-    const linkCanonical = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
-    const href = opts.canonical || window.location.href;
-    if (linkCanonical) linkCanonical.href = href; else { const l = document.createElement("link"); l.rel = "canonical"; l.href = href; document.head.appendChild(l); }
-  }, [opts.title, opts.description, opts.canonical]);
+  }, [opts.title, opts.description]);
 }
 
-const LABEL_WIDTH_IN = 2; // inches
-const LABEL_HEIGHT_IN = 1; // inches
-const PREVIEW_DPI = 150; // screen preview DPI
-const PX_WIDTH = Math.round(LABEL_WIDTH_IN * PREVIEW_DPI); // 300 px
-const PX_HEIGHT = Math.round(LABEL_HEIGHT_IN * PREVIEW_DPI); // 150 px
-
-const condMap: Record<string, string> = {
-  "Near Mint": "NM",
-  "Lightly Played": "LP",
-  "Moderately Played": "MP",
-  "Heavily Played": "HP",
-  "Damaged": "DMG",
-};
-
-const withCondition = (base: string, condition: string) => {
-  const abbr = condMap[condition] || condition;
-  return base ? `${base} • ${abbr}` : abbr;
-};
-
-// Shared template type
-type LabelTemplate = {
-  id: string;
-  name: string;
-  template_type: 'graded' | 'raw';
-  is_default: boolean;
-  canvas: any;
-  data: any;
-  created_at?: string;
-  updated_at?: string;
-};
-
 export default function LabelDesigner() {
-  useSEO({ title: "Label Designer 2x1 in | Aloha", description: "Design and print 2x1 inch labels with barcode, lot, SKU, price, and more." });
+  useSEO({ 
+    title: "Label Designer 2x1 in | Aloha", 
+    description: "Design and print 2x1 inch labels with barcode, lot, SKU, price, and more." 
+  });
 
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const {
+    labelData,
+    updateLabelData,
+    templates,
+    setTemplates,
+    selectedTemplateId,
+    setSelectedTemplateId,
+    templateType,
+    setTemplateType,
+  } = useLabelDesigner();
+
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  const borderRef = useRef<Rect | null>(null);
-
+  const [selectedFontFamily, setSelectedFontFamily] = useState('Roboto Condensed');
+  
   // PrintNode state
   const [printers, setPrinters] = useState<any[]>([]);
   const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
   const [printLoading, setPrintLoading] = useState(false);
   const [printNodeConnected, setPrintNodeConnected] = useState(false);
-  const [hasPrinted, setHasPrinted] = useState(false);
-  
-  // Advanced TSPL settings
-  const [tsplDensity, setTsplDensity] = useState('10');
-  const [tsplSpeed, setTsplSpeed] = useState('4');
-  const [tsplGap, setTsplGap] = useState('0');
-  const [selectedFontFamily, setSelectedFontFamily] = useState('Roboto Condensed');
-  const [templateType, setTemplateType] = useState<'graded' | 'raw'>('graded');
 
-  // Load printer selection from localStorage
+  // Load printer selection
   useEffect(() => {
     const saved = localStorage.getItem('printnode-selected-printer');
     if (saved) setSelectedPrinterId(parseInt(saved));
-    
-    // Load saved TSPL settings
-    const savedDensity = localStorage.getItem('tspl-density');
-    if (savedDensity) setTsplDensity(savedDensity);
-    
-    const savedSpeed = localStorage.getItem('tspl-speed');
-    if (savedSpeed) setTsplSpeed(savedSpeed);
-    
-    const savedGap = localStorage.getItem('tspl-gap');
-    if (savedGap) setTsplGap(savedGap);
-    
-    // Remove old localStorage default template handling
-    localStorage.removeItem('default-template-id');
   }, []);
 
-  // Save printer selection and TSPL settings to localStorage
   useEffect(() => {
     if (selectedPrinterId) {
       localStorage.setItem('printnode-selected-printer', selectedPrinterId.toString());
     }
   }, [selectedPrinterId]);
-  
-  useEffect(() => {
-    localStorage.setItem('tspl-density', tsplDensity);
-  }, [tsplDensity]);
-  
-  useEffect(() => {
-    localStorage.setItem('tspl-speed', tsplSpeed);
-  }, [tsplSpeed]);
-  
-  useEffect(() => {
-    localStorage.setItem('tspl-gap', tsplGap);
-  }, [tsplGap]);
 
-  const [printerName, setPrinterName] = useState("");
-  const labelSizeText = useMemo(() => `${LABEL_WIDTH_IN} in × ${LABEL_HEIGHT_IN} in`, []);
-
-  const [barcodeValue, setBarcodeValue] = useState("120979260");
-  const [title, setTitle] = useState("POKEMON GENGAR VMAX #020");
-  const [lot, setLot] = useState("LOT-000001");
-  const [price, setPrice] = useState("$1,000");
-  const [sku, setSku] = useState("120979260");
-  const [condition, setCondition] = useState("Near Mint");
-
-  // Templates state
-  const [templateName, setTemplateName] = useState("");
-  const [templates, setTemplates] = useState<LabelTemplate[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: PX_WIDTH,
-      height: PX_HEIGHT,
-      backgroundColor: "#ffffff",
-    });
-
-    // Visible label outline (design only, not exported)
-    const border = new Rect({
-      left: 1,
-      top: 1,
-      width: PX_WIDTH - 2,
-      height: PX_HEIGHT - 2,
-      rx: 6,
-      ry: 6,
-      fill: 'transparent',
-      stroke: '#000',
-      strokeWidth: 2,
-      selectable: false,
-      evented: false,
-      excludeFromExport: true,
-    });
-    borderRef.current = border;
-
-    // Starter layout: Title, Lot, Price
-    const titleBox = new Textbox(withCondition(title, condition), { 
-      left: 6, 
-      top: 6, 
-      fontSize: 14, 
-      width: PX_WIDTH - 12,
-      fontFamily: 'Roboto Condensed',
-      fontWeight: 600,
-    });
-    const lotBox = new Textbox(lot, { 
-      left: 6, 
-      top: 28, 
-      fontSize: 12, 
-      width: PX_WIDTH - 12,
-      fontFamily: 'Roboto Condensed',
-      fontWeight: 400,
-    });
-    const priceBox = new Textbox(price, { 
-      left: PX_WIDTH - 80, 
-      top: PX_HEIGHT - 22, 
-      fontSize: 14, 
-      textAlign: "right", 
-      width: 74,
-      fontFamily: 'Inter',
-      fontWeight: 600,
-    });
-
-    canvas.add(border, titleBox, lotBox, priceBox);
-    
-    setFabricCanvas(canvas);
-    toast.success("Label canvas ready. Drag elements to position.");
-
-    return () => {
-      canvas.dispose();
-    };
-  }, []);
-
-  const addText = (text: string) => {
-    if (!fabricCanvas) return;
-    const tb = new Textbox(text, { 
-      left: 10, 
-      top: 10, 
-      fontSize: 12, 
-      width: PX_WIDTH - 20,
-      fontFamily: selectedFontFamily,
-      fontWeight: 500,
-    });
-    fabricCanvas.add(tb);
-    fabricCanvas.setActiveObject(tb);
-  };
-
-  const addBarcode = async () => {
-    if (!fabricCanvas) return;
-    if (!barcodeValue.trim()) {
-      toast.error("Enter a barcode value");
-      return;
-    }
-
-    try {
-      const tempCanvas = document.createElement("canvas");
-      const JsBarcode: any = (await import("jsbarcode")).default;
-      JsBarcode(tempCanvas, barcodeValue, { format: "CODE128", displayValue: false, margin: 0, width: 2, height: 40, lineColor: "#000" });
-      const dataUrl = tempCanvas.toDataURL("image/png");
-
-      FabricImage.fromURL(dataUrl).then((img) => {
-        img.set({ left: 6, top: PX_HEIGHT - 50, selectable: true });
-        // Scale if too wide
-        const maxW = PX_WIDTH - 12;
-        if (img.width && img.width > maxW) {
-          img.scaleToWidth(maxW);
-        }
-        fabricCanvas.add(img);
-        fabricCanvas.setActiveObject(img);
-      });
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to generate barcode");
-    }
-  };
-
-  const addVerticalLine = () => {
-    if (!fabricCanvas) return;
-    const line = new Rect({
-      left: PX_WIDTH / 2 - 1,
-      top: 10,
-      width: 2,
-      height: PX_HEIGHT - 20,
-      fill: '#000000',
-      stroke: '#000000',
-      strokeWidth: 0,
-      selectable: true,
-      evented: true,
-    });
-    fabricCanvas.add(line);
-    fabricCanvas.setActiveObject(line);
-    toast.success("Vertical separator line added");
-  };
-
-  const deleteSelected = () => {
-    if (!fabricCanvas) return;
-    const objs = fabricCanvas.getActiveObjects();
-    if (!objs.length) {
-      toast.info("No selection to delete");
-      return;
-    }
-    objs.forEach((o) => fabricCanvas.remove(o));
-    fabricCanvas.discardActiveObject();
-    fabricCanvas.requestRenderAll();
-  };
-
-  const handleClear = () => {
-    if (!fabricCanvas) return;
-    const objs = fabricCanvas.getObjects();
-    objs.forEach((o) => {
-      if (o !== borderRef.current) fabricCanvas.remove(o);
-    });
-    fabricCanvas.discardActiveObject();
-    fabricCanvas.requestRenderAll();
-  };
-
-  const exportImageDataUrl = () => fabricCanvas?.toDataURL({ multiplier: 1, format: "png", quality: 1 }) || "";
-
-  // Templates: fetch, save, load, delete
-  const fetchTemplates = async () => {
-    const { data, error } = await supabase
-      .from('label_templates')
-      .select('*')
-      .order('is_default', { ascending: false })
-      .order('updated_at', { ascending: false });
-    if (error) {
-      console.error(error);
-      toast.error('Failed to load templates');
-      return;
-    }
-    setTemplates((data as unknown as LabelTemplate[]) || []);
-  };
-
-  const saveTemplate = async (nameOverride?: string) => {
-    if (!fabricCanvas) return;
-    const name = (nameOverride ?? templateName).trim();
-    if (!name) {
-      toast.error('Enter a template name');
-      return;
-    }
-    const payload = {
-      name,
-      template_type: templateType,
-      canvas: fabricCanvas.toJSON(),
-      data: {
-        barcodeValue,
-        title,
-        lot,
-        price,
-        sku,
-        condition,
-        size: { widthIn: LABEL_WIDTH_IN, heightIn: LABEL_HEIGHT_IN, dpi: PREVIEW_DPI },
-      },
-    } as const;
-
-    const { error } = await supabase.from('label_templates').insert(payload as any);
-    if (error) {
-      console.error(error);
-      toast.error('Save failed');
-    } else {
-      toast.success('Template saved');
-      setTemplateName('');
-      fetchTemplates();
-    }
-  };
-
-  const updateTemplate = async () => {
-    if (!fabricCanvas || !selectedTemplateId) return;
-    
-    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
-    if (!selectedTemplate) {
-      toast.error('No template selected');
-      return;
-    }
-
-    const payload = {
-      canvas: fabricCanvas.toJSON(),
-      data: {
-        barcodeValue,
-        title,
-        lot,
-        price,
-        sku,
-        condition,
-        size: { widthIn: LABEL_WIDTH_IN, heightIn: LABEL_HEIGHT_IN, dpi: PREVIEW_DPI },
-      },
-      updated_at: new Date().toISOString(),
-    };
-
-    const { error } = await supabase
-      .from('label_templates')
-      .update(payload)
-      .eq('id', selectedTemplateId);
-      
-    if (error) {
-      console.error(error);
-      toast.error('Update failed');
-    } else {
-      toast.success(`Template "${selectedTemplate.name}" updated`);
-      fetchTemplates();
-    }
-  };
-
-  const quickSaveTemplate = async () => {
-    const name = window.prompt('Template name');
-    if (!name) return;
-    await saveTemplate(name);
-  };
-
-  const loadTemplate = async (id: string) => {
-    const tpl = templates.find(t => (t as any).id === id) as any;
-    if (!tpl || !fabricCanvas) return;
-
-    // Restore side fields if present
-    const d = (tpl.data || {}) as any;
-    setBarcodeValue(d.barcodeValue ?? "");
-    setTitle(d.title ?? "");
-    setLot(d.lot ?? "");
-    setPrice(d.price ?? "");
-    setSku(d.sku ?? "");
-    setCondition(d.condition ?? condition);
-
-    // Reset canvas then load objects
-    fabricCanvas.clear();
-    fabricCanvas.backgroundColor = '#ffffff';
-
-    fabricCanvas.loadFromJSON(tpl.canvas, () => {
-      // Re-add non-exported border outline
-      const border = new Rect({
-        left: 1,
-        top: 1,
-        width: PX_WIDTH - 2,
-        height: PX_HEIGHT - 2,
-        rx: 6,
-        ry: 6,
-        fill: 'transparent',
-        stroke: '#ddd',
-        strokeWidth: 1,
-        strokeDashArray: [5, 5],
-        selectable: false,
-        evented: false,
-        excludeFromExport: true,
-      });
-      borderRef.current = border;
-      fabricCanvas.add(border);
-      
-      // Force render after everything is loaded
-      fabricCanvas.renderAll();
-      fabricCanvas.requestRenderAll();
-      
-      toast.success(`Template "${tpl.name}" loaded`);
-    });
-  };
-
-  const handleTemplateSelect = (templateId: string) => {
-    setSelectedTemplateId(templateId);
-    if (templateId) {
-      loadTemplate(templateId);
-    }
-  };
-
-  const setAsDefaultTemplate = async (id: string) => {
-    const template = templates.find(t => t.id === id);
-    if (!template) return;
-    
-    try {
-      // Use the database function to set default
-      const { error } = await supabase.rpc('set_template_default', {
-        template_id: id,
-        template_type_param: template.template_type
-      });
-      
-      if (error) throw error;
-      
-      toast.success(`Set as default ${template.template_type} template`);
-      fetchTemplates(); // Reload to show updated defaults
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to set default template');
-    }
-  };
-
-  const setAsDefaultForType = async (templateType: 'graded' | 'raw') => {
-    if (!selectedTemplateId) {
-      toast.error('Please select a template first');
-      return;
-    }
-    
-    const template = templates.find(t => t.id === selectedTemplateId);
-    if (!template) return;
-    
-    try {
-      // Use the database function to set default
-      const { error } = await supabase.rpc('set_template_default', {
-        template_id: selectedTemplateId,
-        template_type_param: templateType
-      });
-      
-      if (error) throw error;
-      
-      toast.success(`Set as default ${templateType} template: ${template.name}`);
-      fetchTemplates(); // Reload to show updated defaults
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to set default template');
-    }
-  };
-
-  const clearDefaultTemplate = async () => {
-    const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
-    if (!selectedTemplate) return;
-    
-    try {
-      const { error } = await supabase
-        .from('label_templates')
-        .update({ is_default: false })
-        .eq('id', selectedTemplateId);
-      
-      if (error) throw error;
-      
-      toast.success(`Cleared default ${selectedTemplate.template_type} template`);
-      fetchTemplates(); // Reload to show updated defaults
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to clear default template');
-    }
-  };
-
-  const deleteTemplate = async (id: string) => {
-    const { error } = await supabase.from('label_templates').delete().eq('id', id);
-    if (error) {
-      console.error(error);
-      toast.error('Delete failed');
-    } else {
-      toast.success('Template deleted');
-      if (selectedTemplateId === id) setSelectedTemplateId('');
-      fetchTemplates();
-    }
-  };
-
-  // Load PrintNode printers on component mount
+  // Load PrintNode printers
   useEffect(() => {
     const loadPrintNode = async () => {
       try {
@@ -512,7 +74,6 @@ export default function LabelDesigner() {
         setPrinters(printerList);
         setPrintNodeConnected(true);
         
-        // Auto-select saved printer or first printer if available
         const saved = localStorage.getItem('printnode-selected-printer');
         if (saved && printerList.find(p => p.id === parseInt(saved))) {
           setSelectedPrinterId(parseInt(saved));
@@ -529,312 +90,63 @@ export default function LabelDesigner() {
     };
 
     loadPrintNode();
-    fetchTemplates();
   }, []);
 
-  // Auto-load default template for current template type after templates are fetched
-  useEffect(() => {
-    if (templates.length > 0 && fabricCanvas) {
-      const defaultTemplate = templates.find(t => t.template_type === templateType && t.is_default);
-      if (defaultTemplate && !selectedTemplateId) {
-        loadTemplate(defaultTemplate.id);
-        setSelectedTemplateId(defaultTemplate.id);
-      }
-    }
-  }, [templates, templateType, fabricCanvas]);
-
-  const refreshPrinters = async () => {
-    try {
-      const printerList = await printNodeService.getPrinters();
-      setPrinters(printerList);
-      setPrintNodeConnected(true);
-      toast.success(`Found ${printerList.length} printer(s)`);
-    } catch (e) {
-      console.error("Failed to refresh printers:", e);
-      toast.error("Failed to refresh printers");
-      setPrintNodeConnected(false);
-    }
-  };
-
-  const handlePrintNodePrint = async (isTest = false) => {
-    if (!selectedPrinterId) {
+  const handleTSPLPrint = async () => {
+    if (!selectedPrinterId || !fabricCanvas) {
       toast.error('Select a PrintNode printer first');
       return;
     }
 
     setPrintLoading(true);
     try {
-      // Generate PDF from canvas or form data
-      let pdfBase64: string;
-      
-      if (fabricCanvas && fabricCanvas.getObjects().filter(obj => !(obj as any).excludeFromExport).length > 0) {
-        // Wait for fonts to load before printing
-        await document.fonts.ready;
-        
-        // Use canvas content - export as image and convert to PDF
-        const dataURL = fabricCanvas.toDataURL({
-          format: 'png',
-          quality: 1,
-          multiplier: 2 // High resolution
-        });
-        
-        // Create PDF with canvas image
-        const { jsPDF } = await import('jspdf');
-        const doc = new jsPDF({
-          unit: 'in',
-          format: [2.0, 1.0], // Exact 2.0" x 1.0"
-          orientation: 'landscape',
-          putOnlyUsedFonts: true,
-          compress: false
-        });
+      // Call render-label edge function like the main app
+      const { data: labelResponse, error } = await supabase.functions.invoke('render-label', {
+        body: {
+          title: labelData.title,
+          lot_number: labelData.lot,
+          price: labelData.price,
+          grade: labelData.condition,
+          sku: labelData.sku,
+          id: labelData.barcodeValue
+        }
+      });
 
-        // Set PDF metadata for single label
-        doc.setProperties({
-          title: 'Single Label Print',
-          subject: 'Label Print',
-          creator: 'Label Designer'
-        });
-        
-        // Add the canvas image to PDF, filling entire label exactly
-        doc.addImage(dataURL, 'PNG', 0, 0, 2.0, 1.0, undefined, 'FAST');
-        pdfBase64 = doc.output('datauristring').split(',')[1];
-      } else {
-        // Generate PDF from form data
-        const { jsPDF } = await import('jspdf');
-        const doc = new jsPDF({
-          unit: 'in',
-          format: [2.0, 1.0], // Exact 2.0" x 1.0"
-          orientation: 'landscape',
-          putOnlyUsedFonts: true,
-          compress: false
-        });
-
-        // Set PDF metadata for single label
-        doc.setProperties({
-          title: 'Single Label Print',
-          subject: 'Label Print',
-          creator: 'Label Designer'
-        });
-
-        // Add form data to PDF - no border to avoid cutting issues
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(10);
-        const titleText = isTest ? "TEST LABEL" : withCondition(title, condition);
-        const skuText = isTest ? "TEST-001" : sku;
-        const priceText = isTest ? "$99.99" : price;
-        const lotText = isTest ? "TEST-LOT" : lot;
-        const barcodeText = isTest ? "123456789" : barcodeValue;
-
-        // Left column
-        if (titleText) doc.text(titleText, 0.05, 0.25);
-        if (skuText) doc.text(`SKU: ${skuText}`, 0.05, 0.45);
-        if (priceText) doc.text(`Price: ${priceText}`, 0.05, 0.65);
-        
-        // Right column  
-        if (lotText) doc.text(`Lot: ${lotText}`, 1.1, 0.25);
-        if (barcodeText) doc.text(`Code: ${barcodeText}`, 1.1, 0.45);
-
-        pdfBase64 = doc.output('datauristring').split(',')[1];
+      if (error) {
+        console.error('Label render error:', error);
+        toast.error('Failed to render label');
+        return;
       }
 
-      const result = await printNodeService.printPDF(pdfBase64, selectedPrinterId, {
-        title: isTest ? 'Test Label' : 'Label Print',
+      const { program } = labelResponse;
+      
+      // Send TSPL to PrintNode
+      const result = await printNodeService.printRAW(program, selectedPrinterId, {
+        title: 'Label Designer Print',
         copies: 1
       });
 
       if (result.success) {
-        setHasPrinted(true);
-        toast.success(`${isTest ? 'Test' : 'Label'} sent to PrintNode printer successfully (Job ID: ${result.jobId})`);
+        toast.success(`Label sent to printer (Job ID: ${result.jobId})`);
       } else {
         throw new Error(result.error || 'Print failed');
       }
       
     } catch (e) {
-      console.error("PrintNode print failed:", e);
-      toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      console.error("TSPL print failed:", e);
+      toast.error(`Print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
     } finally {
       setPrintLoading(false);
     }
   };
 
-  // Keyboard shortcut: Delete key removes selected object(s)
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Delete") return;
-      const ae = document.activeElement as HTMLElement | null;
-      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || (ae as any).isContentEditable)) return;
-      e.preventDefault();
-      deleteSelected();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [fabricCanvas]);
-
   const handleDownload = () => {
-    const url = exportImageDataUrl();
-    if (!url) return;
+    if (!fabricCanvas) return;
+    const url = fabricCanvas.toDataURL({ multiplier: 1, format: "png", quality: 1 });
     const a = document.createElement("a");
     a.href = url;
     a.download = `label-${Date.now()}.png`;
     a.click();
-  };
-
-  const handleTestPrint = async () => {
-    if (!fabricCanvas) return;
-    
-    // Create a temporary canvas with test data
-    const tempCanvas = new FabricCanvas(document.createElement("canvas"), {
-      width: PX_WIDTH,
-      height: PX_HEIGHT,
-      backgroundColor: "#ffffff",
-    });
-
-    try {
-      // Wait for fonts to load
-      await document.fonts.ready;
-
-      // Add test content
-      const testTitle = new Textbox("TEST LABEL • NM", { 
-        left: 6, 
-        top: 6, 
-        fontSize: 14, 
-        width: PX_WIDTH - 12,
-        fontFamily: 'Roboto Condensed',
-        fontWeight: 600,
-      });
-      
-      const testLot = new Textbox("TEST-LOT-001", { 
-        left: 6, 
-        top: 28, 
-        fontSize: 12, 
-        width: PX_WIDTH - 12,
-        fontFamily: 'Roboto Condensed',
-        fontWeight: 400,
-      });
-      
-      const testPrice = new Textbox("$99.99", { 
-        left: PX_WIDTH - 80, 
-        top: PX_HEIGHT - 22, 
-        fontSize: 14, 
-        textAlign: "right", 
-        width: 74,
-        fontFamily: 'Inter',
-        fontWeight: 600,
-      });
-
-      // Add test barcode
-      const testBarcodeCanvas = document.createElement("canvas");
-      const JsBarcode: any = (await import("jsbarcode")).default;
-      JsBarcode(testBarcodeCanvas, "123456789", { 
-        format: "CODE128", 
-        displayValue: false, 
-        margin: 0, 
-        width: 2, 
-        height: 40, 
-        lineColor: "#000" 
-      });
-      const barcodeDataUrl = testBarcodeCanvas.toDataURL("image/png");
-
-      const barcodeImg = await FabricImage.fromURL(barcodeDataUrl);
-      barcodeImg.set({ left: 6, top: PX_HEIGHT - 50, selectable: false });
-      
-      // Scale if too wide
-      const maxW = PX_WIDTH - 12;
-      if (barcodeImg.width && barcodeImg.width > maxW) {
-        barcodeImg.scaleToWidth(maxW);
-      }
-
-      tempCanvas.add(testTitle, testLot, testPrice, barcodeImg);
-      
-      // Export and print
-      const testUrl = tempCanvas.toDataURL({ multiplier: 1, format: "png", quality: 1 });
-      
-      const iframe = document.createElement("iframe");
-      iframe.style.position = "fixed";
-      iframe.style.right = "0";
-      iframe.style.bottom = "0";
-      iframe.style.width = "0";
-      iframe.style.height = "0";
-      iframe.style.border = "0";
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentWindow?.document;
-      if (!doc) { iframe.remove(); return; }
-
-      const html = `<!doctype html><html><head><title>Print Test Label</title><style>
-        @page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in; margin: 0; }
-        html, body { height: 100%; }
-        body { margin: 0; display: flex; align-items: center; justify-content: center; }
-        img { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; }
-      </style></head><body>
-        <img src="${testUrl}" alt="Test Label" />
-        <script>setTimeout(function(){ window.focus(); window.print(); }, 20);<\/script>
-      </body></html>`;
-
-      doc.open();
-      doc.write(html);
-      doc.close();
-
-      iframe.onload = () => {
-        const win = iframe.contentWindow; if (!win) return; win.focus(); win.print();
-      };
-
-      const cleanup = () => {
-        setTimeout(() => iframe.remove(), 300);
-        tempCanvas.dispose();
-      };
-      iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
-      setTimeout(cleanup, 5000);
-      
-      toast.success("Test label sent to printer");
-      
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to generate test label");
-      tempCanvas.dispose();
-    }
-  };
-
-  const handlePrint = async () => {
-    // Wait for fonts to load before printing
-    await document.fonts.ready;
-    
-    const url = exportImageDataUrl();
-    if (!url) return;
-
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (!doc) { iframe.remove(); return; }
-
-    const html = `<!doctype html><html><head><title>Print 2x1 Label</title><style>
-      @page { size: ${LABEL_WIDTH_IN}in ${LABEL_HEIGHT_IN}in; margin: 0; }
-      html, body { height: 100%; }
-      body { margin: 0; display: flex; align-items: center; justify-content: center; }
-      img { width: ${LABEL_WIDTH_IN}in; height: ${LABEL_HEIGHT_IN}in; }
-    </style></head><body>
-      <img src="${url}" alt="Label" />
-      <script>setTimeout(function(){ window.focus(); window.print(); }, 20);<\/script>
-    </body></html>`;
-
-    doc.open();
-    doc.write(html);
-    doc.close();
-
-    iframe.onload = () => {
-      const win = iframe.contentWindow; if (!win) return; win.focus(); win.print();
-    };
-
-    const cleanup = () => setTimeout(() => iframe.remove(), 300);
-    iframe.contentWindow?.addEventListener("afterprint", cleanup, { once: true });
-    setTimeout(cleanup, 5000);
   };
 
   const applyFontToSelected = (fontFamily: string) => {
@@ -856,7 +168,7 @@ export default function LabelDesigner() {
         <div className="container mx-auto px-6 py-8 flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground">Label Designer</h1>
-            <p className="text-muted-foreground mt-2">Design 2×1 inch labels with PrintNode cloud printing. PrintNode provides reliable printing to any connected printer.</p>
+            <p className="text-muted-foreground mt-2">Design 2×1 inch labels with TSPL printing to Rollo printers.</p>
           </div>
           <Link to="/">
             <Button variant="secondary">Back to Dashboard</Button>
@@ -866,37 +178,32 @@ export default function LabelDesigner() {
 
       <main className="container mx-auto px-6 py-8">
         <div className="grid lg:grid-cols-3 gap-6">
-          <Card className="shadow-aloha lg:col-span-2">
+          <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Canvas (2×1 in preview)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="border rounded-md p-3 inline-block" style={{ width: PX_WIDTH + 8, height: PX_HEIGHT + 8 }}>
-                <canvas ref={canvasRef} width={PX_WIDTH} height={PX_HEIGHT} aria-label="Label design canvas" />
-              </div>
-              <div className="flex flex-wrap gap-2 mt-4">
-                <Button onClick={() => addText(title)}>Add Title</Button>
-                <Button onClick={() => addText(condMap[condition] || condition)}>Add Condition</Button>
-                <Button onClick={() => addText(lot)}>Add Lot</Button>
-                <Button onClick={() => addText(sku)}>Add SKU</Button>
-                <Button onClick={() => addText(price)}>Add Price</Button>
-                <Button variant="outline" onClick={addBarcode}>Add Barcode</Button>
-                <Button variant="outline" onClick={addVerticalLine}>Add Separator Line</Button>
-                <Button variant="outline" onClick={deleteSelected}>Delete Selected</Button>
-                <Button onClick={quickSaveTemplate}>Save Template</Button>
-                <Button variant="secondary" onClick={handleClear}>Clear</Button>
-              </div>
+              <LabelCanvas
+                barcodeValue={labelData.barcodeValue}
+                title={labelData.title}
+                lot={labelData.lot}
+                price={labelData.price}
+                condition={labelData.condition}
+                selectedFontFamily={selectedFontFamily}
+                onCanvasReady={setFabricCanvas}
+              />
             </CardContent>
           </Card>
 
           <div className="space-y-6">
-            <Card className="shadow-aloha">
+            {/* PrintNode Printing */}
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
-                  PrintNode Cloud Printing
+                  TSPL Printing
                   {printNodeConnected ? (
                     <Badge variant="default" className="bg-green-600">
-                      Connected ({printers.length} printer{printers.length !== 1 ? 's' : ''})
+                      Connected ({printers.length})
                     </Badge>
                   ) : (
                     <Badge variant="destructive">Not Connected</Badge>
@@ -906,32 +213,13 @@ export default function LabelDesigner() {
               <CardContent>
                 {printNodeConnected && printers.length > 0 ? (
                   <div className="space-y-4">
-                    <div className="p-3 border rounded-lg bg-green-50">
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm font-medium text-green-800">✓ PrintNode Ready</Label>
-                        <div className="h-2 w-2 rounded-full bg-green-500" />
-                      </div>
-                      <p className="text-xs text-green-700 mb-3">
-                        Reliable cloud printing to {printers.length} available printer{printers.length !== 1 ? 's' : ''}
-                      </p>
-                      
-                      <div className="flex items-center gap-2 mb-2">
-                        <Label htmlFor="printnode-printer" className="text-sm font-medium">Select Printer</Label>
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          onClick={refreshPrinters}
-                          className="h-6 px-2 text-xs text-green-700 hover:bg-green-100"
-                        >
-                          Refresh
-                        </Button>
-                      </div>
-                      
+                    <div>
+                      <Label>Select Printer</Label>
                       <Select value={selectedPrinterId?.toString() || ""} onValueChange={(value) => setSelectedPrinterId(parseInt(value))}>
-                        <SelectTrigger id="printnode-printer" className="border-green-200">
-                          <SelectValue placeholder="Choose your printer" />
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose printer" />
                         </SelectTrigger>
-                        <SelectContent className="z-[100]">
+                        <SelectContent>
                           {printers.map((printer) => (
                             <SelectItem key={printer.id} value={printer.id.toString()}>
                               {printer.name} {printer.state === 'online' ? '🟢' : '🔴'}
@@ -939,302 +227,131 @@ export default function LabelDesigner() {
                           ))}
                         </SelectContent>
                       </Select>
-                      
-                      {selectedPrinterId && (
-                        <div className="mt-3 p-3 rounded bg-green-100">
-                          <div className="text-sm text-green-800 font-medium mb-2">
-                            Selected: {printers.find(p => p.id === selectedPrinterId)?.name}
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              onClick={() => handlePrintNodePrint(true)}
-                              disabled={printLoading}
-                              variant="outline"
-                              className="flex-1 border-green-600 text-green-700 hover:bg-green-50"
-                            >
-                              {printLoading ? "Testing..." : "Test Print"}
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              onClick={() => handlePrintNodePrint(false)}
-                              disabled={printLoading}
-                              className={`flex-1 text-white ${
-                                hasPrinted 
-                                  ? 'bg-orange-600 hover:bg-orange-700' 
-                                  : 'bg-green-600 hover:bg-green-700'
-                              }`}
-                            >
-                              {printLoading ? "Printing..." : hasPrinted ? "Reprint" : "Print Label"}
-                            </Button>
-                          </div>
-                        </div>
-                      )}
                     </div>
+                    
+                    <Button 
+                      onClick={handleTSPLPrint}
+                      disabled={printLoading || !selectedPrinterId}
+                      className="w-full"
+                    >
+                      {printLoading ? "Printing..." : "Print Label (TSPL)"}
+                    </Button>
                   </div>
                 ) : (
-                  <div className="p-3 border rounded-lg bg-red-50">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="h-2 w-2 rounded-full bg-red-500" />
-                      <Label className="text-sm font-medium text-red-800">PrintNode Not Available</Label>
-                    </div>
-                    <p className="text-sm text-red-700 mb-2">
-                      {!printNodeConnected ? 
-                        "Check your PrintNode API key configuration in Supabase secrets." :
-                        "No printers found. Install PrintNode client on your computer."}
-                    </p>
-                    <p className="text-xs text-red-600">
-                      PrintNode provides reliable cloud printing. Browser print is available as fallback below.
-                    </p>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    PrintNode connection required for printing.
+                  </p>
                 )}
               </CardContent>
             </Card>
 
-            <PrinterPanel />
-
-            <Card className="shadow-aloha">
-              <CardHeader>
-                <CardTitle>Browser Print</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="browser-printer">Printer Name (Optional)</Label>
-                    <Input id="browser-printer" value={printerName} onChange={(e) => setPrinterName(e.target.value)} placeholder="Select in system dialog" />
-                    <p className="text-xs text-muted-foreground mt-1">Browsers can't list printers. When you click Print, choose your printer in the system dialog.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={handleDownload}>Download PNG</Button>
-                    <Button variant="outline" onClick={handlePrint}>Browser Print</Button>
-                    <Button variant="outline" onClick={handleTestPrint}>Test Print</Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-aloha">
-              <CardHeader>
-                <CardTitle>Font Settings</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="font-family">Default Font for New Text</Label>
-                    <Select value={selectedFontFamily} onValueChange={setSelectedFontFamily}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Roboto Condensed">
-                          <span style={{ fontFamily: 'Roboto Condensed' }}>Roboto Condensed</span>
-                        </SelectItem>
-                        <SelectItem value="Atkinson Hyperlegible">
-                          <span style={{ fontFamily: 'Atkinson Hyperlegible' }}>Atkinson Hyperlegible</span>
-                        </SelectItem>
-                        <SelectItem value="Inter">
-                          <span style={{ fontFamily: 'Inter' }}>Inter</span>
-                        </SelectItem>
-                        <SelectItem value="Arial">Arial</SelectItem>
-                        <SelectItem value="Times New Roman">Times New Roman</SelectItem>
-                        <SelectItem value="Courier New">Courier New</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button 
-                    onClick={() => applyFontToSelected(selectedFontFamily)}
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                  >
-                    Apply Font to Selected Text
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-aloha">
+            {/* Label Data */}
+            <Card>
               <CardHeader>
                 <CardTitle>Label Data</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div>
-                    <Label>Label Size</Label>
-                    <div className="mt-2 font-mono text-sm">{labelSizeText}</div>
-                  </div>
-                  <div>
-                    <Label htmlFor="barcode">Barcode Value</Label>
-                    <Input id="barcode" value={barcodeValue} onChange={(e) => setBarcodeValue(e.target.value)} placeholder="e.g., 120979260" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label htmlFor="title">Title</Label>
-                      <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="condition">Condition</Label>
-                      <Select value={condition} onValueChange={setCondition}>
-                        <SelectTrigger id="condition">
-                          <SelectValue placeholder="Select condition" />
-                        </SelectTrigger>
-                        <SelectContent className="z-50">
-                          <SelectItem value="Near Mint">Near Mint (NM)</SelectItem>
-                          <SelectItem value="Lightly Played">Lightly Played (LP)</SelectItem>
-                          <SelectItem value="Moderately Played">Moderately Played (MP)</SelectItem>
-                          <SelectItem value="Heavily Played">Heavily Played (HP)</SelectItem>
-                          <SelectItem value="Damaged">Damaged</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label htmlFor="lot">Lot</Label>
-                      <Input id="lot" value={lot} onChange={(e) => setLot(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="sku">SKU</Label>
-                      <Input id="sku" value={sku} onChange={(e) => setSku(e.target.value)} />
-                    </div>
-                    <div>
-                      <Label htmlFor="price">Price</Label>
-                      <Input id="price" value={price} onChange={(e) => setPrice(e.target.value)} />
-                    </div>
-                  </div>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label>Title</Label>
+                  <Input
+                    value={labelData.title}
+                    onChange={(e) => updateLabelData({ title: e.target.value })}
+                    placeholder="Card title"
+                  />
+                </div>
+                <div>
+                  <Label>Lot Number</Label>
+                  <Input
+                    value={labelData.lot}
+                    onChange={(e) => updateLabelData({ lot: e.target.value })}
+                    placeholder="LOT-000001"
+                  />
+                </div>
+                <div>
+                  <Label>Price</Label>
+                  <Input
+                    value={labelData.price}
+                    onChange={(e) => updateLabelData({ price: e.target.value })}
+                    placeholder="$1,000"
+                  />
+                </div>
+                <div>
+                  <Label>SKU/Barcode</Label>
+                  <Input
+                    value={labelData.sku}
+                    onChange={(e) => updateLabelData({ sku: e.target.value, barcodeValue: e.target.value })}
+                    placeholder="120979260"
+                  />
+                </div>
+                <div>
+                  <Label>Condition</Label>
+                  <Select value={labelData.condition} onValueChange={(value) => updateLabelData({ condition: value })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Near Mint">Near Mint</SelectItem>
+                      <SelectItem value="Lightly Played">Lightly Played</SelectItem>
+                      <SelectItem value="Moderately Played">Moderately Played</SelectItem>
+                      <SelectItem value="Heavily Played">Heavily Played</SelectItem>
+                      <SelectItem value="Damaged">Damaged</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="shadow-aloha">
+            {/* Font Selection */}
+            <Card>
               <CardHeader>
-                <CardTitle>Advanced TSPL Settings</CardTitle>
+                <CardTitle>Typography</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label htmlFor="tspl-density" className="text-sm">Density (0-15)</Label>
-                      <Input 
-                        id="tspl-density"
-                        value={tsplDensity} 
-                        onChange={(e) => setTsplDensity(e.target.value)} 
-                        placeholder="10"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="tspl-speed" className="text-sm">Speed (2-8)</Label>
-                      <Input 
-                        id="tspl-speed"
-                        value={tsplSpeed} 
-                        onChange={(e) => setTsplSpeed(e.target.value)} 
-                        placeholder="4"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="tspl-gap" className="text-sm">Gap (inches)</Label>
-                      <Input 
-                        id="tspl-gap"
-                        value={tsplGap} 
-                        onChange={(e) => setTsplGap(e.target.value)} 
-                        placeholder="0"
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Adjust print density, speed, and label gap for optimal output quality.
-                  </p>
+                <div>
+                  <Label>Font Family</Label>
+                  <Select value={selectedFontFamily} onValueChange={setSelectedFontFamily}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Roboto Condensed">Roboto Condensed</SelectItem>
+                      <SelectItem value="Inter">Inter</SelectItem>
+                      <SelectItem value="Arial">Arial</SelectItem>
+                      <SelectItem value="Times New Roman">Times New Roman</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+                <Button 
+                  size="sm" 
+                  className="mt-2" 
+                  onClick={() => applyFontToSelected(selectedFontFamily)}
+                >
+                  Apply to Selected
+                </Button>
               </CardContent>
             </Card>
 
-            <Card className="shadow-aloha">
-              <CardHeader>
-                <CardTitle>Templates</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="tplName">New template name</Label>
-                    <div className="flex gap-2 mt-2">
-                      <Input id="tplName" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="e.g., 2×1: Pokemon NM" />
-                      <Select value={templateType} onValueChange={(value) => setTemplateType(value as 'graded' | 'raw')}>
-                        <SelectTrigger className="w-32">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="graded">Graded</SelectItem>
-                          <SelectItem value="raw">Raw</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button onClick={() => saveTemplate()}>Save</Button>
-                    </div>
-                  </div>
-                  <div>
-                    <Label htmlFor="tplSelect">Load template</Label>
-                    <Select
-                      value={selectedTemplateId}
-                      onValueChange={handleTemplateSelect}
-                    >
-                      <SelectTrigger id="tplSelect">
-                        <SelectValue placeholder={templates.length ? `Choose (${templates.length})` : "No templates yet"} />
-                      </SelectTrigger>
-                       <SelectContent className="z-50">
-                         {templates.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.name} {t.is_default && "⭐"} ({t.template_type})
-                            </SelectItem>
-                         ))}
-                       </SelectContent>
-                     </Select>
-                       {selectedTemplateId && (
-                         <div className="mt-2 space-y-2">
-                           <div className="flex gap-2 flex-wrap">
-                             <Button variant="default" onClick={updateTemplate}>Update Template</Button>
-                             <Button variant="outline" onClick={() => deleteTemplate(selectedTemplateId)}>Delete</Button>
-                             {!templates.find(t => t.id === selectedTemplateId)?.is_default ? (
-                               <Button variant="outline" onClick={() => setAsDefaultTemplate(selectedTemplateId)}>Set as Default</Button>
-                             ) : (
-                               <Button variant="outline" onClick={clearDefaultTemplate}>Clear Default</Button>
-                             )}
-                           </div>
-                           <div className="flex gap-2 flex-wrap">
-                             <Button 
-                               variant="secondary" 
-                               size="sm"
-                               onClick={() => setAsDefaultForType('graded')}
-                               className="bg-blue-100 hover:bg-blue-200 text-blue-800 border-blue-300"
-                             >
-                               Set as Default for Graded Cards
-                             </Button>
-                             <Button 
-                               variant="secondary" 
-                               size="sm"
-                               onClick={() => setAsDefaultForType('raw')}
-                               className="bg-green-100 hover:bg-green-200 text-green-800 border-green-300"
-                             >
-                               Set as Default for Raw Cards
-                             </Button>
-                           </div>
-                         </div>
-                       )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Template Manager */}
+            <TemplateManager
+              templates={templates}
+              setTemplates={setTemplates}
+              selectedTemplateId={selectedTemplateId}
+              setSelectedTemplateId={setSelectedTemplateId}
+              templateType={templateType}
+              setTemplateType={setTemplateType}
+              fabricCanvas={fabricCanvas}
+              labelData={labelData}
+            />
 
-            <Card className="shadow-aloha">
+            {/* Actions */}
+            <Card>
               <CardHeader>
-                <CardTitle>Tips</CardTitle>
+                <CardTitle>Actions</CardTitle>
               </CardHeader>
-              <CardContent>
-                <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                  <li>PrintNode provides reliable cloud printing to any connected printer</li>
-                  <li>Set your printer media to 2×1 inches and zero margins for best results</li>
-                  <li>Use thermal printer driver settings for optimal density</li>
-                  <li>Browser print is available as fallback if PrintNode is unavailable</li>
-                </ul>
+              <CardContent className="space-y-2">
+                <Button onClick={handleDownload} variant="outline" className="w-full">
+                  Download PNG
+                </Button>
               </CardContent>
             </Card>
           </div>
