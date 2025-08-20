@@ -754,6 +754,7 @@ const Index = () => {
     if (!acquireRowLock(b.id)) { releaseGlobalLock(); return; }
 
     try {
+      console.log(`=== SENDING TO PRINTNODE RAW === Single Row Print`);
       const ok = await printNodeLabels([b]);
       if (ok) await markPrinted([b.id]);
     } catch (e) {

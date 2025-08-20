@@ -117,15 +117,26 @@ class PrintNodeService {
     options: PrintJobOptions = {}
   ): Promise<PrintJobResult> {
     try {
-      const rawBase64 = btoa(rawText);
+      // Use the exact encoding method specified in the checklist
+      const contentBase64 = btoa(unescape(encodeURIComponent(rawText)));
+      
       const printJob = {
         printerId,
         title: options.title || 'Label RAW',
         contentType: 'raw_base64',
-        content: rawBase64,
+        content: contentBase64,
         source: 'web-app',
         qty: options.copies || 1
       };
+
+      console.log('PrintNode RAW job payload:', {
+        printerId,
+        title: printJob.title,
+        contentType: printJob.contentType,
+        qty: printJob.qty,
+        source: printJob.source,
+        contentLength: contentBase64.length
+      });
 
       const result = await this.makeRequest<PrintNodeJob>('/printjobs', {
         method: 'POST',
