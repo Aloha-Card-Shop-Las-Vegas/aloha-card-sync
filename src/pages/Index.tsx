@@ -112,7 +112,7 @@ const Index = () => {
   // Preview modal state
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewProgram, setPreviewProgram] = useState("");
-  const [previewLabel, setPreviewLabel] = useState<{ title: string; lot: string; price: string; barcode: string } | null>(null);
+  const [previewLabel, setPreviewLabel] = useState<{ title: string; lot: string; price: string; barcode: string; grade?: string } | null>(null);
   const [previewItemId, setPreviewItemId] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
 
@@ -820,6 +820,7 @@ const Index = () => {
         lot: b.lot || "",
         price: b.price ? `$${Number(b.price).toFixed(2)}` : "",
         barcode: b.sku || b.id || "NO-SKU",
+        grade: b.grade || undefined,
       });
       setPreviewItemId(b.id || null);
       setPreviewOpen(true);

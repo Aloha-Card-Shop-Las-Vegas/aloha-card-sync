@@ -18,6 +18,7 @@ export interface PreviewLabelData {
   barcode: string;
   sku?: string;
   condition?: string;
+  grade?: string;
 }
 
 interface PrintPreviewDialogProps {
@@ -215,6 +216,11 @@ const PrintPreviewDialog: React.FC<PrintPreviewDialogProps> = ({
                   <div className="absolute left-2 top-6 text-xs">
                     <span className="opacity-80">{label.lot}</span>
                   </div>
+                  {label.grade && (
+                    <div className="absolute left-2 top-10 text-xs font-semibold text-blue-600">
+                      Grade: {label.grade}
+                    </div>
+                  )}
                   <div className="absolute right-2 top-6 text-xs font-medium">
                     {label.price}
                   </div>
