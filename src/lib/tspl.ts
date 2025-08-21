@@ -22,14 +22,6 @@ export interface TSPLOptions {
     size?: 'S' | 'M' | 'L';
     errorLevel?: 'L' | 'M' | 'Q' | 'H';
   };
-  barcode?: {
-    data: string;
-    x?: number;
-    y?: number;
-    height?: number;
-    humanReadable?: boolean;
-    type?: 'CODE128' | 'CODE39' | 'EAN13';
-  };
   lines?: Array<{
     x: number;
     y: number;
@@ -45,7 +37,6 @@ export function buildTSPL(options: TSPLOptions = {}): string {
   const {
     textLines = [],
     qrcode,
-    barcode,
     lines = [],
     gapInches = 0,
     density = 10,
@@ -54,49 +45,38 @@ export function buildTSPL(options: TSPLOptions = {}): string {
 
   const commands: string[] = [];
 
-  // Header commands for Rollo printer
+  // Header commands
   commands.push(`SIZE ${LABEL_WIDTH_IN},${LABEL_HEIGHT_IN}`);
   commands.push(`GAP ${gapInches},0`);
   commands.push(`DENSITY ${density}`);
   commands.push(`SPEED ${speed}`);
-  commands.push('DIRECTION 1,0');
+  commands.push('DIRECTION 1');
   commands.push('REFERENCE 0,0');
-  commands.push('OFFSET 0');
   commands.push('CLS');
 
   // Add text elements
   textLines.forEach(({ text, x = 10, y = 20, fontSize = 1, rotation = 0 }) => {
-    // Escape quotes in text
-    const escapedText = text.replace(/"/g, '""');
     // TSPL TEXT command: TEXT x,y,"font",rotation,x_scale,y_scale,"content"
-    commands.push(`TEXT ${x},${y},"TSS24.BF2",${rotation},${fontSize},${fontSize},"${escapedText}"`);
+    commands.push(`TEXT ${x},${y},"0",${rotation},${fontSize},${fontSize},"${text}"`);
   });
-
-  // Add barcode if specified
-  if (barcode) {
-    const { data, x = 10, y = 100, height = 40, humanReadable = true, type = 'CODE128' } = barcode;
-    const escapedData = data.replace(/"/g, '""');
-    commands.push(`BARCODE ${x},${y},"${type}",${height},${humanReadable ? 1 : 0},0,2,2,"${escapedData}"`);
-  }
 
   // Add QR code if specified
   if (qrcode) {
     const { data, x = 10, y = 80, size = 'M', errorLevel = 'M' } = qrcode;
     // TSPL QRCODE command: QRCODE x,y,level,cell_width,mode,rotation,"data"
     const cellWidth = size === 'S' ? 3 : size === 'M' ? 4 : 6;
-    const escapedData = data.replace(/"/g, '""');
-    commands.push(`QRCODE ${x},${y},${errorLevel},${cellWidth},A,0,"${escapedData}"`);
+    commands.push(`QRCODE ${x},${y},${errorLevel},${cellWidth},A,0,"${data}"`);
   }
 
-  // Add horizontal/vertical lines (bars)
+  // Add horizontal/vertical lines
   lines.forEach(({ x, y, width, height }) => {
     commands.push(`BAR ${x},${y},${width},${height}`);
   });
 
   // Print command
-  commands.push('PRINT 1,1');
+  commands.push('PRINT 1');
 
-  return commands.join('\r\n'); // Use CRLF for Rollo printers
+  return commands.join('\n');
 }
 
 export function buildSampleLabel(): string {

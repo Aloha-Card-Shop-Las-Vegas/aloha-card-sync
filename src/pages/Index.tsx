@@ -12,8 +12,8 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
-import { generateWorkstationId, queueTemplateJob, queueTemplateBatch } from "@/lib/printerService";
-import { Printer } from "lucide-react";
+import { printNodeService } from "@/lib/printNodeService";
+
 
 type CardItem = {
   title: string;
@@ -33,7 +33,6 @@ type CardItem = {
   labelType?: string;
   cardNumber?: string;
   quantity?: number;
-  condition?: string;
   id?: string;
   printedAt?: string | null;
   pushedAt?: string | null;
@@ -63,51 +62,11 @@ const Index = () => {
   const [lookupCert, setLookupCert] = useState("");
   const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
 
-  // Print queue state
-  const [workstationId, setWorkstationId] = useState<string>('');
+  // PrintNode state
+  const [printers, setPrinters] = useState<any[]>([]);
+  const [selectedPrinterId, setSelectedPrinterId] = useState<number | null>(null);
+  const [printNodeConnected, setPrintNodeConnected] = useState(false);
   const [defaultTemplates, setDefaultTemplates] = useState<{graded?: any, raw?: any}>({});
-  const [printerName, setPrinterName] = useState<string>('');
-
-  // Initialize workstation ID and printer settings
-  useEffect(() => {
-    const id = generateWorkstationId();
-    setWorkstationId(id);
-    
-    // Load saved printer name
-    const savedPrinter = localStorage.getItem('selectedPrinter');
-    if (savedPrinter) {
-      setPrinterName(savedPrinter);
-    }
-  }, []);
-
-  // Load default templates
-  useEffect(() => {
-    const loadDefaultTemplates = async () => {
-      try {
-        const { data: templates } = await supabase
-          .from('label_templates')
-          .select('*')
-          .eq('is_default', true);
-        
-        if (templates) {
-          const templateMap: {graded?: any, raw?: any} = {};
-          templates.forEach((template: any) => {
-            if (template.template_type === 'graded') {
-              templateMap.graded = template;
-            } else if (template.template_type === 'raw') {
-              templateMap.raw = template;
-            }
-          });
-          setDefaultTemplates(templateMap);
-          console.log('Loaded default templates:', templateMap);
-        }
-      } catch (error) {
-        console.error('Failed to load default templates:', error);
-      }
-    };
-
-    loadDefaultTemplates();
-  }, []);
 
   // New UI state for bulk actions
   const [printingAll, setPrintingAll] = useState(false);
@@ -118,9 +77,6 @@ const Index = () => {
   const printingIdsRef = useRef<Set<string>>(new Set());
   const jobInFlightRef = useRef(false);
   const [jobInFlight, setJobInFlight] = useState(false);
-
-  // Simple printing state (no preview dialogs)
-  const [printingItemId, setPrintingItemId] = useState<string | null>(null);
 
   // Inline edit state for Batch Queue
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -143,7 +99,6 @@ const Index = () => {
   type GameOption = { id: number; name: string; categoryId: number | null; categoryName: string | null };
   const [games, setGames] = useState<GameOption[]>([]);
   const [editGameId, setEditGameId] = useState<number | null>(null);
-  
   // Lock helpers
   const acquireRowLock = (id: string) => {
     if (!id) return false;
@@ -215,66 +170,17 @@ const Index = () => {
     "GEM MT 10",
   ];
 
+  // Persist printer selection
+  useEffect(() => {
+    if (selectedPrinterId) {
+      localStorage.setItem('printnode-selected-printer', String(selectedPrinterId));
+    }
+  }, [selectedPrinterId]);
+
   // StrictMode guards
   const didInitMainRef = useRef(false);
   const didInitCatsGamesRef = useRef(false);
   const didInitIntakeListenerRef = useRef(false);
-
-  // Listen for intake item additions from RawIntake component
-  useEffect(() => {
-    if (didInitIntakeListenerRef.current) return;
-    didInitIntakeListenerRef.current = true;
-    
-    const handleIntakeItemAdded = (event: any) => {
-      console.log('Received intake:item-added event:', event.detail);
-      const newItemData = event.detail;
-      
-      // Build title from the added data
-      const title = buildTitleFromParts(
-        newItemData.year, 
-        newItemData.brand_title, 
-        newItemData.card_number, 
-        newItemData.subject, 
-        newItemData.variant
-      );
-      
-      const newItem: CardItem = {
-        title: title,
-        set: "",
-        year: newItemData.year || "",
-        grade: newItemData.grade || "",
-        psaCert: newItemData.psa_cert || "",
-        price: newItemData.price != null ? String(newItemData.price) : "",
-        cost: newItemData.cost != null ? String(newItemData.cost) : "",
-        lot: newItemData.lot_number || "",
-        sku: newItemData.sku || "",
-        brandTitle: newItemData.brand_title || "",
-        subject: newItemData.subject || "",
-        category: newItemData.category || "",
-        variant: newItemData.variant || "",
-        cardNumber: newItemData.card_number || "",
-        quantity: newItemData.quantity || 1,
-        condition: newItemData.variant || "",
-        id: newItemData.id,
-        printedAt: newItemData.printed_at || null,
-        pushedAt: newItemData.pushed_at || null,
-      };
-      
-      console.log('Adding item from RawIntake to batch:', newItem);
-      setBatch(prev => {
-        console.log('Previous batch length:', prev.length);
-        const newBatch = [newItem, ...prev];
-        console.log('New batch length after RawIntake addition:', newBatch.length);
-        return newBatch;
-      });
-    };
-    
-    window.addEventListener('intake:item-added', handleIntakeItemAdded);
-    
-    return () => {
-      window.removeEventListener('intake:item-added', handleIntakeItemAdded);
-    };
-  }, []);
 
   // Load existing items from DB so batch persists
   useEffect(() => {
@@ -310,7 +216,6 @@ const Index = () => {
           category: row.category || "",
           variant: row.variant || "",
           cardNumber: row.card_number || "",
-          quantity: row.quantity || 1,
           id: row.id,
           printedAt: row.printed_at || null,
           pushedAt: row.pushed_at || null,
@@ -320,378 +225,658 @@ const Index = () => {
       setBatch(mapped.filter((m) => !m.pushedAt));
     };
 
-    loadBatch();
-  }, []);
-
-  // Load categories and games for dropdowns
-  useEffect(() => {
-    if (didInitCatsGamesRef.current) return;
-    didInitCatsGamesRef.current = true;
-    
-    const loadCategoriesAndGames = async () => {
+    const loadPrintNode = async () => {
       try {
-        const [catsResult] = await Promise.all([
-          supabase.from('categories').select('name').order('name')
-        ]);
-
-        if (!catsResult.error && catsResult.data) {
-          setCategories(catsResult.data.map(c => c.name));
+        const printerList = await printNodeService.getPrinters();
+        setPrinters(printerList);
+        setPrintNodeConnected(true);
+        
+        // Auto-select saved printer or first printer if available
+        const saved = localStorage.getItem('printnode-selected-printer');
+        if (saved && printerList.find(p => p.id === parseInt(saved))) {
+          setSelectedPrinterId(parseInt(saved));
+        } else if (printerList.length > 0) {
+          setSelectedPrinterId(printerList[0].id);
         }
-
-        // Set empty games array since we don't need it for simplified version
-        setGames([]);
-      } catch (error) {
-        console.error('Failed to load categories/games:', error);
+        
+        console.log(`PrintNode connected - Found ${printerList.length} printer(s)`);
+      } catch (e) {
+        console.error("PrintNode connection failed:", e);
+        setPrintNodeConnected(false);
       }
     };
 
-    loadCategoriesAndGames();
+    const loadDefaultTemplates = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('label_templates')
+          .select('*')
+          .in('template_type', ['graded', 'raw'])
+          .order('is_default', { ascending: false });
+        
+        if (error) {
+          console.error('Failed to load templates:', error);
+          return;
+        }
+        
+        const templates: any = {};
+        (data || []).forEach((template: any) => {
+          // Use the first template (which will be default due to ordering) or the first one found
+          if (!templates[template.template_type]) {
+            templates[template.template_type] = template;
+          }
+        });
+        
+        setDefaultTemplates(templates);
+        console.log('Loaded templates for batch printing:', templates);
+      } catch (e) {
+        console.error('Error loading templates:', e);
+      }
+    };
+
+    loadBatch();
+    loadPrintNode();
+    loadDefaultTemplates();
   }, []);
 
-  // Queue-based printing functions
-  const queueLabel = async (cardItem: CardItem): Promise<boolean> => {
-    if (!cardItem.id) return false;
+  // Load categories and games for dropdown
+  useEffect(() => {
+    if (didInitCatsGamesRef.current) return;
+    didInitCatsGamesRef.current = true;
+    const loadCatsAndGames = async () => {
+      const [catsRes, groupsRes] = await Promise.all([
+        supabase.from('categories').select('id, name').order('name', { ascending: true }),
+        supabase.from('groups').select('id, name, category_id').order('name', { ascending: true }),
+      ]);
+
+      const catData: any[] = (catsRes as any)?.data || [];
+      const grpData: any[] = (groupsRes as any)?.data || [];
+
+      // Categories list (names)
+      setCategories(catData.map((d) => d.name).filter(Boolean));
+
+      // Build games with category name
+      const catMap = new Map<number, string>();
+      catData.forEach((c: any) => catMap.set(c.id, c.name));
+      const gameOpts: GameOption[] = grpData.map((g: any) => ({
+        id: g.id,
+        name: g.name,
+        categoryId: g.category_id ?? null,
+        categoryName: g.category_id ? catMap.get(g.category_id) ?? null : null,
+      }));
+      setGames(gameOpts);
+    };
+    loadCatsAndGames();
+  }, []);
+
+  // Listen for Raw Intake additions and update batch in real time
+  useEffect(() => {
+    if (didInitIntakeListenerRef.current) return;
+    didInitIntakeListenerRef.current = true;
+    const handler = (e: Event) => {
+      const any = e as CustomEvent;
+      const row: any = any.detail;
+      if (!row) return;
+      const next: CardItem = {
+        title: buildTitleFromParts(row.year, row.brand_title, row.card_number, row.subject, row.variant),
+        set: "",
+        year: row.year || "",
+        grade: row.grade || "",
+        psaCert: row.psa_cert || "",
+        price: row?.price != null ? String(row.price) : "",
+        cost: row?.cost != null ? String(row.cost) : "",
+        lot: row.lot_number || "",
+        sku: row.sku || "",
+        brandTitle: row.brand_title || "",
+        subject: row.subject || "",
+        category: row.category || "",
+        variant: row.variant || "",
+        cardNumber: row.card_number || "",
+        id: row.id,
+        printedAt: row.printed_at || null,
+        pushedAt: row.pushed_at || null,
+      };
+      if (!next.pushedAt) setBatch((b) => [next, ...b]);
+    };
+
+    window.addEventListener("intake:item-added", handler);
+    return () => window.removeEventListener("intake:item-added", handler);
+  }, []);
+
+  const addToBatch = async () => {
+    if (!item.psaCert) {
+      toast.error("Please fill Cert Number");
+      return;
+    }
+
+    const insertPayload = {
+      year: item.year || null,
+      brand_title: item.brandTitle || null,
+      subject: item.subject || null,
+      category: item.category || null,
+      variant: item.variant || null,
+      card_number: item.cardNumber || null,
+      grade: item.grade || null,
+      psa_cert: item.psaCert || null,
+      price: item.price ? Number(item.price) : null,
+      cost: item.cost ? Number(item.cost) : null,
+      sku: item.sku || item.psaCert || null,
+      quantity: typeof item.quantity === 'number' ? item.quantity : Number(item.quantity) || 1,
+    };
 
     try {
-      const title = buildTitleFromParts(cardItem.year, cardItem.brandTitle, cardItem.cardNumber, cardItem.subject, cardItem.variant);
-      
-      console.log(`=== QUEUEING PRINT JOB ===`);
-      console.log(`Title: ${title}`);
-      console.log(`Workstation: ${workstationId}`);
-      console.log(`Printer: ${printerName || 'Default'}`);
+      const { data, error } = await supabase
+        .from("intake_items")
+        .insert(insertPayload)
+        .select("*")
+        .single();
 
-      // Create print data for template
-      const printData = {
-        product_name: title,
-        price: cardItem.price || '0.00',
-        sku: cardItem.sku || cardItem.id || 'NO-SKU',
-        condition: cardItem.grade || (cardItem.condition || 'Raw'),
+      if (error) throw error;
+
+      const next: CardItem = {
+        title:
+          buildTitleFromParts(
+            data?.year,
+            data?.brand_title,
+            data?.card_number,
+            data?.subject,
+            data?.variant
+          ) || item.title,
+        set: item.set || "",
+        player: item.player || "",
+        year: data?.year || "",
+        grade: data?.grade || "",
+        psaCert: data?.psa_cert || "",
+        price: data?.price != null ? String(data.price) : "",
+        cost: data?.cost != null ? String(data.cost) : "",
+        lot: data?.lot_number || "",
+        sku: data?.sku || "",
+        brandTitle: data?.brand_title || "",
+        subject: data?.subject || "",
+        category: data?.category || "",
+        variant: data?.variant || "",
+        labelType: item.labelType || "",
+        cardNumber: data?.card_number || "",
+        id: data?.id,
+        printedAt: data?.printed_at || null,
+        pushedAt: data?.pushed_at || null,
       };
 
-      // Queue the print job using template
-      const jobId = await queueTemplateJob({
-        workstationId,
-        templateId: 'price-2x1-v1',
-        data: printData,
-        printerName: printerName || undefined,
-        copies: 1
-      });
+      setBatch((b) => [next, ...b]);
+      toast.success(`Added to batch (Lot ${next.lot})`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to save item");
+    }
+  };
+
+  const clearForm = () =>
+    setItem({
+      title: "",
+      set: "",
+      player: "",
+      year: "",
+      grade: "",
+      psaCert: "",
+      price: "",
+      cost: "",
+      lot: "",
+      sku: "",
+      brandTitle: "",
+      subject: "",
+      category: "",
+      variant: "",
+      labelType: "",
+      cardNumber: "",
+      quantity: 1,
+    });
+
+  const fetchPsa = async (overrideCert?: string) => {
+    const cert = (overrideCert || item.psaCert || item.sku || "").trim();
+    if (!cert) {
+      toast.error("Enter PSA number in SKU or PSA Cert");
+      return;
+    }
+    try {
+      const { data, error } = await supabase.functions.invoke("psa-scrape", { body: { cert } });
+      if (error) throw error;
+      const d: any = data;
+      if (!d?.ok) throw new Error(d?.error || "Unknown PSA error");
+      setItem((prev) => ({
+        ...prev,
+        title: [d.year || prev.year, (d.brandTitle || prev.brandTitle || "").replace(/&amp;/g, "&"), (d.cardNumber || prev.cardNumber) ? `#${String(d.cardNumber || prev.cardNumber).replace(/^#/, "")}` : undefined, (d.subject || prev.subject || "").replace(/&amp;/g, "&"), (d.variant || d.varietyPedigree || prev.variant || "").replace(/&amp;/g, "&")].filter(Boolean).join(" ").trim(),
+        set: d.set || prev.set,
+        player: d.player || prev.player,
+        year: d.year || prev.year,
+        grade: d.grade || prev.grade,
+        psaCert: d.cert || d.certNumber || prev.psaCert,
+        sku: prev.sku || d.cert || d.certNumber || prev.psaCert,
+        brandTitle: (d.brandTitle || prev.brandTitle || "").replace(/&amp;/g, "&"),
+        subject: (d.subject || prev.subject || "").replace(/&amp;/g, "&"),
+        category: (d.category || d.game || prev.category || "").replace(/&amp;/g, "&"),
+        variant: (d.variant || d.varietyPedigree || prev.variant || "").replace(/&amp;/g, "&"),
+        labelType: d.labelType || prev.labelType,
+        cardNumber: d.cardNumber || prev.cardNumber,
+      }));
+      toast.success("PSA details fetched");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to fetch PSA details");
+    }
+  };
+
+  // Helpers to mark items printed/pushed in DB and update UI
+  const markPrinted = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    console.log("Marking printed for ids:", ids);
+    const { data, error } = await supabase
+      .from("intake_items")
+      .update({ printed_at: new Date().toISOString() })
+      .in("id", ids)
+      .select("id, printed_at");
+
+    if (error) {
+      console.error("Failed to mark printed:", error);
+      throw error;
+    }
+
+    const printedIds = new Set((data || []).map((d: any) => d.id));
+    setBatch((prev) =>
+      prev.map((b) => (b.id && printedIds.has(b.id) ? { ...b, printedAt: new Date().toISOString() } : b))
+    );
+  };
+
+  const markPushed = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    console.log("Marking pushed for ids:", ids);
+    const { data, error } = await supabase
+      .from("intake_items")
+      .update({ pushed_at: new Date().toISOString() })
+      .in("id", ids)
+      .select("id, pushed_at");
+
+    if (error) {
+      console.error("Failed to mark pushed:", error);
+      throw error;
+    }
+
+    const pushedIds = new Set((data || []).map((d: any) => d.id));
+    setBatch((prev) => prev.filter((b) => !(b.id && pushedIds.has(b.id))));
+  };
+
+  // Row actions + inline edit
+  const startEditRow = (b: CardItem) => {
+    if (!b.id) return;
+    setEditingId(b.id);
+    setEditYear(b.year || "");
+    setEditBrandTitle(b.brandTitle || "");
+    setEditSubject(b.subject || "");
+    setEditCategory(b.category || "");
+    setEditVariant(b.variant || "");
+    setEditCardNumber(b.cardNumber || "");
+    setEditGrade(b.grade || "");
+    setEditPsaCert(b.psaCert || "");
+    setEditPrice(b.price || "");
+    setEditCost(b.cost || "");
+    setEditQty(b.quantity ?? 1);
+    setEditSku(b.sku || "");
+  };
+
+  const cancelEditRow = () => {
+    setEditingId(null);
+  };
+
+  const saveEditRow = async (b: CardItem) => {
+    if (!b.id) return;
+    const payload: any = {
+      year: editYear || null,
+      brand_title: editBrandTitle || null,
+      subject: editSubject || null,
+      category: editCategory || null,
+      variant: editVariant || null,
+      card_number: editCardNumber || null,
+      grade: editGrade || null,
+      psa_cert: editPsaCert || null,
+      price: editPrice !== "" ? Number(editPrice) : null,
+      cost: editCost !== "" ? Number(editCost) : null,
+      quantity: Number(editQty) || 1,
+      sku: editSku || null,
+    };
+    try {
+      const { data, error } = await supabase
+        .from('intake_items')
+        .update(payload)
+        .eq('id', b.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      setBatch(prev => prev.map(x => x.id === b.id ? {
+        ...x,
+        year: data?.year || '',
+        brandTitle: data?.brand_title || '',
+        subject: data?.subject || '',
+        category: data?.category || '',
+        variant: data?.variant || '',
+        cardNumber: data?.card_number || '',
+        grade: data?.grade || '',
+        psaCert: data?.psa_cert || '',
+        price: data?.price != null ? String(data.price) : '',
+        cost: data?.cost != null ? String(data.cost) : '',
+        quantity: data?.quantity ?? (Number(editQty) || 1),
+        sku: data?.sku || '' ,
+        title: buildTitleFromParts(data?.year, data?.brand_title, data?.card_number, data?.subject, data?.variant),
+      } : x));
+      setEditingId(null);
+      toast.success(`Updated Lot ${b.lot || ''}`);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to save changes');
+    }
+  };
+
+  // Open full details dialog
+  const openDetails = (b: CardItem) => {
+    if (!b.id) return;
+    setDetailsItem(b);
+  };
+
+  // Save full details from dialog
+  const handleSaveDetails = async (values: {
+    id: string;
+    year?: string;
+    brandTitle?: string;
+    subject?: string;
+    category?: string;
+    variant?: string;
+    cardNumber?: string;
+    grade?: string;
+    psaCert?: string;
+    price?: string;
+    cost?: string;
+    sku?: string;
+    quantity?: number;
+  }) => {
+    try {
+      const payload: any = {
+        year: values.year || null,
+        brand_title: values.brandTitle || null,
+        subject: values.subject || null,
+        category: values.category || null,
+        variant: values.variant || null,
+        card_number: values.cardNumber || null,
+        grade: values.grade || null,
+        psa_cert: values.psaCert || null,
+        price: values.price !== undefined && values.price !== "" ? Number(values.price) : null,
+        cost: values.cost !== undefined && values.cost !== "" ? Number(values.cost) : null,
+        sku: values.sku || null,
+        quantity: typeof values.quantity === 'number' ? values.quantity : 1,
+      };
+      const { data, error } = await supabase
+        .from('intake_items')
+        .update(payload)
+        .eq('id', values.id)
+        .select('*')
+        .single();
+      if (error) throw error;
+
+      setBatch(prev => prev.map(x => x.id === values.id ? {
+        ...x,
+        year: data?.year || '',
+        brandTitle: data?.brand_title || '',
+        subject: data?.subject || '',
+        category: data?.category || '',
+        variant: data?.variant || '',
+        cardNumber: data?.card_number || '',
+        grade: data?.grade || '',
+        psaCert: data?.psa_cert || '',
+        price: data?.price != null ? String(data.price) : '',
+        cost: data?.cost != null ? String(data.cost) : '',
+        sku: data?.sku || '',
+        quantity: data?.quantity ?? x.quantity,
+        title: buildTitleFromParts(data?.year, data?.brand_title, data?.card_number, data?.subject, data?.variant),
+      } : x));
+
+      toast.success('Item updated');
+      setDetailsItem(null);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to update item');
+    }
+  };
+
+  // Once helper to prevent double export/POST
+  function once<T extends (...a: any[]) => any>(fn: T) {
+    let called = false;
+    return (...args: Parameters<T>): ReturnType<T> | undefined => {
+      if (called) return;
+      called = true;
+      return fn(...args);
+    };
+  }
+
+  // PrintNode RAW printing using TSPL only
+  const printNodeLabels = async (items: CardItem[]): Promise<boolean> => {
+    if (!selectedPrinterId) {
+      toast.error('No PrintNode printer selected');
+      return false;
+    }
+
+    try {
+      const printers = await printNodeService.getPrinters();
+      const printer = printers.find(p => p.id === selectedPrinterId);
       
-      console.log(`Queued print job: ${jobId}`);
-      return true;
+      console.log(`=== SENDING TO PRINTNODE RAW ===`);
+      console.log(`Printer: ${printer?.name} (ID: ${selectedPrinterId})`);
+      console.log(`Pages: ${items.length}`);
       
-    } catch (error) {
-      console.error(`Error queueing print job:`, error);
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      toast.error(`Failed to queue print job: ${errorMsg}`);
+      let successCount = 0;
+      
+      for (const item of items) {
+        if (!item.id) continue;
+        
+        const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
+        
+        try {
+          // Call edge function to render TSPL label
+          const { data: labelData, error } = await supabase.functions.invoke('render-label', {
+            body: {
+              title,
+              lot_number: item.lot,
+              price: item.price?.toString(),
+              grade: item.grade,
+              sku: item.sku,
+              id: item.id
+            }
+          });
+          
+          if (error) {
+            console.error('Label render error:', error);
+            toast.error(`Failed to render label for ${title}`);
+            continue;
+          }
+          
+          const { program, correlationId } = labelData;
+          const barcodeValue = item.sku || item.id || 'NO-SKU';
+          
+          console.log(`CorrelationId: ${correlationId}`);
+          console.log(`Barcode: ${barcodeValue}`);
+          console.log(`Pages: 1`);
+          
+          // Send to PrintNode
+          const result = await printNodeService.printRAW(program, selectedPrinterId, {
+            title: `Label RAW · ${correlationId}`,
+            copies: 1
+          });
+          
+          if (result.success) {
+            console.log(`PrintNode Response: Job ID ${result.jobId}`);
+            successCount++;
+          } else {
+            console.error(`PrintNode Error:`, result.error);
+            toast.error(`Print failed: ${title}`);
+          }
+          
+        } catch (itemError) {
+          console.error(`Error processing item ${item.id}:`, itemError);
+          toast.error(`Error printing: ${title}`);
+        }
+      }
+      
+      if (successCount > 0) {
+        toast.success(`Printed ${successCount} label(s)`);
+        return true;
+      } else {
+        return false;
+      }
+      
+    } catch (e) {
+      console.error(e);
+      toast.error(`PrintNode print failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
       return false;
     }
   };
 
-  // Handle single row print
-  const handlePrintRow = async (cardItem: CardItem) => {
-    if (!cardItem.id) return;
-    
-    if (!acquireRowLock(cardItem.id)) {
-      toast.error('Item already being queued');
+  // Legacy Fabric/PDF code removed - now using TSPL RAW printing only
+
+  const handlePrintRow = async (b: CardItem) => {
+    if (!b.id) return;
+    if (!printNodeConnected || !selectedPrinterId) {
+      toast.error('PrintNode not connected or no printer selected');
       return;
     }
-    
-    setPrintingItemId(cardItem.id);
-    
+    if (!acquireGlobalLock()) return;
+    if (!acquireRowLock(b.id)) { releaseGlobalLock(); return; }
+
     try {
-      const success = await queueLabel(cardItem);
-      
-      if (success) {
-        // Mark as printed in database (ready for agent pickup)
-        await markPrinted([cardItem.id]);
-        toast.success('Print job queued successfully - agent will process it shortly');
-      }
-      
+      console.log(`=== SENDING TO PRINTNODE RAW === Single Row Print`);
+      const ok = await printNodeLabels([b]);
+      if (ok) await markPrinted([b.id]);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to print');
     } finally {
-      setPrintingItemId(null);
-      releaseRowLock(cardItem.id);
+      releaseRowLock(b.id);
+      releaseGlobalLock();
+    }
+  };
+  const handlePushRow = async (b: CardItem) => {
+    if (!b.id) return;
+    try {
+      const { error } = await supabase.functions.invoke("shopify-import", { body: { itemId: b.id } });
+      if (error) throw error;
+      await markPushed([b.id]);
+      toast.success(`Pushed Lot ${b.lot || ""} to Shopify`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to push");
     }
   };
 
-  // Handle bulk print
-  const handlePrintAll = async () => {
-    if (!acquireGlobalLock()) {
-      toast.error('Another batch job is in progress');
-      return;
-    }
-    
-    setPrintingAll(true);
-    
+  const handleDeleteRow = async (b: CardItem) => {
+    if (!b.id) return;
+    const reason = window.prompt("Delete reason (optional)?") || null;
     try {
-      const unprintedItems = batch.filter(item => !item.printedAt && item.id);
-      if (unprintedItems.length === 0) {
-        toast.error('No items to print');
-        return;
-      }
-      
-      let successCount = 0;
-      const totalItems = unprintedItems.length;
-      
-      console.log(`=== QUEUEING BATCH PRINT JOBS ===`);
-      console.log(`Items: ${totalItems}`);
-      console.log(`Workstation: ${workstationId}`);
-      
-      // Prepare batch jobs
-      const batchJobs = unprintedItems.map(item => {
-        const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
-        
-        return {
-          workstationId,
-          templateId: 'price-2x1-v1',
-          data: {
-            product_name: title,
-            price: item.price || '0.00',
-            sku: item.sku || item.id || 'NO-SKU',
-            condition: item.grade || (item.condition || 'Raw'),
-          },
-          printerName: printerName || undefined,
-          copies: 1
-        };
-      });
+      const { error } = await supabase
+        .from("intake_items")
+        .update({ deleted_at: new Date().toISOString(), deleted_reason: reason })
+        .eq("id", b.id);
+      if (error) throw error;
+      setBatch((prev) => prev.filter((x) => x.id !== b.id));
+      toast.success(`Deleted Lot ${b.lot || ""}${reason ? ` (${reason})` : ""}`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to delete item");
+    }
+  };
 
-      try {
-        // Queue all jobs
-        const jobIds = await queueTemplateBatch(batchJobs);
-        successCount = jobIds.length;
-        
-        // Mark all as printed (queued for processing)
-        const itemIds = unprintedItems.map(item => item.id!).filter(Boolean);
-        await markPrinted(itemIds);
-        
-        console.log(`Queued ${successCount} print jobs:`, jobIds);
-      } catch (error) {
-        console.error(`Batch queue failed:`, error);
-        throw error;
-      }
-      
-      if (successCount > 0) {
-        toast.success(`Queued ${successCount}/${totalItems} print jobs - agent will process them shortly`);
-        // Reload batch to reflect printed status
-        window.location.reload();
-      } else {
-        toast.error('No print jobs were queued');
-      }
-      
+  // Bulk actions
+  const handlePrintAll = async () => {
+    const items = batch.filter(i => i.id) as CardItem[];
+    const ids = items.map(i => i.id!) as string[];
+    if (ids.length === 0) { toast.info('Nothing to print'); return; }
+    if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
+
+    if (!acquireGlobalLock()) return;
+    setPrintingAll(true);
+    try {
+      const ok = await printNodeLabels(items);
+      if (ok) await markPrinted(ids);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to print all');
     } finally {
       setPrintingAll(false);
       releaseGlobalLock();
     }
   };
 
-  const fetchPsa = async (psaCert: string) => {
-    if (!psaCert.trim()) return;
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('psa-scrape', {
-        body: { cert_number: psaCert.trim() }
-      });
-
-      if (error) throw error;
-
-      if (data?.success && data?.cardData) {
-        const cardData = data.cardData;
-        setItem({
-          ...item,
-          title: cardData.title || "",
-          year: cardData.year || "",
-          brandTitle: cardData.brand || "",
-          subject: cardData.subject || "",
-          variant: cardData.variant || "",
-          cardNumber: cardData.cardNumber || "",
-          grade: cardData.grade || "",
-          psaCert: psaCert.trim(),
-        });
-        toast.success('PSA data fetched successfully');
-      } else {
-        throw new Error(data?.error || 'No card data found');
-      }
-    } catch (error) {
-      console.error('PSA fetch error:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to fetch PSA data');
-    }
-  };
-
-  const addToQueue = async () => {
-    console.log('addToQueue called with item:', item);
-    
-    if (!item.title && !item.brandTitle && !item.subject) {
-      console.log('Validation failed - no required fields filled');
-      toast.error('Please fill in at least one field');
+  const handlePushAll = async () => {
+    const ids = batch.map((b) => b.id!).filter(Boolean);
+    if (ids.length === 0) {
+      toast.info("Nothing to push");
       return;
     }
-
-    console.log('Validation passed, attempting to insert to database');
+    setPushingAll(true);
     try {
-      const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
-      
-      const { data, error } = await supabase
-        .from("intake_items")
-        .insert({
-          year: item.year || null,
-          brand_title: item.brandTitle || null,
-          card_number: item.cardNumber || null,
-          subject: item.subject || null,
-          variant: item.variant || null,
-          category: item.category || null,
-          grade: item.grade || null,
-          psa_cert: item.psaCert || null,
-          price: item.price ? parseFloat(item.price) : null,
-          cost: item.cost ? parseFloat(item.cost) : null,
-          lot_number: item.lot || null,
-          sku: item.sku || null,
-          quantity: item.quantity || 1,
-          condition: item.condition || 'Near Mint',
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      console.log('Database insert successful, data:', data);
-
-      const newItem: CardItem = {
-        ...item,
-        title,
-        id: data.id,
-        printedAt: null,
-        pushedAt: null,
-      };
-
-      console.log('Adding newItem to batch:', newItem);
-      setBatch(prev => {
-        console.log('Previous batch length:', prev.length);
-        const newBatch = [newItem, ...prev];
-        console.log('New batch length:', newBatch.length);
-        return newBatch;
-      });
-      
-      // Reset form
-      setItem({
-        title: "",
-        set: "",
-        player: "",
-        year: "",
-        grade: "",
-        psaCert: "",
-        price: "",
-        cost: "",
-        lot: "",
-        sku: "",
-        brandTitle: "",
-        subject: "",
-        category: "",
-        variant: "",
-        labelType: "",
-        cardNumber: "",
-        quantity: 1,
-      });
-      setLookupCert("");
-      
-      console.log('Item added to batch successfully');
-      toast.success('Item added to batch');
-    } catch (error) {
-      console.error('Error adding to queue:', error);
-      console.error('Error details:', error);
-      toast.error('Failed to add item');
+      // Import each item to Shopify first
+      await Promise.all(ids.map((id) => supabase.functions.invoke("shopify-import", { body: { itemId: id } })));
+      await markPushed(ids);
+      toast.success("Pushed all to Shopify");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to push all");
+    } finally {
+      setPushingAll(false);
     }
   };
 
-  const markPrinted = async (ids: string[]) => {
+  const handlePushAndPrintAll = async () => {
+    const items = batch.filter(i => i.id) as CardItem[];
+    const ids = items.map(i => i.id!) as string[];
+    if (ids.length === 0) { toast.info('Nothing to process'); return; }
+    if (!printNodeConnected || !selectedPrinterId) { toast.error('PrintNode not connected or no printer selected'); return; }
+
+    if (!acquireGlobalLock()) return;
+    setPushPrintAllRunning(true);
     try {
-      const { error } = await supabase
-        .from("intake_items")
-        .update({ printed_at: new Date().toISOString() })
-        .in("id", ids);
+      // Push stays first
+      await Promise.all(ids.map((id) => supabase.functions.invoke("shopify-import", { body: { itemId: id } })));
+      await markPushed(ids);
 
-      if (error) throw error;
-
-      setBatch(prev => prev.map(item => 
-        ids.includes(item.id || '') ? { ...item, printedAt: new Date().toISOString() } : item
-      ));
-    } catch (error) {
-      console.error('Error marking as printed:', error);
-      toast.error('Failed to update print status');
-    }
-  };
-
-  const deleteItem = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("intake_items")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      setBatch(prev => prev.filter(item => item.id !== id));
-      toast.success('Item deleted');
-    } catch (error) {
-      console.error('Error deleting item:', error);
-      toast.error('Failed to delete item');
+      // Then print
+      const ok = await printNodeLabels(items);
+      if (ok) await markPrinted(ids);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to push and print all');
+    } finally {
+      setPushPrintAllRunning(false);
+      releaseGlobalLock();
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-secondary to-accent/20">
-      <header className="py-6 mb-8">
-        <div className="container mx-auto px-6">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
-            <h1 className="text-4xl font-bold text-foreground">Aloha Card Shop</h1>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={handleSignOut} variant="destructive">Sign Out</Button>
+    <div className="min-h-screen bg-background">
+      <header className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-aloha-gradient" aria-hidden="true" />
+        <div className="container relative mx-auto px-6 py-12">
+          <div className="max-w-3xl">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">Aloha Card Inventory Manager</h1>
+            <p className="mt-4 text-lg text-muted-foreground">Centralize PSA-graded cards, batch intake with lot tracking, print barcodes, and sync to Shopify.</p>
+              <div className="mt-6 flex gap-3">
+                <Button onClick={handleSignOut}>Sign out</Button>
                 <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
                 <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
+                <Link to="/labels"><Button variant="outline">Label Designer</Button></Link>
                 <Link to="/admin"><Button variant="outline">Admin</Button></Link>
                 <Link to="/users"><Button variant="outline">Users</Button></Link>
-                <Link to="/print-logs"><Button variant="outline">Print Logs</Button></Link>
               </div>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-6 pb-24">
-        <section className="grid md:grid-cols-3 gap-6 -mt-8">
-          <Card className="shadow-aloha">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Printer className="h-5 w-5" />
-                Print Queue Settings
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label htmlFor="workstation">Workstation ID</Label>
-                <Input 
-                  id="workstation" 
-                  value={workstationId} 
-                  disabled 
-                  className="font-mono text-sm"
-                />
-              </div>
-              <div>
-                <Label htmlFor="printer">Printer Name (Optional)</Label>
-                <Input 
-                  id="printer" 
-                  value={printerName} 
-                  onChange={(e) => {
-                    setPrinterName(e.target.value);
-                    localStorage.setItem('selectedPrinter', e.target.value);
-                  }}
-                  placeholder="e.g., Rollo_USB or leave blank for IP printing"
-                />
-              </div>
-              <div className="text-sm text-muted-foreground">
-                Print jobs are queued in the database. The desktop agent will process them automatically.
-              </div>
-            </CardContent>
-          </Card>
-          
+        <section className="grid md:grid-cols-2 gap-6 -mt-8">
           <Card className="shadow-aloha">
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
@@ -729,132 +914,252 @@ const Index = () => {
                       <Input id="subject" value={item.subject || ""} onChange={(e) => setItem({ ...item, subject: e.target.value })} placeholder="e.g., FA/GENGAR VMAX" />
                     </div>
                     <div>
-                      <Label htmlFor="year">Year</Label>
-                      <Input id="year" value={item.year || ""} onChange={(e) => setItem({ ...item, year: e.target.value })} placeholder="e.g., 2020" />
+                      <Label htmlFor="category">Category</Label>
+                      <Input id="category" value={item.category || ""} onChange={(e) => setItem({ ...item, category: e.target.value })} placeholder="e.g., TCG Cards" />
+                    </div>
+                    <div>
+                      <Label htmlFor="variant">Variant</Label>
+                      <Input id="variant" value={item.variant || ""} onChange={(e) => setItem({ ...item, variant: e.target.value })} placeholder="e.g., GENGAR VMAX HIGH-CLS.DK." />
                     </div>
                     <div>
                       <Label htmlFor="cardNumber">Card Number</Label>
                       <Input id="cardNumber" value={item.cardNumber || ""} onChange={(e) => setItem({ ...item, cardNumber: e.target.value })} placeholder="e.g., 020" />
                     </div>
                     <div>
-                      <Label htmlFor="grade">Grade</Label>
-                      <Select value={item.grade || ""} onValueChange={(value) => setItem({ ...item, grade: value })}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select grade" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-background z-50">
-                          {PSA_GRADE_OPTIONS.map((grade) => (
-                            <SelectItem key={grade} value={grade}>
-                              {grade}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label htmlFor="year">Year</Label>
+                      <Input id="year" value={item.year} onChange={(e) => setItem({ ...item, year: e.target.value })} placeholder="e.g., 1999" />
                     </div>
                     <div>
-                      <Label htmlFor="psaCert">PSA Cert #</Label>
-                      <Input id="psaCert" value={item.psaCert || ""} onChange={(e) => setItem({ ...item, psaCert: e.target.value })} placeholder="e.g., 12345678" />
+                      <Label htmlFor="grade">Item Grade</Label>
+                      <Input id="grade" value={item.grade} onChange={(e) => setItem({ ...item, grade: e.target.value })} placeholder="e.g., GEM MT 10" />
                     </div>
                     <div>
-                      <Label htmlFor="price">Price ($)</Label>
-                      <Input id="price" value={item.price || ""} onChange={(e) => setItem({ ...item, price: e.target.value })} placeholder="e.g., 100.00" />
+                      <Label htmlFor="psa">Cert Number</Label>
+                      <Input id="psa" value={item.psaCert} onChange={(e) => setItem({ ...item, psaCert: e.target.value })} placeholder="e.g., 12345678" />
                     </div>
                     <div>
-                      <Label htmlFor="lot">Lot #</Label>
-                      <Input id="lot" value={item.lot || ""} onChange={(e) => setItem({ ...item, lot: e.target.value })} placeholder="e.g., LOT-001" />
+                      <Label htmlFor="cost">Cost</Label>
+                      <Input id="cost" value={item.cost} onChange={(e) => setItem({ ...item, cost: e.target.value })} placeholder="$" />
                     </div>
                     <div>
-                      <Label htmlFor="sku">SKU</Label>
-                      <Input id="sku" value={item.sku || ""} onChange={(e) => setItem({ ...item, sku: e.target.value })} placeholder="e.g., 12345" />
+                      <Label htmlFor="price">Price</Label>
+                      <Input id="price" value={item.price} onChange={(e) => setItem({ ...item, price: e.target.value })} placeholder="$" />
                     </div>
+                    <div>
+                      <Label htmlFor="quantity">Quantity</Label>
+                      <Input id="quantity" type="number" value={String(item.quantity ?? 1)} onChange={(e) => setItem({ ...item, quantity: Number(e.target.value) || 0 })} placeholder="1" />
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Lot number is assigned automatically when you add to batch.
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Button onClick={addToBatch}>Add to Batch</Button>
+                    <Button variant="secondary" onClick={clearForm}>Clear</Button>
                   </div>
                 </>
               ) : (
-                <RawIntake onAdded={(addedItem) => {
-                  console.log('RawIntake onAdded callback triggered:', addedItem);
-                  // The event listener above will handle the batch update
-                  // This callback can be used for additional immediate actions if needed
-                }} />
+                <RawIntake />
               )}
-              {intakeMode === 'graded' && (
-                <div className="mt-4">
-                  <Button onClick={addToQueue} className="w-full">Add to Batch</Button>
-                </div>
-              )}
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-aloha">
+            <CardHeader>
+              <CardTitle>Shopify Sync</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">Push selected cards to Shopify and keep them in sync.</p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Button onClick={() => toast.info("Connect Supabase to enable Shopify sync")}>Push Selected</Button>
+                <Button variant="secondary" onClick={() => toast.info("Batch upload requires connection")}>Batch Upload</Button>
+                <Button variant="outline" onClick={() => toast.info("Sync will be enabled after setup")}>Sync Now</Button>
+              </div>
             </CardContent>
           </Card>
         </section>
 
-        {/* Batch Queue Section */}
-        <section className="mt-8">
-          <Card>
+        <section className="mt-10">
+          <Card className="shadow-aloha">
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Batch Queue ({batch.length} items)</CardTitle>
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={handlePrintAll}
-                     disabled={printingAll || batch.filter(b => !b.printedAt).length === 0}
-                   >
-                     {printingAll ? 'Queueing...' : `Queue All (${batch.filter(b => !b.printedAt).length})`}
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle>Batch Queue ({batch.length})</CardTitle>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" onClick={handlePrintAll} disabled={jobInFlight || printingAll || batch.length === 0}>
+                    {printingAll ? "Printing…" : "Print All"}
+                  </Button>
+                  <Button variant="outline" onClick={handlePushAll} disabled={pushingAll || batch.length === 0}>
+                    {pushingAll ? "Pushing…" : "Push All"}
+                  </Button>
+                  <Button onClick={handlePushAndPrintAll} disabled={jobInFlight || pushPrintAllRunning || batch.length === 0}>
+                    {pushPrintAllRunning ? "Processing…" : "Push & Print All"}
                   </Button>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               {batch.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No items in batch. Add items above to get started.</p>
+                <p className="text-muted-foreground">No items yet. Add cards via Quick Intake.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Title</TableHead>
+                        <TableHead>Year</TableHead>
+                        <TableHead>Brand/Title</TableHead>
+                        <TableHead>Subject</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>Variant</TableHead>
+                        <TableHead>Card #</TableHead>
                         <TableHead>Grade</TableHead>
-                        <TableHead>Price</TableHead>
+                        <TableHead>PSA</TableHead>
                         <TableHead>Lot</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead>Cost</TableHead>
+                        <TableHead>Price</TableHead>
+                        <TableHead>Qty</TableHead>
+                        <TableHead>SKU</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {batch.map((b) => (
-                        <TableRow key={b.id || Math.random()}>
-                          <TableCell className="max-w-xs">
-                            <div className="truncate" title={b.title}>
-                              {b.title}
+                      {batch.map((b, i) => (
+                        <> 
+                          <TableRow key={b.id || i}>
+                          <TableCell>{b.year}</TableCell>
+                          <TableCell>{b.brandTitle}</TableCell>
+                          <TableCell>{b.subject}</TableCell>
+                          <TableCell>{b.category}</TableCell>
+                          <TableCell>{b.variant}</TableCell>
+                          <TableCell>{b.cardNumber}</TableCell>
+                          <TableCell>{b.grade}</TableCell>
+                          <TableCell>{b.psaCert}</TableCell>
+                          <TableCell>{b.lot}</TableCell>
+                          <TableCell>{b.cost}</TableCell>
+                          <TableCell>{b.price}</TableCell>
+                          <TableCell>{b.quantity ?? 1}</TableCell>
+                          <TableCell>{b.sku}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-2">
+                              {editingId === b.id ? (
+                                <Button size="sm" variant="secondary" onClick={cancelEditRow}>Close</Button>
+                              ) : (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    variant={b.printedAt ? "outline" : "default"}
+                                    onClick={(e) => { e.stopPropagation(); handlePrintRow(b); }}
+                                    disabled={jobInFlight || printingIdsRef.current.has(b.id!)}
+                                    title={jobInFlight || printingIdsRef.current.has(b.id!) ? "Print in progress…" : undefined}
+                                    className={b.printedAt ? "border-orange-600 text-orange-600 hover:bg-orange-50" : ""}
+                                  >
+                                    {b.printedAt ? "Reprint" : "Print"}
+                                  </Button>
+                                  <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
+                                  <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
+                                  <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(b)}>Delete</Button>
+                                </>
+                              )}
                             </div>
                           </TableCell>
-                          <TableCell>{b.grade || 'Raw'}</TableCell>
-                          <TableCell>{b.price ? `$${b.price}` : '-'}</TableCell>
-                          <TableCell>{b.lot || '-'}</TableCell>
-                          <TableCell>
-                            {b.printedAt ? (
-                              <span className="text-green-600">Printed</span>
-                            ) : (
-                              <span className="text-muted-foreground">Ready</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex gap-1">
-                              <Button
-                                size="sm"
-                                onClick={() => handlePrintRow(b)}
-                                 disabled={!!b.printedAt || printingItemId === b.id}
-                               >
-                                 {printingItemId === b.id ? 'Queueing...' : 'Queue Print'}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="destructive"
-                                onClick={() => b.id && deleteItem(b.id)}
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}</TableBody>
+                          </TableRow>
+                          {editingId === b.id && (
+                            <TableRow>
+                              <TableCell colSpan={15}>
+                                <div className="p-4 rounded-md border bg-card">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                      <Label htmlFor={`year-${b.id}`}>Year</Label>
+                                      <Input id={`year-${b.id}`} value={editYear} onChange={(e) => setEditYear(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`brand-${b.id}`}>Brand / Title / Game</Label>
+                                      <Input id={`brand-${b.id}`} value={editBrandTitle} onChange={(e) => setEditBrandTitle(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`subject-${b.id}`}>Subject</Label>
+                                      <Input id={`subject-${b.id}`} value={editSubject} onChange={(e) => setEditSubject(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label>Game</Label>
+                                      <Select value={editGameId ? String(editGameId) : ""} onValueChange={(v) => {
+                                        const id = Number(v);
+                                        setEditGameId(id);
+                                        const found = games.find((x) => x.id === id);
+                                        setEditCategory(found?.categoryName || "");
+                                      }}>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select game" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-background z-50">
+                                          {games.length === 0 ? (
+                                            <SelectItem value="" disabled>No games</SelectItem>
+                                          ) : (
+                                            games.map((g) => (
+                                              <SelectItem key={g.id} value={String(g.id)}>
+                                                {g.name}{g.categoryName ? ` (${g.categoryName})` : ""}
+                                              </SelectItem>
+                                            ))
+                                          )}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label>Category</Label>
+                                      <Input value={editCategory} readOnly />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`variant-${b.id}`}>Variant</Label>
+                                      <Input id={`variant-${b.id}`} value={editVariant} onChange={(e) => setEditVariant(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`cardno-${b.id}`}>Card Number</Label>
+                                      <Input id={`cardno-${b.id}`} value={editCardNumber} onChange={(e) => setEditCardNumber(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label>Grade</Label>
+                                      <Select value={editGrade || ""} onValueChange={setEditGrade}>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select grade" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-background z-50">
+                                          {PSA_GRADE_OPTIONS.map((g) => (
+                                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`psa-${b.id}`}>PSA Cert</Label>
+                                      <Input id={`psa-${b.id}`} value={editPsaCert} onChange={(e) => setEditPsaCert(e.target.value)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`cost-${b.id}`}>Cost</Label>
+                                      <Input id={`cost-${b.id}`} value={editCost} onChange={(e) => setEditCost(e.target.value)} placeholder="$" />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`price-${b.id}`}>Price</Label>
+                                      <Input id={`price-${b.id}`} value={editPrice} onChange={(e) => setEditPrice(e.target.value)} placeholder="$" />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`qty-${b.id}`}>Quantity</Label>
+                                      <Input id={`qty-${b.id}`} type="number" value={String(editQty)} onChange={(e) => setEditQty(Number(e.target.value) || 0)} />
+                                    </div>
+                                    <div>
+                                      <Label htmlFor={`sku-${b.id}`}>SKU</Label>
+                                      <Input id={`sku-${b.id}`} value={editSku} onChange={(e) => setEditSku(e.target.value)} />
+                                    </div>
+                                  </div>
+                                  <div className="mt-4 flex flex-wrap gap-2">
+                                    <Button onClick={() => saveEditRow(b)}>Save</Button>
+                                    <Button variant="secondary" onClick={cancelEditRow}>Cancel</Button>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      ))}
+                    </TableBody>
                   </Table>
                 </div>
               )}

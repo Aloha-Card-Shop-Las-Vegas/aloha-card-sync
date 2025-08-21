@@ -16,7 +16,6 @@ export function fabricToTSPL(fabricCanvas: FabricCanvas, tsplSettings?: { densit
   const textLines: TSPLOptions['textLines'] = [];
   const lines: TSPLOptions['lines'] = [];
   let qrcode: TSPLOptions['qrcode'] | undefined;
-  let barcode: TSPLOptions['barcode'] | undefined;
 
   objects.forEach((obj: FabricObject) => {
     const extObj = obj as ExtendedFabricObject;
@@ -62,25 +61,21 @@ export function fabricToTSPL(fabricCanvas: FabricCanvas, tsplSettings?: { densit
       }
     }
     
-    // Convert barcode images to actual TSPL barcodes
+    // Convert barcode images
     else if (obj.type === 'image' && extObj.meta?.type === 'barcode') {
-      if (!barcode) { // Take first barcode only
-        barcode = {
-          data: extObj.meta?.data || 'BARCODE',
-          x: Math.round(obj.left || 0),
-          y: Math.round(obj.top || 0),
-          height: Math.round(obj.height || 40),
-          humanReadable: true,
-          type: 'CODE128'
-        };
-      }
+      // For now, treat barcodes as text (TSPL doesn't have simple barcode support)
+      textLines?.push({
+        text: extObj.meta?.data || 'BARCODE',
+        x: Math.round(obj.left || 0),
+        y: Math.round((obj.top || 0) + (obj.height || 20) + 5), // Below barcode image
+        fontSize: 1
+      });
     }
   });
 
   return buildTSPL({
     textLines,
     qrcode,
-    barcode,
     lines,
     ...tsplSettings
   });
