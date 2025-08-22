@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Printer, Eye, RotateCcw, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { sendTSPL } from "@/lib/printerService";
+import { printNodeService } from "@/lib/printNodeService";
 
 interface PrintJob {
   id: string;
@@ -110,8 +110,24 @@ export default function PrintLogs() {
       if (insertError) throw insertError;
 
       try {
-        // Send to printer (assuming default settings)
-        await sendTSPL(job.payload, { copies: job.copies });
+        // Initialize PrintNode service first
+        await printNodeService.initialize();
+        
+        // Get available printers
+        const printers = await printNodeService.getPrinters();
+        if (printers.length === 0) {
+          throw new Error('No printers available');
+        }
+        
+        // Use first available printer or saved selection from localStorage
+        const savedPrinterId = localStorage.getItem('printnode-selected-printer');
+        const printerId = savedPrinterId ? parseInt(savedPrinterId) : printers[0].id;
+        
+        // Send to printer using PrintNode
+        await printNodeService.printRAW(job.payload, printerId, { 
+          title: `Reprint Job ${job.id}`, 
+          copies: job.copies 
+        });
         
         // Update new job status
         await (supabase as any)

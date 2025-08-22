@@ -103,7 +103,9 @@ export function CanvasEditor({
     onCanvasReady(canvas);
     toast.success("Canvas ready");
 
-    return () => canvas.dispose();
+    return () => {
+      canvas.dispose();
+    };
   }, [title, lot, price, condition, onCanvasReady]);
 
   const addText = (text: string) => {
