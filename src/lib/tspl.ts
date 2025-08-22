@@ -22,6 +22,14 @@ export interface TSPLOptions {
     size?: 'S' | 'M' | 'L';
     errorLevel?: 'L' | 'M' | 'Q' | 'H';
   };
+  barcode?: {
+    data: string;
+    x?: number;
+    y?: number;
+    width?: number;
+    height?: number;
+    type?: 'CODE128' | 'CODE39' | 'EAN13' | 'EAN8';
+  };
   lines?: Array<{
     x: number;
     y: number;
@@ -37,6 +45,7 @@ export function buildTSPL(options: TSPLOptions = {}): string {
   const {
     textLines = [],
     qrcode,
+    barcode,
     lines = [],
     gapInches = 0,
     density = 10,
@@ -66,6 +75,13 @@ export function buildTSPL(options: TSPLOptions = {}): string {
     // TSPL QRCODE command: QRCODE x,y,level,cell_width,mode,rotation,"data"
     const cellWidth = size === 'S' ? 3 : size === 'M' ? 4 : 6;
     commands.push(`QRCODE ${x},${y},${errorLevel},${cellWidth},A,0,"${data}"`);
+  }
+
+  // Add barcode if specified
+  if (barcode) {
+    const { data, x = 10, y = 80, width = 2, height = 50, type = 'CODE128' } = barcode;
+    // TSPL BARCODE command: BARCODE x,y,"type",height,readable,rotation,narrow,wide,"data"
+    commands.push(`BARCODE ${x},${y},"${type}",${height},1,0,${width},${width},"${data}"`);
   }
 
   // Add horizontal/vertical lines
