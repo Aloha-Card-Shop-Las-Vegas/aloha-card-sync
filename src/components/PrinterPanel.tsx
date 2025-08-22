@@ -191,9 +191,15 @@ export function PrinterPanel() {
         .from('print_jobs')
         .insert({
           workstation_id: workstationId,
-          printer_name: selectedPrinter.name,
-          printer_id: selectedPrinter.id,
-          tspl_code: `PDF print job - ${new Date().toISOString()}`,
+          target: {
+            printer_name: selectedPrinter.name,
+            printer_id: selectedPrinter.id,
+            type: 'printnode'
+          },
+          data: {
+            test_print: true,
+            timestamp: new Date().toISOString()
+          },
           status: 'queued'
         })
         .select()
@@ -215,7 +221,10 @@ export function PrinterPanel() {
           .from('print_jobs')
           .update({
             status: 'sent',
-            printnode_job_id: result.jobId
+            data: {
+              ...(printJob.data as Record<string, any>),
+              printnode_job_id: result.jobId
+            }
           })
           .eq('id', printJob.id);
 
