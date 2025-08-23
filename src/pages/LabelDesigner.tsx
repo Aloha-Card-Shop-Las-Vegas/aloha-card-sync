@@ -12,6 +12,7 @@ import { PrinterPanel } from "@/components/PrinterPanel";
 import { RawTemplateEditor } from "@/components/RawTemplateEditor";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
+import { useTemplateDefault } from "@/hooks/useTemplateDefault";
 import { 
   AVAILABLE_TEMPLATES, 
   generateLabelTSPL, 
@@ -47,7 +48,13 @@ export default function LabelDesigner() {
   const [hasPrinted, setHasPrinted] = useState(false);
   
   // Template and settings with localStorage persistence
-  const [selectedTemplateId, setSelectedTemplateId] = useLocalStorageString('selected-template', 'graded-card');
+  const { 
+    selectedTemplateId, 
+    setSelectedTemplateId, 
+    setAsDefault, 
+    resetToAppDefault, 
+    isUsingAppDefault 
+  } = useTemplateDefault();
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
   const [tsplSpeed, setTsplSpeed] = useLocalStorageString('tspl-speed', '4');
   const [tsplGap, setTsplGap] = useLocalStorageString('tspl-gap', '0');
@@ -170,9 +177,37 @@ export default function LabelDesigner() {
                   </SelectContent>
                 </Select>
                 {selectedTemplate && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {selectedTemplate.description}
-                  </p>
+                  <div className="flex items-center justify-between mt-2">
+                    <p className="text-sm text-muted-foreground">
+                      {selectedTemplate.description}
+                    </p>
+                    <div className="flex gap-2">
+                      {!isUsingAppDefault && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            resetToAppDefault();
+                            toast.success('Reset to app default template');
+                          }}
+                          className="text-xs"
+                        >
+                          Reset Default
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setAsDefault(selectedTemplateId);
+                          toast.success(`${selectedTemplate.name} set as default template`);
+                        }}
+                        className="text-xs"
+                      >
+                        Set as Default
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
 
