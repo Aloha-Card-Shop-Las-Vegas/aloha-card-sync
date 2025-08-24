@@ -495,6 +495,16 @@ export default function LabelDesigner() {
                         layout={currentLayout}
                         onChange={(newLayout) => {
                           setCurrentLayout(newLayout);
+                          // Auto-save if layout exists and has a valid ID
+                          if (currentLayoutId && layoutName) {
+                            updateLayout(currentLayoutId, layoutName, newLayout)
+                              .then(() => {
+                                console.log('Layout auto-saved');
+                              })
+                              .catch((error) => {
+                                console.warn('Auto-save failed:', error);
+                              });
+                          }
                         }}
                         labelData={labelData}
                         printerDpi={203}
