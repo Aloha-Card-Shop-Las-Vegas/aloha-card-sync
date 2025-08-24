@@ -11,6 +11,56 @@ export interface SavedLabelLayout {
   updated_at: string;
 }
 
+// Defensive sanitization to prevent serialization issues
+const sanitizeLayout = (layout: LabelLayout): LabelLayout => {
+  return {
+    title: {
+      visible: layout.title?.visible ?? true,
+      x: layout.title?.x ?? 15,
+      y: layout.title?.y ?? 15,
+      fontSize: layout.title?.fontSize ?? 2,
+      prefix: layout.title?.prefix ?? ''
+    },
+    sku: {
+      visible: layout.sku?.visible ?? true,
+      x: layout.sku?.x ?? 15,
+      y: layout.sku?.y ?? 45,
+      fontSize: layout.sku?.fontSize ?? 1,
+      prefix: layout.sku?.prefix ?? 'SKU: '
+    },
+    price: {
+      visible: layout.price?.visible ?? true,
+      x: layout.price?.x ?? 280,
+      y: layout.price?.y ?? 15,
+      fontSize: layout.price?.fontSize ?? 3,
+      prefix: layout.price?.prefix ?? '$'
+    },
+    lot: {
+      visible: layout.lot?.visible ?? true,
+      x: layout.lot?.x ?? 15,
+      y: layout.lot?.y ?? 70,
+      fontSize: layout.lot?.fontSize ?? 1,
+      prefix: layout.lot?.prefix ?? 'LOT: '
+    },
+    condition: {
+      visible: layout.condition?.visible ?? true,
+      x: layout.condition?.x ?? 200,
+      y: layout.condition?.y ?? 45,
+      fontSize: layout.condition?.fontSize ?? 1,
+      prefix: layout.condition?.prefix ?? ''
+    },
+    barcode: {
+      mode: layout.barcode?.mode ?? 'none',
+      x: layout.barcode?.x ?? 10,
+      y: layout.barcode?.y ?? 90,
+      size: layout.barcode?.size ?? 'M',
+      width: layout.barcode?.width,
+      height: layout.barcode?.height
+    },
+    printer: layout.printer
+  };
+};
+
 export function useLabelLayouts() {
   const [layouts, setLayouts] = useState<SavedLabelLayout[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,23 +101,8 @@ export function useLabelLayouts() {
     setError(null);
     
     try {
-      // Strip any accidental data values from layout before saving
-      const cleanLayout: LabelLayout = {
-        title: { visible: layout.title.visible, x: layout.title.x, y: layout.title.y, fontSize: layout.title.fontSize, prefix: layout.title.prefix },
-        sku: { visible: layout.sku.visible, x: layout.sku.x, y: layout.sku.y, fontSize: layout.sku.fontSize, prefix: layout.sku.prefix },
-        price: { visible: layout.price.visible, x: layout.price.x, y: layout.price.y, fontSize: layout.price.fontSize, prefix: layout.price.prefix },
-        lot: { visible: layout.lot.visible, x: layout.lot.x, y: layout.lot.y, fontSize: layout.lot.fontSize, prefix: layout.lot.prefix },
-        condition: { visible: layout.condition.visible, x: layout.condition.x, y: layout.condition.y, fontSize: layout.condition.fontSize, prefix: layout.condition.prefix },
-        barcode: { 
-          mode: layout.barcode.mode, 
-          x: layout.barcode.x, 
-          y: layout.barcode.y, 
-          width: layout.barcode.width, 
-          height: layout.barcode.height, 
-          size: layout.barcode.size 
-        },
-        printer: layout.printer
-      };
+      // Use defensive sanitization
+      const cleanLayout = sanitizeLayout(layout);
 
       const { data, error } = await supabase
         .from('label_templates')
@@ -78,9 +113,17 @@ export function useLabelLayouts() {
           is_default: isDefault
         })
         .select()
-        .single();
+        .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase save error:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.error('No data returned from insert');
+        throw new Error('Failed to save layout - no data returned');
+      }
 
       // If setting as default, update existing default
       if (isDefault) {
@@ -94,6 +137,7 @@ export function useLabelLayouts() {
       return data.id;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to save layout';
+      console.error('Save layout error:', err);
       setError(errorMsg);
       throw new Error(errorMsg);
     }
@@ -103,38 +147,28 @@ export function useLabelLayouts() {
     setError(null);
     
     try {
-      // Strip any accidental data values from layout before saving
-      const cleanLayout: LabelLayout = {
-        title: { visible: layout.title.visible, x: layout.title.x, y: layout.title.y, fontSize: layout.title.fontSize, prefix: layout.title.prefix },
-        sku: { visible: layout.sku.visible, x: layout.sku.x, y: layout.sku.y, fontSize: layout.sku.fontSize, prefix: layout.sku.prefix },
-        price: { visible: layout.price.visible, x: layout.price.x, y: layout.price.y, fontSize: layout.price.fontSize, prefix: layout.price.prefix },
-        lot: { visible: layout.lot.visible, x: layout.lot.x, y: layout.lot.y, fontSize: layout.lot.fontSize, prefix: layout.lot.prefix },
-        condition: { visible: layout.condition.visible, x: layout.condition.x, y: layout.condition.y, fontSize: layout.condition.fontSize, prefix: layout.condition.prefix },
-        barcode: { 
-          mode: layout.barcode.mode, 
-          x: layout.barcode.x, 
-          y: layout.barcode.y, 
-          width: layout.barcode.width, 
-          height: layout.barcode.height, 
-          size: layout.barcode.size 
-        },
-        printer: layout.printer
-      };
+      // Use defensive sanitization
+      const cleanLayout = sanitizeLayout(layout);
 
       const { error } = await supabase
         .from('label_templates')
         .update({
           name,
           canvas: cleanLayout as any,
+          template_type: 'tspl-layout',
           updated_at: new Date().toISOString()
         })
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase update error:', error);
+        throw error;
+      }
 
       await loadLayouts();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to update layout';
+      console.error('Update layout error:', err);
       setError(errorMsg);
       throw new Error(errorMsg);
     }

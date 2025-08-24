@@ -44,6 +44,17 @@ export const LabelCanvasEditor = ({
   labelData, 
   printerDpi = 203 
 }: LabelCanvasEditorProps) => {
+  
+  // Ensure layout has a valid barcode object on mount
+  useEffect(() => {
+    if (!layout.barcode || typeof layout.barcode !== 'object') {
+      const fixedLayout = {
+        ...layout,
+        barcode: { mode: 'none' as const, x: 10, y: 90, size: 'M' as const }
+      };
+      onChange(fixedLayout);
+    }
+  }, []);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [zoom, setZoom] = useState(1.75); // Better default zoom for visibility
@@ -405,11 +416,11 @@ export const LabelCanvasEditor = ({
       // Handle barcode elements - ensure barcode object exists
       const mode = elementId === 'qr' ? 'qr' : 'barcode';
       newLayout.barcode = {
+        ...newLayout.barcode, // Keep existing properties first
         mode,
         x: clampedX,
         y: clampedY,
-        size: 'M',
-        ...newLayout.barcode, // Keep existing properties
+        size: newLayout.barcode?.size ?? 'M',
       };
     } else {
       // Handle text field elements

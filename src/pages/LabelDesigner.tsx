@@ -101,6 +101,7 @@ export default function LabelDesigner() {
   const [useCanvasEditor, setUseCanvasEditor] = useLocalStorageString('use-canvas-editor', 'true');
   const [layoutName, setLayoutName] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -184,9 +185,10 @@ export default function LabelDesigner() {
   }, [labelData, fieldConfig, tsplSettings, layoutMode, currentLayout]);
 
   const handleSaveLayout = async (asNew = false) => {
-    if (!currentLayout) return;
+    if (!currentLayout || isSaving) return;
     
     const finalName = layoutName.trim() || 'Untitled Layout';
+    setIsSaving(true);
     
     try {
       if (asNew || !currentLayoutId) {
@@ -202,7 +204,10 @@ export default function LabelDesigner() {
         toast.success(`Layout "${finalName}" updated successfully`);
       }
     } catch (error) {
+      console.error('Save layout error:', error);
       toast.error('Failed to save layout: ' + (error as Error).message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -495,8 +500,8 @@ export default function LabelDesigner() {
                         layout={currentLayout}
                         onChange={(newLayout) => {
                           setCurrentLayout(newLayout);
-                          // Auto-save if layout exists and has a valid ID
-                          if (currentLayoutId && layoutName) {
+                          // Auto-save if layout exists and has a valid ID, but not if manual save is in progress
+                          if (currentLayoutId && layoutName && !isSaving) {
                             updateLayout(currentLayoutId, layoutName, newLayout)
                               .then(() => {
                                 console.log('Layout auto-saved');
