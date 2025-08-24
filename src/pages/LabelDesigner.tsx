@@ -14,6 +14,7 @@ import { PrinterPanel } from "@/components/PrinterPanel";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
 import { generateUnifiedTSPL, type LabelFieldConfig } from "@/lib/tspl";
+import { useTemplates } from "@/hooks/useTemplates";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -40,8 +41,13 @@ export default function LabelDesigner() {
 
   const location = useLocation();
   const { printRAW, isConnected: printNodeConnected, selectedPrinterId } = usePrintNode();
+  const { templates, loading: templatesLoading, saveTemplate, setAsDefault, loadDefaultTemplate } = useTemplates();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
+  
+  // Template management state
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [templateName, setTemplateName] = useState('');
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -101,6 +107,58 @@ export default function LabelDesigner() {
       setPreviewTspl('// Error generating preview');
     }
   }, [labelData, fieldConfig, tsplSettings]);
+
+  // Template management functions
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim()) {
+      toast.error('Please enter a template name');
+      return;
+    }
+
+    await saveTemplate(templateName, fieldConfig, labelData, tsplSettings, selectedTemplateId || undefined);
+    setTemplateName('');
+  };
+
+  const handleLoadTemplate = (templateId: string) => {
+    const template = templates.find(t => t.id === templateId);
+    if (!template) return;
+
+    const { fieldConfig: config, labelData: data, tsplSettings: settings } = template.canvas;
+    
+    // Load field configuration
+    setIncludeTitle(config.includeTitle ? 'true' : 'false');
+    setIncludeSku(config.includeSku ? 'true' : 'false');
+    setIncludePrice(config.includePrice ? 'true' : 'false');
+    setIncludeLot(config.includeLot ? 'true' : 'false');
+    setIncludeCondition(config.includeCondition ? 'true' : 'false');
+    setBarcodeMode(config.barcodeMode);
+
+    // Load label data
+    setTitle(data.title);
+    setSku(data.sku);
+    setPrice(data.price);
+    setLot(data.lot);
+    setCondition(data.condition);
+    setBarcodeValue(data.barcode);
+
+    // Load TSPL settings
+    setTsplDensity(settings.density.toString());
+    setTsplSpeed(settings.speed.toString());
+    setTsplGap(settings.gapInches.toString());
+
+    setSelectedTemplateId(templateId);
+    setTemplateName(template.name);
+    toast.success(`Template "${template.name}" loaded`);
+  };
+
+  const handleLoadDefault = () => {
+    const defaultTemplate = loadDefaultTemplate();
+    if (defaultTemplate) {
+      handleLoadTemplate(defaultTemplate.id);
+    } else {
+      toast.error('No default template found');
+    }
+  };
 
   const handlePrintNodePrint = async (isTest = false) => {
     if (!selectedPrinterId) {
@@ -351,6 +409,68 @@ export default function LabelDesigner() {
           </Card>
 
           <div className="space-y-6">
+            <Card className="shadow-aloha">
+              <CardHeader>
+                <CardTitle>Templates</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="template-select">Load Template</Label>
+                  <Select value={selectedTemplateId} onValueChange={handleLoadTemplate}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templates.map((template) => (
+                        <SelectItem key={template.id} value={template.id}>
+                          {template.name} {template.is_default && '(Default)'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div>
+                  <Label htmlFor="template-name">Template Name</Label>
+                  <Input
+                    id="template-name"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    placeholder="Enter template name..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveTemplate}
+                    disabled={!templateName.trim() || templatesLoading}
+                  >
+                    {selectedTemplateId ? 'Update' : 'Save New'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => selectedTemplateId && setAsDefault(selectedTemplateId)}
+                    disabled={!selectedTemplateId || templatesLoading}
+                  >
+                    Set Default
+                  </Button>
+                </div>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleLoadDefault}
+                  className="w-full"
+                  disabled={templatesLoading}
+                >
+                  Load Default
+                </Button>
+              </CardContent>
+            </Card>
+
             <Card className="shadow-aloha">
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
