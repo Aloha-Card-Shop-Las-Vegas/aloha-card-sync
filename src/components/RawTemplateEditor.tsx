@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,11 +6,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { usePrintNode } from '@/hooks/usePrintNode';
 import { useRawTemplates } from '@/hooks/useRawTemplates';
 import { Save, FolderOpen, Trash2 } from 'lucide-react';
+import { type LabelData, type TSPLSettings } from '@/lib/labelTemplates';
 
 const DEFAULT_ZPL = `^XA
 ^PW406
@@ -28,7 +30,12 @@ TEXT 10,8,"0",0,1,1,"SKU: {{sku}}"
 BARCODE 10,36,"128",110,1,0,{{module_width}},6,"{{barcode}}"
 PRINT 1`;
 
-export function RawTemplateEditor() {
+interface RawTemplateEditorProps {
+  labelData?: LabelData;
+  tsplSettings?: TSPLSettings;
+}
+
+export function RawTemplateEditor({ labelData, tsplSettings }: RawTemplateEditorProps = {}) {
   const { printRAW, selectedPrinterId, isConnected } = usePrintNode();
   const { templates, saveTemplate, deleteTemplate, detectEngine } = useRawTemplates();
   const [engine, setEngine] = useState<'ZPL' | 'TSPL'>('ZPL');
@@ -42,6 +49,10 @@ export function RawTemplateEditor() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  const [syncWithLabelData, setSyncWithLabelData] = useState(() => {
+    const stored = localStorage.getItem('raw-template-sync-label-data');
+    return stored ? JSON.parse(stored) : false;
+  });
 
   const detectTokens = (template: string): string[] => {
     const regex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
@@ -151,15 +162,96 @@ export function RawTemplateEditor() {
     }
   }, [template, values]);
 
+  // Sync toggle persistence
+  useEffect(() => {
+    localStorage.setItem('raw-template-sync-label-data', JSON.stringify(syncWithLabelData));
+  }, [syncWithLabelData]);
+
+  // Auto-sync with label data when enabled
+  useEffect(() => {
+    if (syncWithLabelData && labelData) {
+      const syncedValues = { ...values };
+      
+      // Map common token names to label data
+      if (tokens.includes('title') && labelData.title) {
+        syncedValues.title = labelData.title;
+      }
+      if (tokens.includes('sku') && labelData.sku) {
+        syncedValues.sku = labelData.sku;
+      }
+      if (tokens.includes('price') && labelData.price) {
+        // Normalize price - add $ if not present
+        const price = labelData.price.startsWith('$') ? labelData.price : `$${labelData.price}`;
+        syncedValues.price = price;
+      }
+      if (tokens.includes('lot') && labelData.lot) {
+        syncedValues.lot = labelData.lot;
+      }
+      if (tokens.includes('condition') && labelData.condition) {
+        syncedValues.condition = labelData.condition;
+      }
+      if (tokens.includes('barcode') && labelData.barcode) {
+        syncedValues.barcode = labelData.barcode;
+      }
+
+      setValues(syncedValues);
+    }
+  }, [syncWithLabelData, labelData, tokens]);
+
+  const handleApplyCurrentData = () => {
+    if (!labelData) {
+      toast.error('No label data available');
+      return;
+    }
+
+    const appliedValues = { ...values };
+    
+    // Apply all available label data
+    if (labelData.title) appliedValues.title = labelData.title;
+    if (labelData.sku) appliedValues.sku = labelData.sku;
+    if (labelData.price) {
+      const price = labelData.price.startsWith('$') ? labelData.price : `$${labelData.price}`;
+      appliedValues.price = price;
+    }
+    if (labelData.lot) appliedValues.lot = labelData.lot;
+    if (labelData.condition) appliedValues.condition = labelData.condition;
+    if (labelData.barcode) appliedValues.barcode = labelData.barcode;
+
+    setValues(appliedValues);
+    toast.success('Applied current label data');
+  };
+
   return (
     <Card className="shadow-aloha">
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          Raw Template Print
-          <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-            {engine}
-          </Badge>
+          Raw Template Editor
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">{engine} Engine</Badge>
+          </div>
         </CardTitle>
+        {labelData && (
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="sync-toggle"
+                  checked={syncWithLabelData}
+                  onCheckedChange={setSyncWithLabelData}
+                />
+                <Label htmlFor="sync-toggle" className="text-sm">Sync with Label Data</Label>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleApplyCurrentData}
+                className="text-xs"
+              >
+                Apply Current Data
+              </Button>
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -272,8 +364,9 @@ export function RawTemplateEditor() {
                 placeholder="Paste your ZPL/TSPL template here..."
               />
               <p className="text-xs text-muted-foreground">
-                Use {engine === 'ZPL' ? '^PW406 and ^LL203' : 'SIZE 2,1'} for 2×1 labels. 
-                Server auto-adds if missing.
+                Variables found in template: {tokens.join(", ") || "None"}
+                <br />
+                We auto-add ^PW/^LL (ZPL) or SIZE 2,1 (TSPL) client-side if missing.
               </p>
             </div>
 

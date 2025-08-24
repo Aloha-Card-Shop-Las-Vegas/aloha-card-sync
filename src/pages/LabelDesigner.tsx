@@ -399,7 +399,10 @@ export default function LabelDesigner() {
 
             <PrinterPanel />
 
-            <RawTemplateEditor />
+            <RawTemplateEditor 
+              labelData={labelData}
+              tsplSettings={tsplSettings}
+            />
 
             <Card className="shadow-aloha">
               <CardHeader>
