@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,14 @@ import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
 import { buildTitleFromParts, buildLabelDataFromItem } from '@/lib/labelData';
 import { getLabelDesignerSettings } from '@/lib/labelDesignerSettings';
 import PDFLabelPreview from "@/components/PDFLabelPreview";
+
+// Helper function to format price as money
+const formatMoney = (price?: string): string => {
+  if (!price) return '';
+  const numPrice = parseFloat(price);
+  if (isNaN(numPrice)) return price;
+  return `$${numPrice.toFixed(2)}`;
+};
 
 
 type CardItem = {
@@ -1033,9 +1041,9 @@ const Index = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {batch.map((b, i) => (
-                        <> 
-                          <TableRow key={b.id || i}>
+                       {batch.map((b, i) => (
+                         <React.Fragment key={b.id || i}>
+                           <TableRow>
                           <TableCell>{b.year}</TableCell>
                           <TableCell>{b.brandTitle}</TableCell>
                           <TableCell>{b.subject}</TableCell>
@@ -1045,8 +1053,8 @@ const Index = () => {
                           <TableCell>{b.grade}</TableCell>
                           <TableCell>{b.psaCert}</TableCell>
                           <TableCell>{b.lot}</TableCell>
-                          <TableCell>{b.cost}</TableCell>
-                          <TableCell>{b.price}</TableCell>
+                           <TableCell>{formatMoney(b.cost)}</TableCell>
+                           <TableCell>{formatMoney(b.price)}</TableCell>
                           <TableCell>{b.quantity ?? 1}</TableCell>
                           <TableCell>{b.sku}</TableCell>
                           <TableCell className="text-right">
@@ -1186,7 +1194,7 @@ const Index = () => {
                               </TableCell>
                             </TableRow>
                           )}
-                        </>
+                         </React.Fragment>
                       ))}
                     </TableBody>
                   </Table>
