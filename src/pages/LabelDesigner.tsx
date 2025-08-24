@@ -51,7 +51,7 @@ export default function LabelDesigner() {
   const [layoutMode, setLayoutMode] = useLocalStorageString('layout-mode', 'auto');
   const [currentLayoutId, setCurrentLayoutId] = useLocalStorageString('current-layout-id', '');
   const [currentLayout, setCurrentLayout] = useState<LabelLayout | null>(null);
-  const [useCanvasEditor, setUseCanvasEditor] = useLocalStorageString('use-canvas-editor', 'false');
+  const [useCanvasEditor, setUseCanvasEditor] = useLocalStorageString('use-canvas-editor', 'true');
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -101,15 +101,26 @@ export default function LabelDesigner() {
     gapInches: parseFloat(tsplGap) || 0
   };
 
-  // Load saved layout on mount
+  // Load saved layout on mount and auto-create default if needed
   useEffect(() => {
     if (currentLayoutId && layouts.length > 0) {
       const savedLayout = layouts.find(l => l.id === currentLayoutId);
       if (savedLayout) {
         setCurrentLayout(savedLayout.layout);
       }
+    } else if (layoutMode === 'custom' && !currentLayout && layouts.length === 0) {
+      // Auto-create default layout for better onboarding
+      const defaultLayout: LabelLayout = {
+        title: { visible: true, x: 15, y: 15, fontSize: 2 },
+        sku: { visible: true, x: 15, y: 35, fontSize: 2 },
+        price: { visible: true, x: 15, y: 55, fontSize: 2 },
+        lot: { visible: true, x: 200, y: 15, fontSize: 2 },
+        condition: { visible: true, x: 200, y: 35, fontSize: 2 },
+        barcode: { x: 280, y: 60, mode: 'qr', size: 'S' }
+      };
+      setCurrentLayout(defaultLayout);
     }
-  }, [currentLayoutId, layouts]);
+  }, [currentLayoutId, layouts, layoutMode, currentLayout]);
 
   // Update preview when data or config changes
   useEffect(() => {
@@ -394,9 +405,9 @@ export default function LabelDesigner() {
                         variant="outline"
                         className="mt-2"
                         onClick={() => {
-                          // Create default layout
+                          // Create default layout with better positioning
                           const defaultLayout: LabelLayout = {
-                            title: { visible: true, x: 10, y: 10, fontSize: 2 },
+                            title: { visible: true, x: 15, y: 15, fontSize: 2 },
                             sku: { visible: true, x: 10, y: 40, fontSize: 1, prefix: 'SKU: ' },
                             price: { visible: true, x: 280, y: 10, fontSize: 3 },
                             lot: { visible: true, x: 10, y: 60, fontSize: 1, prefix: 'LOT: ' },

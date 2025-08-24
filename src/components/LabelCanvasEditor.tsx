@@ -32,21 +32,24 @@ export const LabelCanvasEditor = ({
 }: LabelCanvasEditorProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(1.75); // Better default zoom for visibility
   const [showGrid, setShowGrid] = useState(true);
   const [gridSize, setGridSize] = useState(8);
+  const [gridObjects, setGridObjects] = useState<any[]>([]); // Cache grid objects
 
   // Initialize canvas
   useEffect(() => {
     if (!canvasRef.current) return;
 
     const canvas = new FabricCanvas(canvasRef.current, {
-      width: LABEL_WIDTH_DOTS,
-      height: LABEL_HEIGHT_DOTS,
+      width: LABEL_WIDTH_DOTS * 1.75, // Start with better zoom
+      height: LABEL_HEIGHT_DOTS * 1.75,
       backgroundColor: '#ffffff',
       selection: true,
     });
 
+    // Set initial zoom
+    canvas.setZoom(1.75);
     setFabricCanvas(canvas);
 
     return () => {
@@ -54,13 +57,14 @@ export const LabelCanvasEditor = ({
     };
   }, []);
 
-  // Handle grid rendering separately for efficiency
+  // Handle grid rendering with caching for better performance
   useEffect(() => {
     if (!fabricCanvas) return;
 
-    // Remove existing grid lines
-    const gridObjects = fabricCanvas.getObjects().filter(obj => obj.get('isGrid'));
+    // Remove existing cached grid objects
     gridObjects.forEach(obj => fabricCanvas.remove(obj));
+    
+    const newGridObjects: any[] = [];
 
     if (showGrid) {
       // Add vertical grid lines
@@ -74,6 +78,7 @@ export const LabelCanvasEditor = ({
         lineV.set('isGrid', true);
         fabricCanvas.add(lineV);
         fabricCanvas.sendObjectToBack(lineV);
+        newGridObjects.push(lineV);
       }
       
       // Add horizontal grid lines
@@ -87,10 +92,13 @@ export const LabelCanvasEditor = ({
         lineH.set('isGrid', true);
         fabricCanvas.add(lineH);
         fabricCanvas.sendObjectToBack(lineH);
+        newGridObjects.push(lineH);
       }
       
       fabricCanvas.renderAll();
     }
+    
+    setGridObjects(newGridObjects);
   }, [fabricCanvas, showGrid, gridSize]);
 
   // Update canvas objects when layout changes (from numeric controls)
@@ -107,7 +115,7 @@ export const LabelCanvasEditor = ({
     fields.forEach(fieldName => {
       const field = layout[fieldName];
       
-      // Always add field for visual editing, style differently if not visible
+      // Always add field for visual editing with enhanced chip-like styling
       const text = new Textbox(
         field.visible ? (labelData[fieldName] || fieldName.toUpperCase()) : `[${fieldName.toUpperCase()}]`, 
         {
@@ -116,15 +124,17 @@ export const LabelCanvasEditor = ({
           width: 120,
           fontSize: Math.max(field.fontSize * 8, 12), // Ensure minimum readable size
           fontFamily: 'Arial, sans-serif',
-          fill: field.visible ? '#000000' : '#999999',
-          backgroundColor: field.visible ? 'transparent' : '#f8f8f8',
+          fill: field.visible ? '#000000' : '#666666',
+          backgroundColor: field.visible ? '#ffffff' : '#f0f0f0',
           selectable: true,
           evented: true,
-          opacity: field.visible ? 1 : 0.7,
-          borderColor: field.visible ? '#0066cc' : '#cccccc',
-          cornerColor: field.visible ? '#0066cc' : '#cccccc',
-          cornerSize: 6,
+          opacity: field.visible ? 1 : 0.8,
+          borderColor: field.visible ? '#0066cc' : '#999999',
+          cornerColor: field.visible ? '#0066cc' : '#999999',
+          cornerSize: 8,
           transparentCorners: false,
+          padding: 4,
+          borderRadius: 4,
         }
       );
       
@@ -243,16 +253,22 @@ export const LabelCanvasEditor = ({
       const newLayout = { ...layout };
       
       if (id === 'barcode') {
+        // Enhanced boundary clamping for barcode
+        const maxX = LABEL_WIDTH_DOTS - (obj.width || 80);
+        const maxY = LABEL_HEIGHT_DOTS - (obj.height || 80);
         newLayout.barcode = {
           ...newLayout.barcode,
-          x: Math.max(0, Math.min(LABEL_WIDTH_DOTS - obj.width, Math.round(obj.left / gridSize) * gridSize)),
-          y: Math.max(0, Math.min(LABEL_HEIGHT_DOTS - obj.height, Math.round(obj.top / gridSize) * gridSize)),
+          x: Math.max(0, Math.min(maxX, Math.round(obj.left / gridSize) * gridSize)),
+          y: Math.max(0, Math.min(maxY, Math.round(obj.top / gridSize) * gridSize)),
         };
       } else {
+        // Enhanced boundary clamping for text fields
         const field = newLayout[id as keyof Omit<LabelLayout, 'barcode'>];
         if (field && 'x' in field) {
-          field.x = Math.max(0, Math.min(LABEL_WIDTH_DOTS - 50, Math.round(obj.left / gridSize) * gridSize));
-          field.y = Math.max(0, Math.min(LABEL_HEIGHT_DOTS - 20, Math.round(obj.top / gridSize) * gridSize));
+          const maxX = LABEL_WIDTH_DOTS - 100; // Reserve space for text width
+          const maxY = LABEL_HEIGHT_DOTS - 25;  // Reserve space for text height
+          field.x = Math.max(0, Math.min(maxX, Math.round(obj.left / gridSize) * gridSize));
+          field.y = Math.max(0, Math.min(maxY, Math.round(obj.top / gridSize) * gridSize));
         }
       }
       
@@ -396,9 +412,26 @@ export const LabelCanvasEditor = ({
         </div>
       </div>
 
-      <div className="text-sm text-muted-foreground">
-        <p><strong>Tip:</strong> Drag objects to move them, use arrow keys for precise positioning (Shift for larger steps).</p>
-        <p>Canvas shows your label at {LABEL_WIDTH_DOTS}×{LABEL_HEIGHT_DOTS} dots (2×1 inch at 203 DPI).</p>
+      {/* Enhanced field legend */}
+      <div className="bg-muted/50 rounded-lg p-3 text-sm">
+        <p className="font-medium mb-2">Field Legend:</p>
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-white border border-blue-500 rounded"></div>
+            <span>Visible fields</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-gray-100 border border-gray-400 rounded"></div>
+            <span>Hidden fields</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-gray-100 border-2 border-blue-500 rounded"></div>
+            <span>Barcode areas</span>
+          </div>
+        </div>
+        <p className="mt-2 text-muted-foreground">
+          <strong>Tip:</strong> Drag objects to reposition • Arrow keys for precision • Shift+Arrow for larger steps
+        </p>
       </div>
     </div>
   );
