@@ -15,6 +15,7 @@ import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
 import { generateUnifiedTSPL, generateBoxedLayoutTSPL, type LabelFieldConfig } from "@/lib/tspl";
 import { useTemplates } from "@/hooks/useTemplates";
+import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function LabelDesigner() {
 
   const location = useLocation();
   const { printRAW, isConnected: printNodeConnected, selectedPrinterId } = usePrintNode();
-  const { templates, loading: templatesLoading, saveTemplate, setAsDefault, loadDefaultTemplate } = useTemplates();
+  const { templates, loading: templatesLoading, saveTemplate, setAsDefault, loadDefaultTemplate, refreshTemplates } = useTemplates();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
   
@@ -123,8 +124,11 @@ export default function LabelDesigner() {
       return;
     }
 
-    await saveTemplate(templateName, { ...fieldConfig, templateStyle }, labelData, tsplSettings, selectedTemplateId || undefined);
-    setTemplateName('');
+    const result = await saveTemplate(templateName, { ...fieldConfig, templateStyle }, labelData, tsplSettings, selectedTemplateId || undefined);
+    if (result) {
+      setSelectedTemplateId(result.id);
+      setTemplateName('');
+    }
   };
 
   const handleLoadTemplate = (templateId: string) => {
@@ -439,9 +443,15 @@ export default function LabelDesigner() {
                 </div>
               </div>
 
+              {/* Visual Label Preview */}
+              <LabelPreviewCanvas 
+                fieldConfig={{ ...fieldConfig, templateStyle }}
+                labelData={labelData}
+              />
+
               {/* TSPL Preview */}
               <div>
-                <Label className="text-base font-medium">TSPL Preview</Label>
+                <Label className="text-base font-medium">TSPL Code</Label>
                 <Textarea 
                   value={previewTspl} 
                   readOnly 
@@ -458,21 +468,38 @@ export default function LabelDesigner() {
                 <CardTitle>Templates</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
+                <div className="flex items-center justify-between">
                   <Label htmlFor="template-select">Load Template</Label>
-                  <Select value={selectedTemplateId} onValueChange={handleLoadTemplate}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a template..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.map((template) => (
-                        <SelectItem key={template.id} value={template.id}>
-                          {template.name} {template.is_default && '(Default)'}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={refreshTemplates}
+                    disabled={templatesLoading}
+                  >
+                    Refresh
+                  </Button>
                 </div>
+                <Select value={selectedTemplateId} onValueChange={handleLoadTemplate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={
+                      templatesLoading ? "Loading templates..." : 
+                      templates.length === 0 ? "No templates yet" :
+                      "Select a template..."
+                    } />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name} {template.is_default && '(Default)'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {templates.length === 0 && !templatesLoading && (
+                  <p className="text-xs text-muted-foreground">
+                    Save your first template to get started
+                  </p>
+                )}
                 
                 <div>
                   <Label htmlFor="template-name">Template Name</Label>

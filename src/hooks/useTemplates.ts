@@ -123,14 +123,18 @@ export function useTemplates() {
           .single();
       }
 
-      if (result.error) throw result.error;
+      if (result.error) {
+        console.error('Supabase error:', result.error);
+        throw new Error(result.error.message || 'Database operation failed');
+      }
 
       toast.success(templateId ? 'Template updated successfully' : 'Template saved successfully');
       await fetchTemplates();
       return result.data;
     } catch (error) {
       console.error('Failed to save template:', error);
-      toast.error('Failed to save template');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save template';
+      toast.error(`Save failed: ${errorMessage}`);
       return null;
     }
   };
@@ -177,6 +181,11 @@ export function useTemplates() {
     fetchTemplates();
   }, []);
 
+  const refreshTemplates = async () => {
+    setLoading(true);
+    await fetchTemplates();
+  };
+
   return {
     templates,
     loading,
@@ -185,6 +194,7 @@ export function useTemplates() {
     deleteTemplate,
     setAsDefault,
     loadDefaultTemplate,
-    refetch: fetchTemplates
+    refetch: fetchTemplates,
+    refreshTemplates
   };
 }
