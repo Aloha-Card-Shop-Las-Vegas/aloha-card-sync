@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { printNodeService } from '@/lib/printNodeService';
 import { toast } from 'sonner';
@@ -39,7 +40,8 @@ export function usePrintNode() {
         .from('printer_settings')
         .select('selected_printer_id')
         .eq('workstation_id', workstationId)
-        .single();
+        .order('updated_at', { ascending: false })
+        .maybeSingle();
       
       if (settings?.selected_printer_id) {
         setSelectedPrinterId(settings.selected_printer_id);
@@ -55,9 +57,6 @@ export function usePrintNode() {
     const saved = localStorage.getItem('printnode-selected-printer');
     if (saved) setSelectedPrinterId(parseInt(saved));
   }, []);
-
-  // Combined initialization handled below to avoid race conditions between saved selection and printer list
-
 
   // Save printer selection to both localStorage and database
   useEffect(() => {
@@ -77,6 +76,8 @@ export function usePrintNode() {
                 selected_printer_id: selectedPrinterId,
                 selected_printer_name: selectedPrinter.name,
                 use_printnode: true,
+              }, {
+                onConflict: 'workstation_id'
               });
           }
         } catch (error) {

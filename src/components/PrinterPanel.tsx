@@ -58,7 +58,8 @@ export function PrinterPanel() {
         .from('printer_settings')
         .select('*')
         .eq('workstation_id', id)
-        .single();
+        .order('updated_at', { ascending: false })
+        .maybeSingle();
         
       if (settings && settings.selected_printer_id && settings.selected_printer_name) {
         setSelectedPrinter({
@@ -82,6 +83,8 @@ export function PrinterPanel() {
           selected_printer_id: selectedPrinter.id,
           selected_printer_name: selectedPrinter.name,
           use_printnode: true,
+        }, {
+          onConflict: 'workstation_id'
         });
       
       // Also sync to localStorage for consistency with usePrintNode hook
