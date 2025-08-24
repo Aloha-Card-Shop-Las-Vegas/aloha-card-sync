@@ -17,6 +17,8 @@ import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Eye } from "lucide-react";
+import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
+import { getLabelDesignerSettings } from "@/lib/labelDesignerSettings";
 
 
 type CardItem = {
@@ -651,6 +653,9 @@ const Index = () => {
   const generateLabelPDF = async (item: CardItem): Promise<string> => {
     const { generateLabelPDF: sharedGenerateLabelPDF } = await import('@/lib/labelRenderer');
     
+    // Use Label Designer settings instead of hardcoded values
+    const designerSettings = getLabelDesignerSettings();
+    
     const labelData = {
       title: buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant),
       sku: item.sku || item.id?.toString() || 'NO-SKU',
@@ -660,16 +665,7 @@ const Index = () => {
       barcode: item.sku || item.id?.toString() || 'NO-SKU'
     };
 
-    const fieldConfig = {
-      includeTitle: true,
-      includeSku: false, // SKU is in barcode
-      includePrice: true,
-      includeLot: true,
-      includeCondition: true,
-      barcodeMode: 'barcode' as const
-    };
-
-    return sharedGenerateLabelPDF(fieldConfig, labelData, 203);
+    return sharedGenerateLabelPDF(designerSettings.fieldConfig, labelData, 203);
   };
 
   const handlePrintRow = async (item: CardItem) => {
@@ -754,7 +750,7 @@ const Index = () => {
         const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
         
         try {
-          // Generate PDF for the item
+          // Generate PDF for the item using Label Designer settings
           const pdfBase64 = await generateLabelPDF(item);
           
           // Send to PrintNode
@@ -1099,33 +1095,31 @@ const Index = () => {
                                          <Eye className="h-4 w-4" />
                                        </Button>
                                      </DialogTrigger>
-                                     <DialogContent className="max-w-md">
-                                       <DialogHeader>
-                                         <DialogTitle>Label Preview</DialogTitle>
-                                       </DialogHeader>
-                                       <div className="space-y-4">
-                                         <div className="border rounded-lg p-4 bg-white text-black font-mono text-sm space-y-2">
-                                           <div className="font-bold text-base">
-                                             {buildTitleFromParts(b.year, b.brandTitle, b.cardNumber, b.subject, b.variant)}
-                                           </div>
-                                           <div className="flex justify-between">
-                                             <span>{b.lot || "LOT-000000"}</span>
-                                             <span>{b.price ? `$${Number(b.price).toFixed(2)}` : ""}</span>
-                                           </div>
-                                           <div className="border-2 border-black h-12 flex items-center justify-center bg-white">
-                                             <span className="font-bold tracking-wider">
-                                               {b.sku || b.id || "NO-SKU"}
-                                             </span>
-                                           </div>
-                                           <div className="text-xs text-center">
-                                             Grade: {b.grade || "Ungraded"}
-                                           </div>
-                                         </div>
-                                         <div className="text-xs text-muted-foreground">
-                                           This preview shows what would be printed on a 2x1 inch label.
-                                         </div>
-                                       </div>
-                                     </DialogContent>
+                                      <DialogContent className="max-w-lg">
+                                        <DialogHeader>
+                                          <DialogTitle>Label Preview</DialogTitle>
+                                        </DialogHeader>
+                                        <div className="space-y-4">
+                                          <LabelPreviewCanvas 
+                                            fieldConfig={{
+                                              ...getLabelDesignerSettings().fieldConfig,
+                                              templateStyle: 'boxed'
+                                            }}
+                                            labelData={{
+                                              title: buildTitleFromParts(b.year, b.brandTitle, b.cardNumber, b.subject, b.variant),
+                                              sku: b.sku || b.id?.toString() || 'NO-SKU',
+                                              price: b.price?.toString() || '',
+                                              lot: b.lot || '',
+                                              condition: b.grade || '',
+                                              barcode: b.sku || b.id?.toString() || 'NO-SKU'
+                                            }}
+                                            showGuides={getLabelDesignerSettings().showGuides}
+                                          />
+                                          <div className="text-xs text-muted-foreground">
+                                            This preview uses the same settings as your Label Designer. Update settings in the Label Designer to change how labels appear.
+                                          </div>
+                                        </div>
+                                      </DialogContent>
                                    </Dialog>
                                    <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
                                    <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
