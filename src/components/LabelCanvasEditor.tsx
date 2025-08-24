@@ -77,7 +77,7 @@ export const LabelCanvasEditor = ({
         });
         lineV.set('isGrid', true);
         fabricCanvas.add(lineV);
-        
+        fabricCanvas.sendObjectToBack(lineV);
         newGridObjects.push(lineV);
       }
       
@@ -91,7 +91,7 @@ export const LabelCanvasEditor = ({
         });
         lineH.set('isGrid', true);
         fabricCanvas.add(lineH);
-        
+        fabricCanvas.sendObjectToBack(lineH);
         newGridObjects.push(lineH);
       }
       
@@ -147,6 +147,7 @@ export const LabelCanvasEditor = ({
       });
       
       fabricCanvas.add(text);
+      fabricCanvas.bringObjectToFront(text);
       
     });
 
@@ -193,6 +194,7 @@ export const LabelCanvasEditor = ({
         
         fabricCanvas.add(qr);
         fabricCanvas.add(qrLabel);
+        fabricCanvas.bringObjectToFront(qr);
         
       } else {
         const barcode = new Rect({
@@ -233,6 +235,7 @@ export const LabelCanvasEditor = ({
         
         fabricCanvas.add(barcode);
         fabricCanvas.add(barcodeLabel);
+        fabricCanvas.bringObjectToFront(barcode);
         
       }
     }
