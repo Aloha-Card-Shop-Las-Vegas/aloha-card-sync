@@ -338,7 +338,7 @@ export default function Inventory() {
                             to="/labels"
                             state={{
                               title,
-                              sku: it.sku,
+                              sku: (it.psa_cert || it.sku || it.id) + (it.grade ? `-${it.grade.replace(/\s+/g, '')}` : ''),
                               price: it.price?.toString(),
                               lot: it.lot_number,
                               condition: it.grade || "Near Mint",
