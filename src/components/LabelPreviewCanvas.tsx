@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useImperativeHandle } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import jsPDF from 'jspdf';
 
 interface LabelPreviewCanvasProps {
   fieldConfig: {
@@ -62,8 +63,32 @@ export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>
     });
   };
 
-  // Expose export function via ref
-  (canvasRef as any).current?.exportToPNG && ((canvasRef as any).current.exportToPNG = exportToPNG);
+  // Export function to get PDF for printing
+  const exportToPDF = async (): Promise<string> => {
+    const pngBlob = await exportToPNG(203); // High DPI PNG
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        
+        // Create PDF with exact 2x1 inch dimensions
+        const pdf = new jsPDF({
+          orientation: 'landscape',
+          unit: 'in',
+          format: [2, 1] // 2x1 inch
+        });
+        
+        // Add the PNG image to fill the entire page
+        pdf.addImage(dataUrl, 'PNG', 0, 0, 2, 1);
+        
+        // Return base64 PDF data
+        const pdfBase64 = pdf.output('datauristring').split(',')[1];
+        resolve(pdfBase64);
+      };
+      reader.onerror = () => reject(new Error('Failed to read PNG blob'));
+      reader.readAsDataURL(pngBlob);
+    });
+  };
 
   // Constants for 2x1 inch label at 203 DPI
   const LABEL_WIDTH = 406; // 2 inches * 203 DPI
@@ -199,9 +224,10 @@ export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>
     }
   };
 
-  // Expose the export function through the ref
+  // Expose the export functions through the ref
   useImperativeHandle(ref, () => ({
-    exportToPNG
+    exportToPNG,
+    exportToPDF
   }));
 
   useEffect(() => {
