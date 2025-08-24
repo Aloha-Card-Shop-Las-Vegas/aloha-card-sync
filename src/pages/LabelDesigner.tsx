@@ -7,9 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { toast } from "sonner";
 import { Link, useLocation } from "react-router-dom";
 import { PrinterPanel } from "@/components/PrinterPanel";
+import { LabelCanvasEditor } from "@/components/LabelCanvasEditor";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
 import { generateUnifiedTSPL, generateTSPLFromLayout, type LabelFieldConfig, type LabelLayout } from "@/lib/tspl";
@@ -48,6 +51,7 @@ export default function LabelDesigner() {
   const [layoutMode, setLayoutMode] = useLocalStorageString('layout-mode', 'auto');
   const [currentLayoutId, setCurrentLayoutId] = useLocalStorageString('current-layout-id', '');
   const [currentLayout, setCurrentLayout] = useState<LabelLayout | null>(null);
+  const [useCanvasEditor, setUseCanvasEditor] = useLocalStorageString('use-canvas-editor', 'false');
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -369,6 +373,18 @@ export default function LabelDesigner() {
                     )}
                   </div>
 
+                  {/* Canvas Editor Toggle */}
+                  {currentLayout && (
+                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                      <Switch 
+                        checked={useCanvasEditor === 'true'}
+                        onCheckedChange={(checked) => setUseCanvasEditor(checked ? 'true' : 'false')}
+                      />
+                      <Label className="text-sm font-medium">Canvas Editor (Beta)</Label>
+                      <p className="text-xs text-muted-foreground ml-2">Drag and drop fields visually</p>
+                    </div>
+                  )}
+
                   {!currentLayout && (
                     <div className="p-4 border rounded-lg bg-muted">
                       <p className="text-sm text-muted-foreground">
@@ -397,7 +413,108 @@ export default function LabelDesigner() {
 
                   {/* Custom Layout Field Controls */}
                   {currentLayout && (
-                    <div className="space-y-4 border p-4 rounded-lg">
+                    <div className="space-y-4">
+                      {useCanvasEditor === 'true' ? (
+                        <ResizablePanelGroup direction="horizontal" className="min-h-[500px] border rounded-lg">
+                          <ResizablePanel defaultSize={65}>
+                            <div className="p-4 h-full">
+                              <h4 className="font-medium mb-4">Visual Editor</h4>
+                              <LabelCanvasEditor
+                                layout={currentLayout}
+                                onChange={setCurrentLayout}
+                                labelData={labelData}
+                                printerDpi={203}
+                              />
+                            </div>
+                          </ResizablePanel>
+                          
+                          <ResizableHandle withHandle />
+                          
+                          <ResizablePanel defaultSize={35}>
+                            <div className="p-4 h-full">
+                              <h4 className="font-medium mb-4">Numeric Controls</h4>
+                              <div className="space-y-4 max-h-[450px] overflow-y-auto">
+                                {/* ... keep existing field controls ... */}
+                                {/* Title Controls */}
+                                <div className="grid grid-cols-4 gap-2 items-end text-xs">
+                                  <div className="flex items-center space-x-1">
+                                    <Checkbox 
+                                      checked={currentLayout.title.visible}
+                                      onCheckedChange={(checked) => {
+                                        setCurrentLayout({
+                                          ...currentLayout,
+                                          title: { ...currentLayout.title, visible: !!checked }
+                                        });
+                                      }}
+                                    />
+                                    <Label className="text-xs">Title</Label>
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">X</Label>
+                                    <Input 
+                                      type="number" 
+                                      value={currentLayout.title.x}
+                                      onChange={(e) => {
+                                        const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
+                                        setCurrentLayout({
+                                          ...currentLayout,
+                                          title: { ...currentLayout.title, x }
+                                        });
+                                      }}
+                                      className="h-7 text-xs"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">Y</Label>
+                                    <Input 
+                                      type="number" 
+                                      value={currentLayout.title.y}
+                                      onChange={(e) => {
+                                        const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
+                                        setCurrentLayout({
+                                          ...currentLayout,
+                                          title: { ...currentLayout.title, y }
+                                        });
+                                      }}
+                                      className="h-7 text-xs"
+                                    />
+                                  </div>
+                                  <div>
+                                    <Label className="text-xs">Size</Label>
+                                    <Select 
+                                      value={currentLayout.title.fontSize.toString()}
+                                      onValueChange={(value) => {
+                                        setCurrentLayout({
+                                          ...currentLayout,
+                                          title: { ...currentLayout.title, fontSize: parseInt(value) as 1|2|3|4|5 }
+                                        });
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-7 text-xs">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="1">1</SelectItem>
+                                        <SelectItem value="2">2</SelectItem>
+                                        <SelectItem value="3">3</SelectItem>
+                                        <SelectItem value="4">4</SelectItem>
+                                        <SelectItem value="5">5</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                
+                                {/* Compact controls for other fields */}
+                                {/* Add similar compact controls for SKU, Price, Lot, Condition, and Barcode */}
+                                <div className="text-xs text-muted-foreground">
+                                  Use the visual editor or adjust values here. Changes sync both ways.
+                                </div>
+                              </div>
+                            </div>
+                          </ResizablePanel>
+                        </ResizablePanelGroup>
+                      ) : (
+                        <div className="space-y-4 border p-4 rounded-lg">
                       <h4 className="font-medium">Field Positioning</h4>
                       
                       {/* Title Controls */}
@@ -827,9 +944,11 @@ export default function LabelDesigner() {
                         )}
                       </div>
 
-                      <p className="text-xs text-muted-foreground">
-                        Label dimensions: 386×203 dots (2×1 inches at 203 DPI)
-                      </p>
+                        <p className="text-xs text-muted-foreground">
+                          Label dimensions: 386×203 dots (2×1 inches at 203 DPI)
+                        </p>
+                      </div>
+                      )}
                     </div>
                   )}
                 </div>
