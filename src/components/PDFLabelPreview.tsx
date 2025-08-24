@@ -21,51 +21,44 @@ function ensureUint8Array(pdfOut: unknown): Uint8Array {
 }
 
 const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [embedFailed, setEmbedFailed] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
 
   useEffect(() => {
     let mounted = true;
-    let urlToRevoke: string | null = null;
 
     (async () => {
       try {
         setLoading(true);
         setError(null);
-        setEmbedFailed(false);
 
         // Build the exact same data as print
         const { fieldConfig } = getLabelDesignerSettings();
         const labelData = buildLabelDataFromItem(item);
-        const pdfBase64 = await generateLabelPDF(fieldConfig, labelData); // returns base64 (no data: prefix)
+        const pdfBase64 = await generateLabelPDF(fieldConfig, labelData);
         const bytes = ensureUint8Array(pdfBase64);
 
-        // Blob URL is more Chrome/CSP friendly than data:
+        if (!mounted) return;
+
+        // Create blob and trigger download
         const blob = new Blob([bytes], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
-        urlToRevoke = url;
-        if (!mounted) return;
-        setBlobUrl(url);
-
-        // Add a timeout to detect if PDF embedding fails
-        // This helps catch cases where Chrome silently blocks the PDF
-        setTimeout(() => {
-          if (mounted) {
-            // Check if we should show fallback after a delay
-            // This is a heuristic since onError isn't always reliable
-            const shouldShowFallback = 
-              // Check for common PDF viewer blocking scenarios
-              navigator.userAgent.includes('Chrome') &&
-              (navigator.plugins.length === 0 || !Array.from(navigator.plugins).some(p => p.name.toLowerCase().includes('pdf')));
-            
-            if (shouldShowFallback) {
-              setEmbedFailed(true);
-            }
-          }
-        }, 1500);
         
+        // Create invisible download link and trigger it
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `label-${labelData.sku || 'preview'}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up the URL
+        URL.revokeObjectURL(url);
+        
+        if (mounted) {
+          setDownloaded(true);
+        }
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message || "Failed to create preview PDF");
@@ -76,69 +69,68 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
 
     return () => {
       mounted = false;
-      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
     };
   }, [item]);
 
-  const openInNewTab = () => {
-    if (blobUrl) window.open(blobUrl, "_blank", "noopener,noreferrer");
+  const downloadAgain = async () => {
+    try {
+      const { fieldConfig } = getLabelDesignerSettings();
+      const labelData = buildLabelDataFromItem(item);
+      const pdfBase64 = await generateLabelPDF(fieldConfig, labelData);
+      const bytes = ensureUint8Array(pdfBase64);
+
+      const blob = new Blob([bytes], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `label-${labelData.sku || 'preview'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Download failed:', e);
+    }
   };
 
   if (loading) {
     return (
       <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-sm">
-        Generating preview…
+        Generating PDF download…
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-xs text-red-600">
+      <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-xs text-destructive">
         {error}
       </div>
     );
   }
 
-  if (!blobUrl) return null;
-
-  // If Chrome blocks the embed, show an explicit fallback
-  if (embedFailed) {
+  if (downloaded) {
     return (
       <div className="w-80 h-40 bg-muted flex flex-col items-center justify-center border rounded gap-2">
+        <div className="text-sm text-muted-foreground text-center">
+          ✓ PDF downloaded successfully
+        </div>
         <div className="text-xs text-muted-foreground text-center">
-          PDF preview blocked by browser settings
+          Check your Downloads folder
         </div>
         <button
           className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90"
-          onClick={openInNewTab}
+          onClick={downloadAgain}
         >
-          Open PDF in new tab
+          Download again
         </button>
       </div>
     );
   }
 
-  // Try to embed the PDF first
-  return (
-    <object
-      data={blobUrl}
-      type="application/pdf"
-      width={320}
-      height={160}
-      aria-label="Label PDF Preview"
-      className="border rounded"
-      onError={() => setEmbedFailed(true)}
-    >
-      <iframe
-        src={blobUrl}
-        width={320}
-        height={160}
-        title="Label PDF Preview"
-        onError={() => setEmbedFailed(true)}
-      />
-    </object>
-  );
+  return null;
 };
 
 export default PDFLabelPreview;
