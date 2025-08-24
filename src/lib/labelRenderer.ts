@@ -197,55 +197,55 @@ export const renderLabelToCanvas = (
     const barcodeX = padding * 2; // Centered
     drawBarcode(ctx, barcodeX, barcodeY, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
     
-    // Add SKU below barcode if included
+    // Add SKU below barcode if included - make it smaller and closer
     if (fieldConfig.includeSku && labelData.sku) {
-      ctx.font = '10px Arial';
+      ctx.font = '8px Arial';
       ctx.fillStyle = '#666666';
       ctx.textAlign = 'center';
-      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, barcodeY + barcodeHeight + 12);
+      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, barcodeY + barcodeHeight + 8);
     }
   }
 
-  // Title section - expanded from below SKU to near bottom
+  // Title section - use entire bottom area for maximum font size
   if (fieldConfig.includeTitle && labelData.title) {
-    // Calculate start position (below SKU) and available height
-    const skuEndY = fieldConfig.barcodeMode !== 'none' ? 
-      (padding + topRowHeight + 5 + 50 + 25) : // After barcode and SKU
-      (padding + topRowHeight + 10); // Or just after top row if no barcode
+    // Calculate start position right after barcode/SKU area
+    const barcodeEndY = fieldConfig.barcodeMode !== 'none' ? 
+      (padding + topRowHeight + 5 + 50 + 15) : // After barcode + small SKU gap
+      (padding + topRowHeight + 5); // Or just after top row if no barcode
     
-    const titleStartY = skuEndY + 5; // Small gap after SKU
-    const titleHeight = LABEL_HEIGHT - titleStartY - padding; // To near bottom
+    const titleStartY = barcodeEndY; // Start immediately after barcode area
+    const titleHeight = LABEL_HEIGHT - titleStartY - padding; // Use all remaining space to bottom
     const titleWidth = LABEL_WIDTH - padding * 2;
     
-    // Start with maximum font size that fits the height for 2 lines
-    let fontSize = Math.floor(titleHeight / 2.2); // Allow space for 2 lines with some padding
-    fontSize = Math.min(fontSize, 50); // Cap at reasonable maximum
+    // Start with maximum possible font size for the available space
+    let fontSize = Math.floor(titleHeight / 1.8); // More aggressive sizing for bigger text
+    fontSize = Math.min(fontSize, 60); // Higher cap for larger text
     
     let lines: string[] = [];
     let finalFontSize = fontSize;
     
     // Find the largest font size that fits the content
-    while (finalFontSize > 8) {
+    while (finalFontSize > 10) {
       ctx.font = `${finalFontSize}px Arial`;
       lines = wrapText(ctx, labelData.title, titleWidth - 10);
       
       // Check if it fits within height constraints
-      const lineHeight = finalFontSize * 1.2;
+      const lineHeight = finalFontSize * 1.1; // Tighter line spacing for more space
       const totalTextHeight = lines.length * lineHeight;
       
-      if (totalTextHeight <= titleHeight - 10 && lines.length <= 2) {
+      if (totalTextHeight <= titleHeight - 5 && lines.length <= 2) {
         break; // Found optimal size
       }
       
       finalFontSize -= 1;
     }
     
-    // Draw the lines centered
+    // Draw the lines centered vertically in the available space
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    const lineHeight = finalFontSize * 1.2;
+    const lineHeight = finalFontSize * 1.1;
     const totalTextHeight = lines.length * lineHeight;
     const startY = titleStartY + (titleHeight - totalTextHeight) / 2;
     
