@@ -158,6 +158,39 @@ export default function LabelDesigner() {
     }
   };
 
+  // Test print the actual preview layout
+  const handleTestPrintLayout = async () => {
+    if (!selectedPrinterId) {
+      toast.error('Select a PrintNode printer first');
+      return;
+    }
+
+    if (!previewTspl) {
+      toast.error('No preview available to print');
+      return;
+    }
+
+    setPrintLoading(true);
+    try {
+      const result = await printRAW(previewTspl, {
+        title: `Layout Test - ${new Date().toLocaleTimeString()}`,
+        copies: 1
+      });
+
+      if (result.success) {
+        toast.success(`Layout test sent to printer - Job ID: ${result.jobId}`);
+      } else {
+        throw new Error(result.error || 'Print failed');
+      }
+      
+    } catch (e) {
+      console.error("Layout test print failed:", e);
+      toast.error(`Layout test failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+    } finally {
+      setPrintLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -388,6 +421,16 @@ export default function LabelDesigner() {
                         className="w-full"
                       >
                         {printLoading ? "Testing..." : "Test Print"}
+                      </Button>
+                      <Button 
+                        onClick={handleTestPrintLayout}
+                        disabled={printLoading || !previewTspl}
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2"
+                      >
+                        <Printer className="h-3 w-3" />
+                        {printLoading ? "Testing..." : "Test Print Layout"}
                       </Button>
                       <Button 
                         onClick={() => handlePrintNodePrint(false)}
