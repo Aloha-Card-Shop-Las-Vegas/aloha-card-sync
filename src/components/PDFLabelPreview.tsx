@@ -48,6 +48,24 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
         urlToRevoke = url;
         if (!mounted) return;
         setBlobUrl(url);
+
+        // Add a timeout to detect if PDF embedding fails
+        // This helps catch cases where Chrome silently blocks the PDF
+        setTimeout(() => {
+          if (mounted) {
+            // Check if we should show fallback after a delay
+            // This is a heuristic since onError isn't always reliable
+            const shouldShowFallback = 
+              // Check for common PDF viewer blocking scenarios
+              navigator.userAgent.includes('Chrome') &&
+              (navigator.plugins.length === 0 || !Array.from(navigator.plugins).some(p => p.name.toLowerCase().includes('pdf')));
+            
+            if (shouldShowFallback) {
+              setEmbedFailed(true);
+            }
+          }
+        }, 1500);
+        
       } catch (e: any) {
         if (!mounted) return;
         setError(e?.message || "Failed to create preview PDF");
@@ -88,14 +106,14 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
   if (embedFailed) {
     return (
       <div className="w-80 h-40 bg-muted flex flex-col items-center justify-center border rounded gap-2">
-        <div className="text-xs text-muted-foreground">
-          Chrome blocked the inline PDF preview.
+        <div className="text-xs text-muted-foreground text-center">
+          PDF preview blocked by browser settings
         </div>
         <button
-          className="px-3 py-1 border rounded text-xs hover:bg-accent"
+          className="px-3 py-1 bg-primary text-primary-foreground rounded text-xs hover:bg-primary/90"
           onClick={openInNewTab}
         >
-          Open PDF in a new tab
+          Open PDF in new tab
         </button>
       </div>
     );
