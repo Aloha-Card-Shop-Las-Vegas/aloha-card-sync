@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { printNodeService } from '@/lib/printNodeService';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 
 interface PrintNodePrinter {
   id: number;
@@ -19,18 +20,77 @@ export function usePrintNode() {
   const [isLoading, setIsLoading] = useState(false);
   const [connectionError, setConnectionError] = useState<string>('');
 
-  // Load saved printer selection
-  useEffect(() => {
+  // Get or create consistent workstation ID
+  const getWorkstationId = () => {
+    let workstationId = localStorage.getItem('workstation-id');
+    if (!workstationId) {
+      workstationId = crypto.randomUUID().substring(0, 8);
+      localStorage.setItem('workstation-id', workstationId);
+    }
+    return workstationId;
+  };
+
+  // Load saved printer selection from database first, then localStorage
+  const loadSavedPrinter = useCallback(async () => {
+    try {
+      // First try to load from database (PrinterPanel settings)
+      const workstationId = getWorkstationId();
+      const { data: settings } = await supabase
+        .from('printer_settings')
+        .select('selected_printer_id')
+        .eq('workstation_id', workstationId)
+        .single();
+      
+      if (settings?.selected_printer_id) {
+        setSelectedPrinterId(settings.selected_printer_id);
+        // Sync to localStorage for consistency
+        localStorage.setItem('printnode-selected-printer', settings.selected_printer_id.toString());
+        return;
+      }
+    } catch (error) {
+      console.log('No database printer settings found, checking localStorage');
+    }
+    
+    // Fallback to localStorage if no database setting found
     const saved = localStorage.getItem('printnode-selected-printer');
     if (saved) setSelectedPrinterId(parseInt(saved));
   }, []);
 
-  // Save printer selection
+  // Initialize saved printer selection
+  useEffect(() => {
+    loadSavedPrinter();
+  }, [loadSavedPrinter]);
+
+  // Save printer selection to both localStorage and database
   useEffect(() => {
     if (selectedPrinterId) {
       localStorage.setItem('printnode-selected-printer', selectedPrinterId.toString());
+      
+      // Also save to database for consistency with PrinterPanel
+      const syncToDatabase = async () => {
+        try {
+          const workstationId = getWorkstationId();
+          const selectedPrinter = printers.find(p => p.id === selectedPrinterId);
+          if (selectedPrinter) {
+            await supabase
+              .from('printer_settings')
+              .upsert({
+                workstation_id: workstationId,
+                selected_printer_id: selectedPrinterId,
+                selected_printer_name: selectedPrinter.name,
+                use_printnode: true,
+              });
+          }
+        } catch (error) {
+          console.log('Could not sync printer setting to database:', error);
+        }
+      };
+      
+      if (printers.length > 0) {
+        syncToDatabase();
+      }
     }
-  }, [selectedPrinterId]);
+  }, [selectedPrinterId, printers]);
 
   const refreshPrinters = useCallback(async (showToast = false) => {
     setIsLoading(true);

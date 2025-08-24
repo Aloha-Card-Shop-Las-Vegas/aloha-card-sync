@@ -19,6 +19,16 @@ interface PrintNodePrinter {
 
 export function PrinterPanel() {
   const [workstationId, setWorkstationId] = useState<string>('');
+  
+  // Get or create consistent workstation ID (same logic as usePrintNode)
+  const getWorkstationId = () => {
+    let id = localStorage.getItem('workstation-id');
+    if (!id) {
+      id = crypto.randomUUID().substring(0, 8);
+      localStorage.setItem('workstation-id', id);
+    }
+    return id;
+  };
   const [printers, setPrinters] = useState<PrintNodePrinter[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<PrintNodePrinter | null>(null);
   const [printNodeOnline, setPrintNodeOnline] = useState<boolean>(false);
@@ -41,7 +51,7 @@ export function PrinterPanel() {
 
   const loadPrinterSettings = async () => {
     try {
-      const id = crypto.randomUUID().substring(0, 8);
+      const id = getWorkstationId();
       setWorkstationId(id);
       
       const { data: settings } = await supabase
@@ -73,8 +83,11 @@ export function PrinterPanel() {
           selected_printer_name: selectedPrinter.name,
           use_printnode: true,
         });
+      
+      // Also sync to localStorage for consistency with usePrintNode hook
+      localStorage.setItem('printnode-selected-printer', selectedPrinter.id.toString());
         
-      toast.success("Printer settings saved");
+      toast.success(`Default printer set to ${getDisplayName(selectedPrinter.id, selectedPrinter.name)}`);
     } catch (error) {
       console.error('Failed to save printer settings:', error);
       toast.error("Failed to save settings");
@@ -275,9 +288,16 @@ export function PrinterPanel() {
           Workstation: {workstationId}
         </div>
 
-        {/* Printer Selection */}
+         {/* Printer Selection */}
         <div className="space-y-3">
-          <label className="text-sm font-medium">Printers:</label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Printers:</label>
+            {selectedPrinter && (
+              <Badge variant="secondary" className="text-xs">
+                Default: {getDisplayName(selectedPrinter.id, selectedPrinter.name)}
+              </Badge>
+            )}
+          </div>
           
           {/* Available Printers List */}
           <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -407,7 +427,7 @@ export function PrinterPanel() {
               onClick={savePrinterSettings}
               disabled={!selectedPrinter}
             >
-              Save
+              Set as Default
             </Button>
           </div>
           
