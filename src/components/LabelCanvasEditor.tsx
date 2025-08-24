@@ -362,8 +362,10 @@ export const LabelCanvasEditor = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [fabricCanvas, gridSize]);
 
-  // Handle drag start
-  const handleDragStart = (elementId: string) => {
+  // Handle drag start with proper data transfer
+  const handleDragStart = (e: React.DragEvent, elementId: string) => {
+    e.dataTransfer.setData('text/plain', elementId);
+    e.dataTransfer.effectAllowed = 'copy';
     setDraggedElement(elementId);
   };
 
@@ -372,10 +374,13 @@ export const LabelCanvasEditor = ({
     setDraggedElement(null);
   };
 
-  // Handle drop on canvas
+  // Handle drop on canvas with proper data transfer
   const handleCanvasDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!draggedElement || !fabricCanvas) return;
+    e.dataTransfer.dropEffect = 'copy';
+    
+    const elementId = e.dataTransfer.getData('text/plain');
+    if (!elementId || !fabricCanvas) return;
 
     // Get canvas bounds
     const canvasElement = fabricCanvas.getElement();
@@ -396,18 +401,19 @@ export const LabelCanvasEditor = ({
     // Update layout based on element type
     const newLayout = { ...layout };
     
-    if (draggedElement === 'qr' || draggedElement === 'barcode') {
-      // Handle barcode elements
-      const mode = draggedElement === 'qr' ? 'qr' : 'barcode';
+    if (elementId === 'qr' || elementId === 'barcode') {
+      // Handle barcode elements - ensure barcode object exists
+      const mode = elementId === 'qr' ? 'qr' : 'barcode';
       newLayout.barcode = {
-        ...newLayout.barcode,
         mode,
         x: clampedX,
         y: clampedY,
+        size: 'M',
+        ...newLayout.barcode, // Keep existing properties
       };
     } else {
       // Handle text field elements
-      const field = newLayout[draggedElement as keyof Omit<LabelLayout, 'barcode'>];
+      const field = newLayout[elementId as keyof Omit<LabelLayout, 'barcode'>];
       if (field && 'x' in field) {
         field.x = clampedX;
         field.y = clampedY;
@@ -419,9 +425,10 @@ export const LabelCanvasEditor = ({
     setDraggedElement(null);
   };
 
-  // Handle drag over canvas
+  // Handle drag over canvas with proper drop effect
   const handleCanvasDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
   };
 
   return (
@@ -540,7 +547,7 @@ export const LabelCanvasEditor = ({
                 <div
                   key={element.id}
                   draggable
-                  onDragStart={() => handleDragStart(element.id)}
+                  onDragStart={(e) => handleDragStart(e, element.id)}
                   onDragEnd={handleDragEnd}
                   className={`${element.color} border-2 border-dashed rounded-lg p-3 cursor-grab hover:shadow-sm transition-all active:cursor-grabbing flex items-center gap-2 text-sm`}
                 >
@@ -560,7 +567,7 @@ export const LabelCanvasEditor = ({
                 <div
                   key={element.id}
                   draggable
-                  onDragStart={() => handleDragStart(element.id)}
+                  onDragStart={(e) => handleDragStart(e, element.id)}
                   onDragEnd={handleDragEnd}
                   className={`${element.color} border-2 border-dashed rounded-lg p-3 cursor-grab hover:shadow-sm transition-all active:cursor-grabbing flex items-center gap-2 text-sm`}
                 >
