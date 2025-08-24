@@ -86,33 +86,43 @@ export const LabelCanvasEditor = ({
   useEffect(() => {
     if (!fabricCanvas) return;
 
-    // Clear existing objects (except grid)
+    console.log('Updating canvas with layout:', layout);
+
+    // Clear existing objects (except grid lines)
     const objects = fabricCanvas.getObjects();
-    const textObjects = objects.filter(obj => obj.type === 'text' || obj.type === 'rect' || obj.type === 'circle');
-    textObjects.forEach(obj => fabricCanvas.remove(obj));
+    const nonGridObjects = objects.filter(obj => 
+      obj.type === 'text' || obj.type === 'rect' || obj.type === 'circle'
+    );
+    nonGridObjects.forEach(obj => fabricCanvas.remove(obj));
 
     // Add text fields
     const fields = ['title', 'sku', 'price', 'lot', 'condition'] as const;
     fields.forEach(fieldName => {
       const field = layout[fieldName];
-      if (!field.visible) return;
-
-      const text = new FabricText(labelData[fieldName] || fieldName.toUpperCase(), {
-        left: field.x,
-        top: field.y,
-        fontSize: field.fontSize * 8, // Scale for visibility
-        fontFamily: 'Arial',
-        fill: '#000000',
-        selectable: true,
-        evented: true,
-      });
+      console.log(`Adding field ${fieldName}:`, field);
       
-      text.set({ id: fieldName });
+      // Always add field, make visible ones selectable
+      const text = new FabricText(
+        field.visible ? (labelData[fieldName] || fieldName.toUpperCase()) : `[${fieldName.toUpperCase()}]`, 
+        {
+          left: field.x,
+          top: field.y,
+          fontSize: field.fontSize * 12, // Larger for better visibility
+          fontFamily: 'Arial, sans-serif',
+          fill: field.visible ? '#000000' : '#cccccc',
+          selectable: field.visible,
+          evented: field.visible,
+          opacity: field.visible ? 1 : 0.5,
+          backgroundColor: field.visible ? 'transparent' : '#f0f0f0',
+        }
+      );
+      
+      text.set({ id: fieldName, fieldType: 'text' });
       fabricCanvas.add(text);
     });
 
-    // Add barcode placeholder
-    if (layout.barcode.mode !== 'none') {
+    // Add barcode placeholder - always show if mode is not 'none'
+    if (layout.barcode && layout.barcode.mode !== 'none') {
       const barcodeSize = layout.barcode.size === 'S' ? 40 : layout.barcode.size === 'M' ? 60 : 80;
       
       if (layout.barcode.mode === 'qr') {
@@ -123,52 +133,55 @@ export const LabelCanvasEditor = ({
           height: barcodeSize,
           fill: 'transparent',
           stroke: '#000000',
-          strokeWidth: 1,
+          strokeWidth: 2,
           selectable: true,
           evented: true,
         });
         
-        const qrLabel = new FabricText('QR', {
-          left: layout.barcode.x + barcodeSize/2 - 10,
-          top: layout.barcode.y + barcodeSize/2 - 8,
-          fontSize: 12,
+        const qrLabel = new FabricText('QR CODE', {
+          left: layout.barcode.x + barcodeSize/2 - 25,
+          top: layout.barcode.y + barcodeSize/2 - 6,
+          fontSize: 10,
           fill: '#666666',
           selectable: false,
           evented: false,
+          fontFamily: 'Arial, sans-serif',
         });
         
-        qr.set({ id: 'barcode' });
+        qr.set({ id: 'barcode', fieldType: 'barcode' });
         fabricCanvas.add(qr);
         fabricCanvas.add(qrLabel);
       } else {
         const barcode = new Rect({
           left: layout.barcode.x,
           top: layout.barcode.y,
-          width: barcodeSize * 1.5,
-          height: barcodeSize * 0.7,
+          width: barcodeSize * 1.8,
+          height: barcodeSize * 0.6,
           fill: 'transparent',
           stroke: '#000000',
-          strokeWidth: 1,
+          strokeWidth: 2,
           selectable: true,
           evented: true,
         });
         
         const barcodeLabel = new FabricText('BARCODE', {
-          left: layout.barcode.x + 5,
-          top: layout.barcode.y + barcodeSize * 0.35 - 6,
+          left: layout.barcode.x + 8,
+          top: layout.barcode.y + (barcodeSize * 0.6)/2 - 6,
           fontSize: 10,
           fill: '#666666',
           selectable: false,
           evented: false,
+          fontFamily: 'Arial, sans-serif',
         });
         
-        barcode.set({ id: 'barcode' });
+        barcode.set({ id: 'barcode', fieldType: 'barcode' });
         fabricCanvas.add(barcode);
         fabricCanvas.add(barcodeLabel);
       }
     }
 
     fabricCanvas.renderAll();
+    console.log('Canvas objects after update:', fabricCanvas.getObjects().length);
   }, [fabricCanvas, layout, labelData]);
 
   // Handle object modifications (from canvas to numeric controls)
