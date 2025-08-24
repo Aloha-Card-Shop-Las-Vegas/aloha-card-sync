@@ -251,6 +251,143 @@ export function generateTSPLFromLayout(
   return buildTSPL(options);
 }
 
+// Calculate optimal font size for text to fit within given width
+function calculateOptimalFontSize(
+  text: string,
+  maxWidth: number,
+  maxFontSize: number = 5,
+  minFontSize: number = 1
+): 1 | 2 | 3 | 4 | 5 {
+  // Approximate character width per font size (in dots at 203 DPI)
+  const charWidthByFontSize = {
+    1: 6,   // Font size 1: ~6 dots per char
+    2: 12,  // Font size 2: ~12 dots per char  
+    3: 18,  // Font size 3: ~18 dots per char
+    4: 24,  // Font size 4: ~24 dots per char
+    5: 30   // Font size 5: ~30 dots per char
+  };
+
+  for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize--) {
+    const estimatedWidth = text.length * charWidthByFontSize[fontSize as keyof typeof charWidthByFontSize];
+    if (estimatedWidth <= maxWidth) {
+      return fontSize as 1 | 2 | 3 | 4 | 5;
+    }
+  }
+  
+  return minFontSize as 1 | 2 | 3 | 4 | 5;
+}
+
+export function generateBoxedLayoutTSPL(
+  data: {
+    title?: string;
+    sku?: string;
+    price?: string;
+    lot?: string;
+    barcode?: string;
+    condition?: string;
+  },
+  fieldConfig: LabelFieldConfig,
+  tsplSettings?: { density?: number; speed?: number; gapInches?: number }
+): string {
+  const textLines: TSPLOptions['textLines'] = [];
+  
+  // Label dimensions in dots (2"x1" at 203 DPI)
+  const labelWidth = dots(LABEL_WIDTH_IN);  // 406 dots
+  const labelHeight = dots(LABEL_HEIGHT_IN); // 203 dots
+  
+  // Box dimensions and positions
+  const topBoxHeight = 50;
+  const titleBoxHeight = 45;
+  const barcodeBoxHeight = labelHeight - topBoxHeight - titleBoxHeight;
+  
+  // Top row boxes (condition and price)
+  const topBoxWidth = Math.floor(labelWidth / 2) - 5; // Leave small gap between boxes
+  
+  // Condition box (top left)
+  if (fieldConfig.includeCondition && data.condition) {
+    const conditionFontSize = calculateOptimalFontSize(data.condition, topBoxWidth - 10, 3);
+    textLines.push({
+      text: data.condition,
+      x: 5,
+      y: 15,
+      fontSize: conditionFontSize
+    });
+  }
+  
+  // Price box (top right)  
+  if (fieldConfig.includePrice && data.price) {
+    const priceText = data.price.startsWith('$') ? data.price : `$${data.price}`;
+    const priceFontSize = calculateOptimalFontSize(priceText, topBoxWidth - 10, 4);
+    textLines.push({
+      text: priceText,
+      x: Math.floor(labelWidth / 2) + 5,
+      y: 15,
+      fontSize: priceFontSize
+    });
+  }
+
+  // Title box (bottom)
+  if (fieldConfig.includeTitle && data.title) {
+    const titleFontSize = calculateOptimalFontSize(data.title, labelWidth - 10, 3);
+    textLines.push({
+      text: data.title,
+      x: 5,
+      y: labelHeight - titleBoxHeight + 10,
+      fontSize: titleFontSize
+    });
+  }
+
+  // Add border lines to show the boxes
+  const lines = [
+    // Horizontal line separating top and middle
+    { x: 0, y: topBoxHeight, width: labelWidth, height: 2 },
+    // Horizontal line separating middle and bottom
+    { x: 0, y: labelHeight - titleBoxHeight, width: labelWidth, height: 2 },
+    // Vertical line separating condition and price
+    { x: Math.floor(labelWidth / 2), y: 0, width: 2, height: topBoxHeight }
+  ];
+
+  const options: TSPLOptions = {
+    textLines,
+    lines,
+    ...tsplSettings
+  };
+
+  // Barcode in middle section
+  if (fieldConfig.barcodeMode !== 'none' && data.barcode) {
+    const barcodeY = topBoxHeight + 10;
+    const barcodeX = 20;
+    
+    if (fieldConfig.barcodeMode === 'qr') {
+      // Scale QR code based on available space
+      const availableHeight = barcodeBoxHeight - 20;
+      let qrSize: 'S' | 'M' | 'L' = 'L';
+      
+      if (availableHeight < 60) qrSize = 'S';
+      else if (availableHeight < 90) qrSize = 'M';
+      
+      options.qrcode = {
+        data: data.barcode,
+        x: barcodeX,
+        y: barcodeY,
+        size: qrSize
+      };
+    } else if (fieldConfig.barcodeMode === 'barcode') {
+      const barcodeHeight = Math.min(50, barcodeBoxHeight - 20);
+      options.barcode = {
+        data: data.barcode,
+        x: barcodeX,
+        y: barcodeY,
+        height: barcodeHeight,
+        width: 2,
+        type: 'CODE128'
+      };
+    }
+  }
+
+  return buildTSPL(options);
+}
+
 export function generateUnifiedTSPL(
   data: {
     title?: string;

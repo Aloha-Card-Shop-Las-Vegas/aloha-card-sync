@@ -13,6 +13,7 @@ export interface LabelTemplate {
       includeLot: boolean;
       includeCondition: boolean;
       barcodeMode: 'qr' | 'barcode' | 'none';
+      templateStyle?: string;
     };
     labelData: {
       title: string;
@@ -58,6 +59,7 @@ export function useTemplates() {
             includeLot: boolean;
             includeCondition: boolean;
             barcodeMode: 'qr' | 'barcode' | 'none';
+            templateStyle?: string;
           };
           labelData: {
             title: string;

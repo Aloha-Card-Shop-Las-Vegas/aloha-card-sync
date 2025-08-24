@@ -1,5 +1,5 @@
 // Code-defined label templates for reliable TSPL printing
-import { buildTSPL, TSPLOptions } from './tspl';
+import { buildTSPL, TSPLOptions, generateBoxedLayoutTSPL } from './tspl';
 
 export interface LabelData {
   title?: string;
@@ -291,12 +291,30 @@ export const inventoryTemplate: LabelTemplate = {
   }
 };
 
+// Boxed layout template matching the uploaded image
+export const boxedLayoutTemplate: LabelTemplate = {
+  id: 'boxed-layout',
+  name: 'Boxed Layout',
+  description: 'Template with defined boxes for condition, price, barcode, and title with dynamic text sizing',
+  generateTSPL: (data: LabelData, settings?: TSPLSettings): string => {
+    return generateBoxedLayoutTSPL(data, {
+      includeTitle: !!data.title,
+      includeSku: false, // Not used in this layout
+      includePrice: !!data.price,
+      includeLot: false, // Not used in this layout
+      includeCondition: !!data.condition,
+      barcodeMode: data.barcode ? 'qr' : 'none'
+    }, settings);
+  }
+};
+
 // Available templates
 export const AVAILABLE_TEMPLATES: LabelTemplate[] = [
   gradedCardTemplate,
   compactTemplate,
   priceTagTemplate,
-  inventoryTemplate
+  inventoryTemplate,
+  boxedLayoutTemplate
 ];
 
 // Get template by ID
