@@ -146,15 +146,12 @@ export const renderLabelToCanvas = (
 
   // Top left content (Condition) - dynamic sizing to fill box
   if (fieldConfig.includeCondition && labelData.condition) {
-    console.log('Rendering condition:', labelData.condition, 'includeCondition:', fieldConfig.includeCondition);
     const fontSize = calculateFontSize(labelData.condition, topLeftWidth - 10, topRowHeight - 10, ctx);
     ctx.font = `${fontSize}px Arial`;
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(labelData.condition, padding + topLeftWidth/2, padding + topRowHeight/2);
-  } else {
-    console.log('Condition not rendered - includeCondition:', fieldConfig.includeCondition, 'condition:', labelData.condition);
   }
 
   // Top right content (Price) - dynamic sizing to fill box
