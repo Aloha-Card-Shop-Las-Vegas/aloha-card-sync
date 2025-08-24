@@ -112,7 +112,7 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData }: LabelPreviewCanva
       // Boxed layout - match the user's image
       const padding = 10;
       const topRowHeight = 60;
-      const middleHeight = 70; // Reduced from 80 to give more space to title
+      const middleHeight = 60; // Reduced further to give more space to title
       const bottomHeight = LABEL_HEIGHT - topRowHeight - middleHeight - padding * 3;
 
       // Top row boxes
