@@ -1076,14 +1076,16 @@ const Index = () => {
                                         </DialogHeader>
                                          <div className="space-y-4">
                                              <LabelPreviewCanvas 
-                                               fieldConfig={{
-                                                 includeTitle: true,
-                                                 includeSku: true,
-                                                 includePrice: true,
-                                                 includeLot: true,
-                                                 includeCondition: true,
-                                                 barcodeMode: 'barcode' as const
-                                               }}
+                                               fieldConfig={
+                                                 defaultTemplates.raw?.canvas?.fieldConfig || {
+                                                   includeTitle: true,
+                                                   includeSku: true,
+                                                   includePrice: true,
+                                                   includeLot: true,
+                                                   includeCondition: true,
+                                                   barcodeMode: 'barcode' as const
+                                                 }
+                                               }
                                               labelData={buildLabelDataFromItem(b)}
                                               showGuides={getLabelDesignerSettings().showGuides}
                                             />

@@ -41,11 +41,11 @@ export function useRawTemplates() {
       { density: 10, speed: 4, gapInches: 0 }
     );
 
-    if (result.success && templates.length === 1) {
-      // Set as default if it's the only template
-      const newTemplate = templates[0];
-      if (newTemplate) {
-        await setAsDefault(newTemplate.id);
+    if (result.success) {
+      // Set as default since it's the default template
+      const savedTemplate = result.template;
+      if (savedTemplate) {
+        await setAsDefault(savedTemplate.id);
       }
     }
   };
