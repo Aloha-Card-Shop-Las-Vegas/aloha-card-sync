@@ -155,25 +155,27 @@ export const renderLabelToCanvas = (
     drawText(ctx, labelData.price, topRightX + 5, padding + 5, topRightWidth - 10, topRowHeight - 10, 'center');
   }
 
-  // Middle section (Barcode/QR)
+  // Middle section (Larger Barcode/QR)
   if (fieldConfig.barcodeMode !== 'none') {
     const middleY = padding + topRowHeight + padding;
-    const barcodeWidth = LABEL_WIDTH - padding * 2;
-    drawBarcode(ctx, padding + 50, middleY + 10, barcodeWidth - 100, middleHeight - 20, labelData.barcode, fieldConfig.barcodeMode);
+    const barcodeWidth = LABEL_WIDTH - padding * 4; // Wider barcode
+    const barcodeHeight = middleHeight - 30; // Taller barcode
+    const barcodeX = padding + 20; // Center horizontally
+    drawBarcode(ctx, barcodeX, middleY + 5, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
+    
+    // Add SKU below barcode if included
+    if (fieldConfig.includeSku && labelData.sku) {
+      ctx.font = '10px Arial';
+      ctx.fillStyle = '#666666';
+      ctx.textAlign = 'center';
+      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, middleY + barcodeHeight + 20);
+    }
   }
 
   // Bottom content (Title)
   if (fieldConfig.includeTitle && labelData.title) {
     const bottomY = padding + topRowHeight + padding + middleHeight + padding;
     drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
-  }
-
-  // Add SKU support if included  
-  if (fieldConfig.includeSku && labelData.sku) {
-    ctx.font = '10px Arial';
-    ctx.fillStyle = '#666666';
-    ctx.textAlign = 'left';
-    ctx.fillText(`SKU: ${labelData.sku}`, padding + 5, padding + 15);
   }
 
   // Add lot number support if included

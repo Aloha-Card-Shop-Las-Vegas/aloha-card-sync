@@ -299,11 +299,11 @@ export const boxedLayoutTemplate: LabelTemplate = {
   generateTSPL: (data: LabelData, settings?: TSPLSettings): string => {
     return generateBoxedLayoutTSPL(data, {
       includeTitle: !!data.title,
-      includeSku: false, // Not used in this layout
+      includeSku: !!data.sku, // Enable SKU below barcode
       includePrice: !!data.price,
       includeLot: false, // Not used in this layout
       includeCondition: !!data.condition,
-      barcodeMode: data.barcode ? 'qr' : 'none'
+      barcodeMode: data.barcode ? 'barcode' : 'none' // Use barcode instead of QR for better scanning
     }, settings);
   }
 };
