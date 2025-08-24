@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Canvas as FabricCanvas, Rect, FabricText, Circle, Line } from 'fabric';
+import { Canvas as FabricCanvas, Rect, Textbox, Circle, Line } from 'fabric';
 import { LabelLayout } from '@/lib/tspl';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { ZoomIn, ZoomOut, Grid3X3 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3X3, RotateCcw } from 'lucide-react';
 
 interface LabelCanvasEditorProps {
   layout: LabelLayout;
@@ -47,10 +47,23 @@ export const LabelCanvasEditor = ({
       selection: true,
     });
 
-    // Draw grid if enabled
-    const drawGrid = () => {
-      if (!showGrid) return;
-      
+    setFabricCanvas(canvas);
+
+    return () => {
+      canvas.dispose();
+    };
+  }, []);
+
+  // Handle grid rendering separately for efficiency
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    // Remove existing grid lines
+    const gridObjects = fabricCanvas.getObjects().filter(obj => obj.get('isGrid'));
+    gridObjects.forEach(obj => fabricCanvas.remove(obj));
+
+    if (showGrid) {
+      // Add vertical grid lines
       for (let i = 0; i <= LABEL_WIDTH_DOTS; i += gridSize) {
         const lineV = new Line([i, 0, i, LABEL_HEIGHT_DOTS], {
           stroke: '#e0e0e0',
@@ -58,10 +71,12 @@ export const LabelCanvasEditor = ({
           selectable: false,
           evented: false,
         });
-        canvas.add(lineV);
-        canvas.sendObjectToBack(lineV);
+        lineV.set('isGrid', true);
+        fabricCanvas.add(lineV);
+        fabricCanvas.sendObjectToBack(lineV);
       }
       
+      // Add horizontal grid lines
       for (let i = 0; i <= LABEL_HEIGHT_DOTS; i += gridSize) {
         const lineH = new Line([0, i, LABEL_WIDTH_DOTS, i], {
           stroke: '#e0e0e0',
@@ -69,56 +84,60 @@ export const LabelCanvasEditor = ({
           selectable: false,
           evented: false,
         });
-        canvas.add(lineH);
-        canvas.sendObjectToBack(lineH);
+        lineH.set('isGrid', true);
+        fabricCanvas.add(lineH);
+        fabricCanvas.sendObjectToBack(lineH);
       }
-    };
-
-    drawGrid();
-    setFabricCanvas(canvas);
-
-    return () => {
-      canvas.dispose();
-    };
-  }, [showGrid, gridSize]);
+      
+      fabricCanvas.renderAll();
+    }
+  }, [fabricCanvas, showGrid, gridSize]);
 
   // Update canvas objects when layout changes (from numeric controls)
   useEffect(() => {
     if (!fabricCanvas) return;
 
-    console.log('Updating canvas with layout:', layout);
-
     // Clear existing objects (except grid lines)
     const objects = fabricCanvas.getObjects();
-    const nonGridObjects = objects.filter(obj => 
-      obj.type === 'text' || obj.type === 'rect' || obj.type === 'circle'
-    );
+    const nonGridObjects = objects.filter(obj => !obj.get('isGrid'));
     nonGridObjects.forEach(obj => fabricCanvas.remove(obj));
 
-    // Add text fields
+    // Add text fields - always show all fields for editing
     const fields = ['title', 'sku', 'price', 'lot', 'condition'] as const;
     fields.forEach(fieldName => {
       const field = layout[fieldName];
-      console.log(`Adding field ${fieldName}:`, field);
       
-      // Always add field, make visible ones selectable
-      const text = new FabricText(
+      // Always add field for visual editing, style differently if not visible
+      const text = new Textbox(
         field.visible ? (labelData[fieldName] || fieldName.toUpperCase()) : `[${fieldName.toUpperCase()}]`, 
         {
           left: field.x,
           top: field.y,
-          fontSize: field.fontSize * 12, // Larger for better visibility
+          width: 120,
+          fontSize: Math.max(field.fontSize * 8, 12), // Ensure minimum readable size
           fontFamily: 'Arial, sans-serif',
-          fill: field.visible ? '#000000' : '#cccccc',
-          selectable: field.visible,
-          evented: field.visible,
-          opacity: field.visible ? 1 : 0.5,
-          backgroundColor: field.visible ? 'transparent' : '#f0f0f0',
+          fill: field.visible ? '#000000' : '#999999',
+          backgroundColor: field.visible ? 'transparent' : '#f8f8f8',
+          selectable: true,
+          evented: true,
+          opacity: field.visible ? 1 : 0.7,
+          borderColor: field.visible ? '#0066cc' : '#cccccc',
+          cornerColor: field.visible ? '#0066cc' : '#cccccc',
+          cornerSize: 6,
+          transparentCorners: false,
         }
       );
       
-      text.set({ id: fieldName, fieldType: 'text' });
+      text.set({ 
+        id: fieldName, 
+        fieldType: 'text',
+        lockRotation: true,
+        lockScalingX: true,
+        lockScalingY: true
+      });
+      
       fabricCanvas.add(text);
+      fabricCanvas.bringObjectToFront(text);
     });
 
     // Add barcode placeholder - always show if mode is not 'none'
@@ -131,57 +150,84 @@ export const LabelCanvasEditor = ({
           top: layout.barcode.y,
           width: barcodeSize,
           height: barcodeSize,
-          fill: 'transparent',
+          fill: '#f0f0f0',
           stroke: '#000000',
           strokeWidth: 2,
+          rx: 4,
+          ry: 4,
           selectable: true,
           evented: true,
+          borderColor: '#0066cc',
+          cornerColor: '#0066cc',
+          cornerSize: 6,
+          transparentCorners: false,
         });
         
-        const qrLabel = new FabricText('QR CODE', {
-          left: layout.barcode.x + barcodeSize/2 - 25,
-          top: layout.barcode.y + barcodeSize/2 - 6,
-          fontSize: 10,
+        const qrLabel = new Textbox('QR', {
+          left: layout.barcode.x + barcodeSize/2 - 10,
+          top: layout.barcode.y + barcodeSize/2 - 8,
+          width: 20,
+          fontSize: 12,
           fill: '#666666',
           selectable: false,
           evented: false,
           fontFamily: 'Arial, sans-serif',
+          textAlign: 'center',
         });
         
-        qr.set({ id: 'barcode', fieldType: 'barcode' });
+        qr.set({ 
+          id: 'barcode', 
+          fieldType: 'barcode',
+          lockRotation: true
+        });
+        
         fabricCanvas.add(qr);
         fabricCanvas.add(qrLabel);
+        fabricCanvas.bringObjectToFront(qr);
       } else {
         const barcode = new Rect({
           left: layout.barcode.x,
           top: layout.barcode.y,
           width: barcodeSize * 1.8,
           height: barcodeSize * 0.6,
-          fill: 'transparent',
+          fill: '#f0f0f0',
           stroke: '#000000',
           strokeWidth: 2,
+          rx: 4,
+          ry: 4,
           selectable: true,
           evented: true,
+          borderColor: '#0066cc',
+          cornerColor: '#0066cc',
+          cornerSize: 6,
+          transparentCorners: false,
         });
         
-        const barcodeLabel = new FabricText('BARCODE', {
-          left: layout.barcode.x + 8,
-          top: layout.barcode.y + (barcodeSize * 0.6)/2 - 6,
+        const barcodeLabel = new Textbox('BARCODE', {
+          left: layout.barcode.x + 10,
+          top: layout.barcode.y + (barcodeSize * 0.6)/2 - 8,
+          width: barcodeSize * 1.8 - 20,
           fontSize: 10,
           fill: '#666666',
           selectable: false,
           evented: false,
           fontFamily: 'Arial, sans-serif',
+          textAlign: 'center',
         });
         
-        barcode.set({ id: 'barcode', fieldType: 'barcode' });
+        barcode.set({ 
+          id: 'barcode', 
+          fieldType: 'barcode',
+          lockRotation: true
+        });
+        
         fabricCanvas.add(barcode);
         fabricCanvas.add(barcodeLabel);
+        fabricCanvas.bringObjectToFront(barcode);
       }
     }
 
     fabricCanvas.renderAll();
-    console.log('Canvas objects after update:', fabricCanvas.getObjects().length);
   }, [fabricCanvas, layout, labelData]);
 
   // Handle object modifications (from canvas to numeric controls)
@@ -227,6 +273,17 @@ export const LabelCanvasEditor = ({
     fabricCanvas.setZoom(newZoom);
     fabricCanvas.setWidth(LABEL_WIDTH_DOTS * newZoom);
     fabricCanvas.setHeight(LABEL_HEIGHT_DOTS * newZoom);
+    fabricCanvas.renderAll();
+  };
+
+  // Reset view
+  const resetView = () => {
+    if (!fabricCanvas) return;
+    setZoom(1);
+    fabricCanvas.setZoom(1);
+    fabricCanvas.setWidth(LABEL_WIDTH_DOTS);
+    fabricCanvas.setHeight(LABEL_HEIGHT_DOTS);
+    fabricCanvas.viewportTransform = [1, 0, 0, 1, 0, 0];
     fabricCanvas.renderAll();
   };
 
@@ -292,6 +349,14 @@ export const LabelCanvasEditor = ({
             disabled={zoom >= 2}
           >
             <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={resetView}
+            title="Reset view"
+          >
+            <RotateCcw className="h-4 w-4" />
           </Button>
         </div>
 
