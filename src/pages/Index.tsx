@@ -648,65 +648,28 @@ const Index = () => {
     }
   };
 
-  const generateLabelPDF = (item: CardItem): string => {
-    const formattedTitle = buildTitleFromParts(
-      item.year,
-      item.brandTitle,
-      item.cardNumber,
-      item.subject,
-      item.variant
-    );
-
-    // Create PDF with exact 2x1 inch dimensions
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'in',
-      format: [2, 1] // 2x1 inches
-    });
-
-    // White background
-    pdf.setFillColor(255, 255, 255);
-    pdf.rect(0, 0, 2, 1, 'F');
-
-    // Title (top section)
-    pdf.setFontSize(10);
-    pdf.setTextColor(0, 0, 0);
-    pdf.text(formattedTitle.substring(0, 30), 0.1, 0.15, { maxWidth: 1.8 });
-
-    // Price and Lot (middle section)
-    pdf.setFontSize(8);
-    pdf.text(item.lot || "LOT-000000", 0.1, 0.35);
-    const priceText = item.price ? `$${Number(item.price).toFixed(2)}` : "";
-    pdf.text(priceText, 1.5, 0.35);
-
-    // Generate barcode
-    const barcodeData = item.sku || item.id || "NO-SKU";
-    const canvas = document.createElement('canvas');
+  const generateLabelPDF = async (item: CardItem): Promise<string> => {
+    const { generateLabelPDF: sharedGenerateLabelPDF } = await import('@/lib/labelRenderer');
     
-    try {
-      JsBarcode(canvas, barcodeData, {
-        format: "CODE128",
-        width: 2,
-        height: 40,
-        displayValue: false,
-        margin: 0
-      });
-      
-      // Add barcode to PDF
-      const barcodeDataUrl = canvas.toDataURL();
-      pdf.addImage(barcodeDataUrl, 'PNG', 0.2, 0.5, 1.6, 0.3);
-    } catch (error) {
-      console.error('Barcode generation failed:', error);
-      // Fallback to text
-      pdf.setFontSize(12);
-      pdf.text(barcodeData, 1.0, 0.65, { align: 'center' });
-    }
+    const labelData = {
+      title: buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant),
+      sku: item.sku || item.id?.toString() || 'NO-SKU',
+      price: item.price?.toString() || '',
+      lot: item.lot || '',
+      condition: item.grade || '',
+      barcode: item.sku || item.id?.toString() || 'NO-SKU'
+    };
 
-    // Grade
-    pdf.setFontSize(6);
-    pdf.text(`Grade: ${item.grade || "Ungraded"}`, 1.0, 0.9, { align: 'center' });
+    const fieldConfig = {
+      includeTitle: true,
+      includeSku: false, // SKU is in barcode
+      includePrice: true,
+      includeLot: true,
+      includeCondition: true,
+      barcodeMode: 'barcode' as const
+    };
 
-    return pdf.output('datauristring').split(',')[1]; // Return base64 part only
+    return sharedGenerateLabelPDF(fieldConfig, labelData, 203);
   };
 
   const handlePrintRow = async (item: CardItem) => {
@@ -727,16 +690,16 @@ const Index = () => {
       item.variant
     );
 
-    try {
-      // Generate PDF for the item
-      const pdfBase64 = generateLabelPDF(item);
-      
-      // Print via PrintNode PDF
-      const result = await printNodeService.printPDF(
-        pdfBase64,
-        selectedPrinterId,
-        { title: `Batch Print - ${formattedTitle}`, copies: 1 }
-      );
+        try {
+          // Generate PDF for the item
+          const pdfBase64 = await generateLabelPDF(item);
+          
+          // Print via PrintNode PDF
+          const result = await printNodeService.printPDF(
+            pdfBase64,
+            selectedPrinterId,
+            { title: `Batch Print - ${formattedTitle}`, copies: 1 }
+          );
 
       if (result.success) {
         setBatch(prev => prev.map(b => 
@@ -792,7 +755,7 @@ const Index = () => {
         
         try {
           // Generate PDF for the item
-          const pdfBase64 = generateLabelPDF(item);
+          const pdfBase64 = await generateLabelPDF(item);
           
           // Send to PrintNode
           const result = await printNodeService.printPDF(
