@@ -56,10 +56,8 @@ export function usePrintNode() {
     if (saved) setSelectedPrinterId(parseInt(saved));
   }, []);
 
-  // Initialize saved printer selection
-  useEffect(() => {
-    loadSavedPrinter();
-  }, [loadSavedPrinter]);
+  // Combined initialization handled below to avoid race conditions between saved selection and printer list
+
 
   // Save printer selection to both localStorage and database
   useEffect(() => {
@@ -100,12 +98,10 @@ export function usePrintNode() {
       setPrinters(printerList);
       setIsConnected(true);
       
-      // Auto-select saved printer or first available
+      // Prefer saved selection only; never auto-select first
       const saved = localStorage.getItem('printnode-selected-printer');
-      if (saved && printerList.find(p => p.id === parseInt(saved))) {
+      if (!selectedPrinterId && saved && printerList.find(p => p.id === parseInt(saved))) {
         setSelectedPrinterId(parseInt(saved));
-      } else if (printerList.length > 0 && !selectedPrinterId) {
-        setSelectedPrinterId(printerList[0].id);
       }
       
       if (showToast) {
@@ -124,10 +120,13 @@ export function usePrintNode() {
     }
   }, [selectedPrinterId]);
 
-  // Initialize on mount
+  // Initialize on mount: load saved selection first, then refresh printers
   useEffect(() => {
-    refreshPrinters();
-  }, [refreshPrinters]);
+    (async () => {
+      await loadSavedPrinter();
+      await refreshPrinters();
+    })();
+  }, [loadSavedPrinter, refreshPrinters]);
 
   const printPDF = useCallback(async (pdfBase64: string, options?: { title?: string; copies?: number }) => {
     if (!selectedPrinterId) {
