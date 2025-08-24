@@ -35,6 +35,53 @@ function useSEO(opts: { title: string; description?: string; canonical?: string 
   }, [opts.title, opts.description, opts.canonical]);
 }
 
+// Create a well-positioned starter layout
+const createStarterLayout = (): LabelLayout => ({
+  title: { 
+    visible: true, 
+    x: 15, 
+    y: 15, 
+    fontSize: 2,
+    prefix: '' 
+  },
+  sku: { 
+    visible: true, 
+    x: 15, 
+    y: 45, 
+    fontSize: 1,
+    prefix: 'SKU: ' 
+  },
+  price: { 
+    visible: true, 
+    x: 280, 
+    y: 15, 
+    fontSize: 3,
+    prefix: '$' 
+  },
+  lot: { 
+    visible: true, 
+    x: 15, 
+    y: 70, 
+    fontSize: 1,
+    prefix: 'LOT: ' 
+  },
+  condition: { 
+    visible: true, 
+    x: 200, 
+    y: 45, 
+    fontSize: 1,
+    prefix: '' 
+  },
+  barcode: { 
+    mode: 'qr' as const, 
+    x: 15, 
+    y: 100, 
+    size: 'M' as const,
+    width: 60,
+    height: 60
+  }
+});
+
 export default function LabelDesigner() {
   useSEO({ 
     title: "Label Designer 2x1 in | Aloha", 
@@ -52,6 +99,8 @@ export default function LabelDesigner() {
   const [currentLayoutId, setCurrentLayoutId] = useLocalStorageString('current-layout-id', '');
   const [currentLayout, setCurrentLayout] = useState<LabelLayout | null>(null);
   const [useCanvasEditor, setUseCanvasEditor] = useLocalStorageString('use-canvas-editor', 'true');
+  const [layoutName, setLayoutName] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -101,24 +150,20 @@ export default function LabelDesigner() {
     gapInches: parseFloat(tsplGap) || 0
   };
 
-  // Load saved layout on mount and auto-create default if needed
+  // Load saved layout on mount and auto-create starter layout if needed
   useEffect(() => {
     if (currentLayoutId && layouts.length > 0) {
       const savedLayout = layouts.find(l => l.id === currentLayoutId);
       if (savedLayout) {
         setCurrentLayout(savedLayout.layout);
+        setLayoutName(savedLayout.name);
       }
-    } else if (layoutMode === 'custom' && !currentLayout && layouts.length === 0) {
-      // Auto-create default layout for better onboarding
-      const defaultLayout: LabelLayout = {
-        title: { visible: true, x: 15, y: 15, fontSize: 2 },
-        sku: { visible: true, x: 15, y: 35, fontSize: 2 },
-        price: { visible: true, x: 15, y: 55, fontSize: 2 },
-        lot: { visible: true, x: 200, y: 15, fontSize: 2 },
-        condition: { visible: true, x: 200, y: 35, fontSize: 2 },
-        barcode: { x: 280, y: 60, mode: 'qr', size: 'S' }
-      };
-      setCurrentLayout(defaultLayout);
+    } else if (layoutMode === 'custom' && !currentLayout) {
+      // Auto-create starter layout for better onboarding
+      const starterLayout = createStarterLayout();
+      setCurrentLayout(starterLayout);
+      setLayoutName('Untitled Layout');
+      setIsEditingName(true);
     }
   }, [currentLayoutId, layouts, layoutMode, currentLayout]);
 
@@ -137,6 +182,47 @@ export default function LabelDesigner() {
       setPreviewTspl('// Error generating preview');
     }
   }, [labelData, fieldConfig, tsplSettings, layoutMode, currentLayout]);
+
+  const handleSaveLayout = async (asNew = false) => {
+    if (!currentLayout) return;
+    
+    const finalName = layoutName.trim() || 'Untitled Layout';
+    
+    try {
+      if (asNew || !currentLayoutId) {
+        // Save as new layout
+        const id = await saveLayout(finalName, currentLayout, false);
+        setCurrentLayoutId(id);
+        setIsEditingName(false);
+        toast.success(`Layout "${finalName}" saved successfully`);
+      } else {
+        // Update existing layout
+        await updateLayout(currentLayoutId, finalName, currentLayout);
+        setIsEditingName(false);
+        toast.success(`Layout "${finalName}" updated successfully`);
+      }
+    } catch (error) {
+      toast.error('Failed to save layout: ' + (error as Error).message);
+    }
+  };
+
+  const handleLoadLayout = (layoutId: string) => {
+    const layout = layouts.find(l => l.id === layoutId);
+    if (layout) {
+      setCurrentLayoutId(layoutId);
+      setCurrentLayout(layout.layout);
+      setLayoutName(layout.name);
+      setIsEditingName(false);
+    }
+  };
+
+  const handleCreateNewLayout = () => {
+    const starterLayout = createStarterLayout();
+    setCurrentLayout(starterLayout);
+    setLayoutName('New Layout');
+    setCurrentLayoutId('');
+    setIsEditingName(true);
+  };
 
   const handlePrintNodePrint = async (isTest = false) => {
     if (!selectedPrinterId) {
@@ -238,7 +324,7 @@ export default function LabelDesigner() {
                       onChange={(e) => setLayoutMode(e.target.value)}
                       className="h-4 w-4"
                     />
-                    <Label htmlFor="layout-custom" className="text-sm">Custom Layout</Label>
+                    <Label htmlFor="layout-custom" className="text-sm">Visual Designer</Label>
                   </div>
                 </div>
               </div>
@@ -305,64 +391,81 @@ export default function LabelDesigner() {
                 </div>
               )}
 
-              {/* Custom Layout Controls */}
+              {/* Visual Designer Mode */}
               {layoutMode === 'custom' && (
                 <div className="space-y-4">
-                  {/* Layout Management */}
-                  <div className="flex gap-2 flex-wrap">
-                    <Select value={currentLayoutId} onValueChange={(value) => {
-                      setCurrentLayoutId(value);
-                      const layout = layouts.find(l => l.id === value);
-                      if (layout) setCurrentLayout(layout.layout);
-                    }}>
-                      <SelectTrigger className="w-48">
-                        <SelectValue placeholder="Load saved layout" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {layouts.map(layout => (
-                          <SelectItem key={layout.id} value={layout.id}>
-                            {layout.name} {layout.is_default && '(Default)'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const name = prompt('Layout name:');
-                        if (name && currentLayout) {
-                          saveLayout(name, currentLayout).then(() => {
-                            toast.success('Layout saved successfully');
-                          }).catch((error) => {
-                            toast.error('Failed to save layout: ' + error.message);
-                          });
-                        }
-                      }}
-                      disabled={!currentLayout}
-                    >
-                      Save New
-                    </Button>
-                    {currentLayoutId && (
-                      <>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (currentLayoutId && currentLayout) {
-                              const layout = layouts.find(l => l.id === currentLayoutId);
-                              if (layout) {
-                                updateLayout(currentLayoutId, layout.name, currentLayout).then(() => {
-                                  toast.success('Layout updated successfully');
-                                }).catch((error) => {
-                                  toast.error('Failed to update layout: ' + error.message);
-                                });
+                  {/* Layout Management Header */}
+                  <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-semibold text-lg">Visual Designer</h3>
+                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">Beta</Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Drag and drop fields to create custom label layouts
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Layout Name and Actions */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-1">
+                      {isEditingName ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Input
+                            value={layoutName}
+                            onChange={(e) => setLayoutName(e.target.value)}
+                            placeholder="Layout name"
+                            className="max-w-xs"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveLayout();
+                              } else if (e.key === 'Escape') {
+                                setIsEditingName(false);
                               }
-                            }
-                          }}
-                        >
-                          Update
-                        </Button>
+                            }}
+                            autoFocus
+                          />
+                          <Button size="sm" onClick={() => handleSaveLayout()}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => setIsEditingName(false)}>Cancel</Button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{layoutName || 'Untitled Layout'}</span>
+                          <Button size="sm" variant="ghost" onClick={() => setIsEditingName(true)}>
+                            Edit Name
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Select value={currentLayoutId} onValueChange={handleLoadLayout}>
+                        <SelectTrigger className="w-48">
+                          <SelectValue placeholder="Load saved layout" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {layouts.map(layout => (
+                            <SelectItem key={layout.id} value={layout.id}>
+                              {layout.name} {layout.is_default && '(Default)'}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Button variant="outline" size="sm" onClick={handleCreateNewLayout}>
+                        New Layout
+                      </Button>
+
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleSaveLayout(true)}
+                        disabled={!currentLayout}
+                      >
+                        Save as New
+                      </Button>
+
+                      {currentLayoutId && (
                         <Button
                           variant="destructive"
                           size="sm"
@@ -371,6 +474,7 @@ export default function LabelDesigner() {
                               deleteLayout(currentLayoutId).then(() => {
                                 setCurrentLayoutId('');
                                 setCurrentLayout(null);
+                                setLayoutName('');
                                 toast.success('Layout deleted successfully');
                               }).catch((error) => {
                                 toast.error('Failed to delete layout: ' + error.message);
@@ -380,586 +484,30 @@ export default function LabelDesigner() {
                         >
                           Delete
                         </Button>
-                      </>
-                    )}
+                      )}
+                    </div>
                   </div>
 
-                  {/* Canvas Editor Toggle */}
+                  {/* Visual Canvas Editor */}
                   {currentLayout && (
-                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                      <Switch 
-                        checked={useCanvasEditor === 'true'}
-                        onCheckedChange={(checked) => setUseCanvasEditor(checked ? 'true' : 'false')}
+                    <div className="border rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 p-1">
+                      <LabelCanvasEditor
+                        layout={currentLayout}
+                        onChange={(newLayout) => {
+                          setCurrentLayout(newLayout);
+                        }}
+                        labelData={labelData}
+                        printerDpi={203}
                       />
-                      <Label className="text-sm font-medium">Canvas Editor (Beta)</Label>
-                      <p className="text-xs text-muted-foreground ml-2">Drag and drop fields visually</p>
                     </div>
                   )}
 
                   {!currentLayout && (
-                    <div className="p-4 border rounded-lg bg-muted">
-                      <p className="text-sm text-muted-foreground">
-                        Create a new custom layout or load an existing one to start positioning fields.
-                      </p>
-                      <Button
-                        variant="outline"
-                        className="mt-2"
-                        onClick={() => {
-                          // Create default layout with better positioning
-                          const defaultLayout: LabelLayout = {
-                            title: { visible: true, x: 15, y: 15, fontSize: 2 },
-                            sku: { visible: true, x: 10, y: 40, fontSize: 1, prefix: 'SKU: ' },
-                            price: { visible: true, x: 280, y: 10, fontSize: 3 },
-                            lot: { visible: true, x: 10, y: 60, fontSize: 1, prefix: 'LOT: ' },
-                            condition: { visible: true, x: 200, y: 40, fontSize: 1 },
-                            barcode: { mode: 'qr', x: 10, y: 90, size: 'M' }
-                          };
-                          setCurrentLayout(defaultLayout);
-                        }}
-                      >
-                        Create New Layout
+                    <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                      <p className="text-muted-foreground mb-4">No layout selected</p>
+                      <Button onClick={handleCreateNewLayout}>
+                        Create Starter Layout
                       </Button>
-                    </div>
-                  )}
-
-                  {/* Custom Layout Field Controls */}
-                  {currentLayout && (
-                    <div className="space-y-4">
-                      {useCanvasEditor === 'true' ? (
-                        <ResizablePanelGroup direction="horizontal" className="min-h-[500px] border rounded-lg">
-                          <ResizablePanel defaultSize={65}>
-                            <div className="p-4 h-full">
-                              <h4 className="font-medium mb-4">Visual Editor</h4>
-                              <LabelCanvasEditor
-                                layout={currentLayout}
-                                onChange={setCurrentLayout}
-                                labelData={labelData}
-                                printerDpi={203}
-                              />
-                            </div>
-                          </ResizablePanel>
-                          
-                          <ResizableHandle withHandle />
-                          
-                          <ResizablePanel defaultSize={35}>
-                            <div className="p-4 h-full">
-                              <h4 className="font-medium mb-4">Numeric Controls</h4>
-                              <div className="space-y-4 max-h-[450px] overflow-y-auto">
-                                {/* ... keep existing field controls ... */}
-                                {/* Title Controls */}
-                                <div className="grid grid-cols-4 gap-2 items-end text-xs">
-                                  <div className="flex items-center space-x-1">
-                                    <Checkbox 
-                                      checked={currentLayout.title.visible}
-                                      onCheckedChange={(checked) => {
-                                        setCurrentLayout({
-                                          ...currentLayout,
-                                          title: { ...currentLayout.title, visible: !!checked }
-                                        });
-                                      }}
-                                    />
-                                    <Label className="text-xs">Title</Label>
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">X</Label>
-                                    <Input 
-                                      type="number" 
-                                      value={currentLayout.title.x}
-                                      onChange={(e) => {
-                                        const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
-                                        setCurrentLayout({
-                                          ...currentLayout,
-                                          title: { ...currentLayout.title, x }
-                                        });
-                                      }}
-                                      className="h-7 text-xs"
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">Y</Label>
-                                    <Input 
-                                      type="number" 
-                                      value={currentLayout.title.y}
-                                      onChange={(e) => {
-                                        const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
-                                        setCurrentLayout({
-                                          ...currentLayout,
-                                          title: { ...currentLayout.title, y }
-                                        });
-                                      }}
-                                      className="h-7 text-xs"
-                                    />
-                                  </div>
-                                  <div>
-                                    <Label className="text-xs">Size</Label>
-                                    <Select 
-                                      value={currentLayout.title.fontSize.toString()}
-                                      onValueChange={(value) => {
-                                        setCurrentLayout({
-                                          ...currentLayout,
-                                          title: { ...currentLayout.title, fontSize: parseInt(value) as 1|2|3|4|5 }
-                                        });
-                                      }}
-                                    >
-                                      <SelectTrigger className="h-7 text-xs">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="1">1</SelectItem>
-                                        <SelectItem value="2">2</SelectItem>
-                                        <SelectItem value="3">3</SelectItem>
-                                        <SelectItem value="4">4</SelectItem>
-                                        <SelectItem value="5">5</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                                </div>
-                                
-                                {/* Compact controls for other fields */}
-                                {/* Add similar compact controls for SKU, Price, Lot, Condition, and Barcode */}
-                                <div className="text-xs text-muted-foreground">
-                                  Use the visual editor or adjust values here. Changes sync both ways.
-                                </div>
-                              </div>
-                            </div>
-                          </ResizablePanel>
-                        </ResizablePanelGroup>
-                      ) : (
-                        <div className="space-y-4 border p-4 rounded-lg">
-                      <h4 className="font-medium">Field Positioning</h4>
-                      
-                      {/* Title Controls */}
-                      <div className="grid grid-cols-5 gap-2 items-end">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox 
-                            checked={currentLayout.title.visible}
-                            onCheckedChange={(checked) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                title: { ...currentLayout.title, visible: !!checked }
-                              });
-                            }}
-                          />
-                          <Label className="text-sm">Title</Label>
-                        </div>
-                        <div>
-                          <Label className="text-xs">X</Label>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.title.x}
-                            onChange={(e) => {
-                              const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                title: { ...currentLayout.title, x }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Y</Label>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.title.y}
-                            onChange={(e) => {
-                              const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                title: { ...currentLayout.title, y }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Label className="text-xs">Size</Label>
-                          <Select 
-                            value={currentLayout.title.fontSize.toString()}
-                            onValueChange={(value) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                title: { ...currentLayout.title, fontSize: parseInt(value) as 1|2|3|4|5 }
-                              });
-                            }}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                              <SelectItem value="4">4</SelectItem>
-                              <SelectItem value="5">5</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* SKU Controls */}
-                      <div className="grid grid-cols-5 gap-2 items-end">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox 
-                            checked={currentLayout.sku.visible}
-                            onCheckedChange={(checked) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                sku: { ...currentLayout.sku, visible: !!checked }
-                              });
-                            }}
-                          />
-                          <Label className="text-sm">SKU</Label>
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.sku.x}
-                            onChange={(e) => {
-                              const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                sku: { ...currentLayout.sku, x }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.sku.y}
-                            onChange={(e) => {
-                              const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                sku: { ...currentLayout.sku, y }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Select 
-                            value={currentLayout.sku.fontSize.toString()}
-                            onValueChange={(value) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                sku: { ...currentLayout.sku, fontSize: parseInt(value) as 1|2|3|4|5 }
-                              });
-                            }}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                              <SelectItem value="4">4</SelectItem>
-                              <SelectItem value="5">5</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Price Controls */}
-                      <div className="grid grid-cols-5 gap-2 items-end">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox 
-                            checked={currentLayout.price.visible}
-                            onCheckedChange={(checked) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                price: { ...currentLayout.price, visible: !!checked }
-                              });
-                            }}
-                          />
-                          <Label className="text-sm">Price</Label>
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.price.x}
-                            onChange={(e) => {
-                              const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                price: { ...currentLayout.price, x }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.price.y}
-                            onChange={(e) => {
-                              const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                price: { ...currentLayout.price, y }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Select 
-                            value={currentLayout.price.fontSize.toString()}
-                            onValueChange={(value) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                price: { ...currentLayout.price, fontSize: parseInt(value) as 1|2|3|4|5 }
-                              });
-                            }}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                              <SelectItem value="4">4</SelectItem>
-                              <SelectItem value="5">5</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Lot Controls */}
-                      <div className="grid grid-cols-5 gap-2 items-end">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox 
-                            checked={currentLayout.lot.visible}
-                            onCheckedChange={(checked) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                lot: { ...currentLayout.lot, visible: !!checked }
-                              });
-                            }}
-                          />
-                          <Label className="text-sm">Lot</Label>
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.lot.x}
-                            onChange={(e) => {
-                              const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                lot: { ...currentLayout.lot, x }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.lot.y}
-                            onChange={(e) => {
-                              const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                lot: { ...currentLayout.lot, y }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Select 
-                            value={currentLayout.lot.fontSize.toString()}
-                            onValueChange={(value) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                lot: { ...currentLayout.lot, fontSize: parseInt(value) as 1|2|3|4|5 }
-                              });
-                            }}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                              <SelectItem value="4">4</SelectItem>
-                              <SelectItem value="5">5</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Condition Controls */}
-                      <div className="grid grid-cols-5 gap-2 items-end">
-                        <div className="flex items-center space-x-2">
-                          <Checkbox 
-                            checked={currentLayout.condition.visible}
-                            onCheckedChange={(checked) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                condition: { ...currentLayout.condition, visible: !!checked }
-                              });
-                            }}
-                          />
-                          <Label className="text-sm">Condition</Label>
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.condition.x}
-                            onChange={(e) => {
-                              const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                condition: { ...currentLayout.condition, x }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.condition.y}
-                            onChange={(e) => {
-                              const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                condition: { ...currentLayout.condition, y }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                          />
-                        </div>
-                        <div>
-                          <Select 
-                            value={currentLayout.condition.fontSize.toString()}
-                            onValueChange={(value) => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                condition: { ...currentLayout.condition, fontSize: parseInt(value) as 1|2|3|4|5 }
-                              });
-                            }}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="1">1</SelectItem>
-                              <SelectItem value="2">2</SelectItem>
-                              <SelectItem value="3">3</SelectItem>
-                              <SelectItem value="4">4</SelectItem>
-                              <SelectItem value="5">5</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {/* Barcode Controls */}
-                      <div className="grid grid-cols-5 gap-2 items-end">
-                        <div>
-                          <Label className="text-sm">Barcode</Label>
-                          <Select 
-                            value={currentLayout.barcode.mode}
-                            onValueChange={(value: 'qr' | 'barcode' | 'none') => {
-                              setCurrentLayout({
-                                ...currentLayout,
-                                barcode: { ...currentLayout.barcode, mode: value }
-                              });
-                            }}
-                          >
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="qr">QR Code</SelectItem>
-                              <SelectItem value="barcode">Barcode</SelectItem>
-                              <SelectItem value="none">None</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.barcode.x}
-                            onChange={(e) => {
-                              const x = Math.max(0, Math.min(386, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                barcode: { ...currentLayout.barcode, x }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                            disabled={currentLayout.barcode.mode === 'none'}
-                          />
-                        </div>
-                        <div>
-                          <Input 
-                            type="number" 
-                            value={currentLayout.barcode.y}
-                            onChange={(e) => {
-                              const y = Math.max(0, Math.min(203, parseInt(e.target.value) || 0));
-                              setCurrentLayout({
-                                ...currentLayout,
-                                barcode: { ...currentLayout.barcode, y }
-                              });
-                            }}
-                            className="h-8 text-xs"
-                            disabled={currentLayout.barcode.mode === 'none'}
-                          />
-                        </div>
-                        {currentLayout.barcode.mode === 'qr' && (
-                          <div>
-                            <Select 
-                              value={currentLayout.barcode.size || 'M'}
-                              onValueChange={(value: 'S' | 'M' | 'L') => {
-                                setCurrentLayout({
-                                  ...currentLayout,
-                                  barcode: { ...currentLayout.barcode, size: value }
-                                });
-                              }}
-                            >
-                              <SelectTrigger className="h-8 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="S">Small</SelectItem>
-                                <SelectItem value="M">Medium</SelectItem>
-                                <SelectItem value="L">Large</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        )}
-                        {currentLayout.barcode.mode === 'barcode' && (
-                          <div>
-                            <Input 
-                              type="number" 
-                              placeholder="Height"
-                              value={currentLayout.barcode.height || 50}
-                              onChange={(e) => {
-                                const height = Math.max(10, Math.min(100, parseInt(e.target.value) || 50));
-                                setCurrentLayout({
-                                  ...currentLayout,
-                                  barcode: { ...currentLayout.barcode, height }
-                                });
-                              }}
-                              className="h-8 text-xs"
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                        <p className="text-xs text-muted-foreground">
-                          Label dimensions: 386×203 dots (2×1 inches at 203 DPI)
-                        </p>
-                      </div>
-                      )}
                     </div>
                   )}
                 </div>
