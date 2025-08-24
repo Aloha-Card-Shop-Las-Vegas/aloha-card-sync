@@ -13,6 +13,8 @@ import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
 import { printNodeService } from "@/lib/printNodeService";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Eye } from "lucide-react";
 
 
 type CardItem = {
@@ -1054,9 +1056,43 @@ const Index = () => {
                                   >
                                     {b.printedAt ? "Reprint" : "Print"}
                                   </Button>
-                                  <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
-                                  <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
-                                  <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(b)}>Delete</Button>
+                                   <Dialog>
+                                     <DialogTrigger asChild>
+                                       <Button size="sm" variant="outline">
+                                         <Eye className="h-4 w-4" />
+                                       </Button>
+                                     </DialogTrigger>
+                                     <DialogContent className="max-w-md">
+                                       <DialogHeader>
+                                         <DialogTitle>Label Preview</DialogTitle>
+                                       </DialogHeader>
+                                       <div className="space-y-4">
+                                         <div className="border rounded-lg p-4 bg-white text-black font-mono text-sm space-y-2">
+                                           <div className="font-bold text-base">
+                                             {buildTitleFromParts(b.year, b.brandTitle, b.cardNumber, b.subject, b.variant)}
+                                           </div>
+                                           <div className="flex justify-between">
+                                             <span>{b.lot || "LOT-000000"}</span>
+                                             <span>{b.price ? `$${Number(b.price).toFixed(2)}` : ""}</span>
+                                           </div>
+                                           <div className="border-2 border-black h-12 flex items-center justify-center bg-white">
+                                             <span className="font-bold tracking-wider">
+                                               {b.sku || b.id || "NO-SKU"}
+                                             </span>
+                                           </div>
+                                           <div className="text-xs text-center">
+                                             Grade: {b.grade || "Ungraded"}
+                                           </div>
+                                         </div>
+                                         <div className="text-xs text-muted-foreground">
+                                           This preview shows what would be printed on a 2x1 inch label.
+                                         </div>
+                                       </div>
+                                     </DialogContent>
+                                   </Dialog>
+                                   <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
+                                   <Button size="sm" variant="outline" onClick={() => startEditRow(b)}>Edit</Button>
+                                   <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(b)}>Delete</Button>
                                 </>
                               )}
                             </div>
