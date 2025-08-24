@@ -39,6 +39,30 @@ const calculateFontSize = (text: string, maxWidth: number, maxHeight: number, ct
   return Math.max(fontSize, 8);
 };
 
+const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let currentLine = '';
+
+  for (const word of words) {
+    const testLine = currentLine + (currentLine ? ' ' : '') + word;
+    const metrics = ctx.measureText(testLine);
+    
+    if (metrics.width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  
+  return lines.slice(0, 2); // Limit to 2 lines
+};
+
 const drawBarcode = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, data: string, mode: 'qr' | 'barcode') => {
   if (mode === 'barcode') {
     // Create a temporary canvas for JsBarcode
@@ -182,15 +206,44 @@ export const renderLabelToCanvas = (
     }
   }
 
-  // Bottom content (Title) - dynamic sizing to fill box
+  // Title section - expanded from below SKU to near bottom
   if (fieldConfig.includeTitle && labelData.title) {
-    const bottomY = padding + topRowHeight + padding + middleHeight + padding;
-    const fontSize = calculateFontSize(labelData.title, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, ctx);
+    // Calculate start position (below SKU) and available height
+    const skuEndY = fieldConfig.barcodeMode !== 'none' ? 
+      (padding + topRowHeight + 5 + 50 + 25) : // After barcode and SKU
+      (padding + topRowHeight + 10); // Or just after top row if no barcode
+    
+    const titleStartY = skuEndY + 5; // Small gap after SKU
+    const titleHeight = LABEL_HEIGHT - titleStartY - padding; // To near bottom
+    const titleWidth = LABEL_WIDTH - padding * 2;
+    
+    // Set up font and calculate optimal size for two lines
+    let fontSize = Math.min(titleHeight / 2.5, 30); // Start with size that fits 2 lines
     ctx.font = `${fontSize}px Arial`;
+    
+    // Wrap text to maximum 2 lines
+    const lines = wrapText(ctx, labelData.title, titleWidth - 10);
+    
+    // Adjust font size if needed to fit both lines
+    while (fontSize > 10 && lines.length > 0) {
+      const totalTextHeight = lines.length * fontSize * 1.2; // Line height factor
+      if (totalTextHeight <= titleHeight - 10) break;
+      fontSize -= 1;
+      ctx.font = `${fontSize}px Arial`;
+    }
+    
+    // Draw the lines centered
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(labelData.title, LABEL_WIDTH/2, bottomY + bottomHeight/2);
+    
+    const lineHeight = fontSize * 1.2;
+    const totalTextHeight = lines.length * lineHeight;
+    const startY = titleStartY + (titleHeight - totalTextHeight) / 2;
+    
+    lines.forEach((line, index) => {
+      ctx.fillText(line, LABEL_WIDTH / 2, startY + (index * lineHeight) + lineHeight / 2);
+    });
   }
 
   // Add lot number support if included
