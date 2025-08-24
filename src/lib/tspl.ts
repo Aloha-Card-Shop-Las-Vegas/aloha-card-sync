@@ -297,7 +297,7 @@ export function generateBoxedLayoutTSPL(
   
   // Box dimensions and positions
   const topBoxHeight = 50;
-  const titleBoxHeight = 45;
+  const titleBoxHeight = 55; // Increased from 45 to give more space
   const barcodeBoxHeight = labelHeight - topBoxHeight - titleBoxHeight;
   
   // Top row boxes (condition and price)
