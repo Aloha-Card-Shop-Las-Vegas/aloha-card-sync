@@ -171,7 +171,7 @@ export const renderLabelToCanvas = (
   // Top left content (Condition) - dynamic sizing to fill box
   if (fieldConfig.includeCondition && labelData.condition) {
     const fontSize = calculateFontSize(labelData.condition, topLeftWidth - 10, topRowHeight - 10, ctx);
-    ctx.font = `${fontSize}px Arial`;
+    ctx.font = `bold ${fontSize}px Arial`;
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -182,7 +182,7 @@ export const renderLabelToCanvas = (
   if (fieldConfig.includePrice && labelData.price) {
     const topRightX = padding + topLeftWidth + padding;
     const fontSize = calculateFontSize(labelData.price, topRightWidth - 10, topRowHeight - 10, ctx);
-    ctx.font = `${fontSize}px Arial`;
+    ctx.font = `bold ${fontSize}px Arial`;
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
