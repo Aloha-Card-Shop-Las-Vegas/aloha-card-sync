@@ -121,6 +121,136 @@ export interface LabelFieldConfig {
   barcodeMode: 'qr' | 'barcode' | 'none';
 }
 
+// Layout-based TSPL generation
+export interface LabelFieldLayout {
+  visible: boolean;
+  x: number;
+  y: number;
+  fontSize: 1 | 2 | 3 | 4 | 5;
+  prefix?: string;
+}
+
+export interface LabelBarcodeLayout {
+  mode: 'qr' | 'barcode' | 'none';
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  size?: 'S' | 'M' | 'L';
+}
+
+export interface LabelLayout {
+  title: LabelFieldLayout;
+  sku: LabelFieldLayout;
+  price: LabelFieldLayout;
+  lot: LabelFieldLayout;
+  condition: LabelFieldLayout;
+  barcode: LabelBarcodeLayout;
+  printer?: {
+    density?: number;
+    speed?: number;
+    gapInches?: number;
+  };
+}
+
+export function generateTSPLFromLayout(
+  layout: LabelLayout,
+  data: {
+    title?: string;
+    sku?: string;
+    price?: string;
+    lot?: string;
+    barcode?: string;
+    condition?: string;
+  },
+  tsplSettings?: { density?: number; speed?: number; gapInches?: number }
+): string {
+  const textLines: TSPLOptions['textLines'] = [];
+
+  // Add text fields based on layout
+  if (layout.title.visible && data.title) {
+    textLines.push({
+      text: data.title.slice(0, 25),
+      x: layout.title.x,
+      y: layout.title.y,
+      fontSize: layout.title.fontSize
+    });
+  }
+
+  if (layout.sku.visible && data.sku) {
+    const prefix = layout.sku.prefix || 'SKU: ';
+    textLines.push({
+      text: `${prefix}${data.sku}`,
+      x: layout.sku.x,
+      y: layout.sku.y,
+      fontSize: layout.sku.fontSize
+    });
+  }
+
+  if (layout.price.visible && data.price) {
+    const priceText = data.price.startsWith('$') ? data.price : `$${data.price}`;
+    textLines.push({
+      text: priceText,
+      x: layout.price.x,
+      y: layout.price.y,
+      fontSize: layout.price.fontSize
+    });
+  }
+
+  if (layout.lot.visible && data.lot) {
+    const prefix = layout.lot.prefix || 'LOT: ';
+    textLines.push({
+      text: `${prefix}${data.lot}`,
+      x: layout.lot.x,
+      y: layout.lot.y,
+      fontSize: layout.lot.fontSize
+    });
+  }
+
+  if (layout.condition.visible && data.condition) {
+    textLines.push({
+      text: data.condition,
+      x: layout.condition.x,
+      y: layout.condition.y,
+      fontSize: layout.condition.fontSize
+    });
+  }
+
+  // Use layout printer settings if no overrides provided
+  const effectiveSettings = {
+    ...layout.printer,
+    ...tsplSettings
+  };
+
+  const options: TSPLOptions = {
+    textLines,
+    ...effectiveSettings
+  };
+
+  // Add barcode/QR based on layout
+  if (layout.barcode.mode !== 'none' && data.barcode) {
+    if (layout.barcode.mode === 'qr') {
+      options.qrcode = {
+        data: data.barcode,
+        x: layout.barcode.x,
+        y: layout.barcode.y,
+        size: layout.barcode.size || 'M'
+      };
+    } else if (layout.barcode.mode === 'barcode') {
+      options.barcode = {
+        data: data.barcode,
+        x: layout.barcode.x,
+        y: layout.barcode.y,
+        width: layout.barcode.width || 2,
+        height: layout.barcode.height || 50,
+        type: 'CODE128'
+      };
+    }
+  }
+
+  return buildTSPL(options);
+}
+
 export function generateUnifiedTSPL(
   data: {
     title?: string;
