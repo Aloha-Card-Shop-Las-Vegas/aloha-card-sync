@@ -346,7 +346,7 @@ export function generateBoxedLayoutTSPL(
   // Larger Barcode in middle section
   if (fieldConfig.barcodeMode !== 'none' && data.barcode) {
     const barcodeY = topBoxHeight + 5;
-    const barcodeX = 50; // Move more to the right for better centering
+    const barcodeX = 35; // Move to the left for better centering
     
     if (fieldConfig.barcodeMode === 'qr') {
       // Scale QR code based on available space - make larger
@@ -384,6 +384,5 @@ export function generateBoxedLayoutTSPL(
       });
     }
   }
-
   return buildTSPL(options);
 }
