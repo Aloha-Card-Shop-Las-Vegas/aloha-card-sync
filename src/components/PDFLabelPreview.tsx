@@ -1,7 +1,8 @@
+// src/components/PDFLabelPreview.tsx
 import React, { useEffect, useState } from "react";
 import { generateLabelPDF } from "@/lib/labelRenderer";
-import { getLabelDesignerSettings } from "@/lib/labelDesignerSettings";
 import { buildLabelDataFromItem, CardItem } from "@/lib/labelData";
+import { getLabelDesignerSettings } from "@/lib/labelDesignerSettings";
 
 function base64ToUint8Array(base64: string): Uint8Array {
   if (base64.startsWith("data:")) base64 = base64.split(",")[1] || "";
@@ -35,19 +36,16 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
         setError(null);
         setEmbedFailed(false);
 
-        // Use the same settings as printing for 1:1 parity
+        // Build the exact same data as print
         const { fieldConfig } = getLabelDesignerSettings();
         const labelData = buildLabelDataFromItem(item);
+        const pdfBase64 = await generateLabelPDF(fieldConfig, labelData); // returns base64 (no data: prefix)
+        const bytes = ensureUint8Array(pdfBase64);
 
-        // Generate the exact same PDF as printing
-        const out = await generateLabelPDF(fieldConfig, labelData);
-        const bytes = ensureUint8Array(out);
-
-        // Use a Blob URL (Chrome-friendly vs data:)
+        // Blob URL is more Chrome/CSP friendly than data:
         const blob = new Blob([bytes], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
         urlToRevoke = url;
-
         if (!mounted) return;
         setBlobUrl(url);
       } catch (e: any) {
@@ -64,6 +62,10 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
     };
   }, [item]);
 
+  const openInNewTab = () => {
+    if (blobUrl) window.open(blobUrl, "_blank", "noopener,noreferrer");
+  };
+
   if (loading) {
     return (
       <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-sm">
@@ -71,15 +73,18 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
       </div>
     );
   }
+
   if (error) {
     return (
-      <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-xs text-destructive">
+      <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-xs text-red-600">
         {error}
       </div>
     );
   }
+
   if (!blobUrl) return null;
 
+  // If Chrome blocks the embed, show an explicit fallback
   if (embedFailed) {
     return (
       <div className="w-80 h-40 bg-muted flex flex-col items-center justify-center border rounded gap-2">
@@ -88,7 +93,7 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
         </div>
         <button
           className="px-3 py-1 border rounded text-xs hover:bg-accent"
-          onClick={() => window.open(blobUrl, "_blank", "noopener,noreferrer")}
+          onClick={openInNewTab}
         >
           Open PDF in a new tab
         </button>
@@ -96,7 +101,7 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
     );
   }
 
-  // Try to embed; if it fails (viewer disabled / forced download), show fallback UI
+  // Try to embed the PDF first
   return (
     <object
       data={blobUrl}
@@ -105,7 +110,6 @@ const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
       height={160}
       aria-label="Label PDF Preview"
       className="border rounded"
-      // object onError triggers when viewer is disabled
       onError={() => setEmbedFailed(true)}
     >
       <iframe
