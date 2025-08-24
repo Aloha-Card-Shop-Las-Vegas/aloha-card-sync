@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Printer, Cloud, WifiOff, TestTube, FileText, Edit2, Check, X } from "lucide-react";
+import { Printer, Cloud, WifiOff, TestTube, FileText, Edit2, Check, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { printNodeService } from "@/lib/printNodeService";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +29,7 @@ export function PrinterPanel() {
   const [connectionError, setConnectionError] = useState<string>('');
   const [editingPrinterId, setEditingPrinterId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState<string>('');
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
   
   const { getDisplayName, setCustomName, resetName, hasCustomName } = usePrinterNames();
 
@@ -36,25 +37,6 @@ export function PrinterPanel() {
     loadPrinterSettings();
     // Immediately check PrintNode status on mount
     refreshPrinters();
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const printerList = await printNodeService.getPrinters();
-        const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
-        setPrinters(formattedPrinters);
-        setPrintNodeOnline(true);
-        setConnectionError('');
-      } catch (error) {
-        setPrintNodeOnline(false);
-        setPrinters([]);
-        const errorMessage = error instanceof Error ? error.message : "Connection failed";
-        setConnectionError(errorMessage);
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
   }, []);
 
   const loadPrinterSettings = async () => {
@@ -107,6 +89,7 @@ export function PrinterPanel() {
       const formattedPrinters = printerList.map(p => ({id: p.id, name: p.name}));
       setPrinters(formattedPrinters);
       setPrintNodeOnline(true);
+      setLastChecked(new Date());
       
       // Try to get key source info from the service initialization
       try {
@@ -120,6 +103,7 @@ export function PrinterPanel() {
     } catch (error) {
       setPrintNodeOnline(false);
       setPrinters([]);
+      setLastChecked(new Date());
       const errorMessage = error instanceof Error ? error.message : "Failed to connect to PrintNode";
       setConnectionError(errorMessage);
       toast.error(errorMessage);
@@ -404,24 +388,34 @@ export function PrinterPanel() {
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={refreshPrinters}
-            disabled={loading}
-          >
-            {loading ? "Checking..." : "Refresh"}
-          </Button>
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={refreshPrinters}
+              disabled={loading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+              {loading ? "Checking..." : "Refresh"}
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={savePrinterSettings}
+              disabled={!selectedPrinter}
+            >
+              Save
+            </Button>
+          </div>
           
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={savePrinterSettings}
-            disabled={!selectedPrinter}
-          >
-            Save
-          </Button>
+          {lastChecked && (
+            <div className="text-xs text-muted-foreground">
+              Last checked: {lastChecked.toLocaleTimeString()}
+            </div>
+          )}
         </div>
 
         <Separator className="my-4" />

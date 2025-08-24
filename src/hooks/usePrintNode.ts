@@ -32,7 +32,7 @@ export function usePrintNode() {
     }
   }, [selectedPrinterId]);
 
-  const refreshPrinters = useCallback(async () => {
+  const refreshPrinters = useCallback(async (showToast = false) => {
     setIsLoading(true);
     setConnectionError('');
     try {
@@ -48,13 +48,17 @@ export function usePrintNode() {
         setSelectedPrinterId(printerList[0].id);
       }
       
-      toast.success(`PrintNode connected - Found ${printerList.length} printer(s)`);
+      if (showToast) {
+        toast.success(`PrintNode connected - Found ${printerList.length} printer(s)`);
+      }
     } catch (error) {
       setIsConnected(false);
       setPrinters([]);
       const errorMessage = error instanceof Error ? error.message : "Failed to connect to PrintNode";
       setConnectionError(errorMessage);
-      toast.error(errorMessage);
+      if (showToast) {
+        toast.error(errorMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -63,12 +67,6 @@ export function usePrintNode() {
   // Initialize on mount
   useEffect(() => {
     refreshPrinters();
-  }, [refreshPrinters]);
-
-  // Periodic refresh
-  useEffect(() => {
-    const interval = setInterval(refreshPrinters, 30000);
-    return () => clearInterval(interval);
   }, [refreshPrinters]);
 
   const printPDF = useCallback(async (pdfBase64: string, options?: { title?: string; copies?: number }) => {
