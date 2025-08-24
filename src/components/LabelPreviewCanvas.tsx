@@ -17,7 +17,7 @@ interface LabelPreviewCanvasProps {
 }
 
 export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>(({ fieldConfig, labelData, showGuides = false }, ref) => {
-  const [pdfDataUrl, setPdfDataUrl] = useState<string>('');
+  const [previewImageUrl, setPreviewImageUrl] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
 
   // Export function to get high-DPI PNG for printing
@@ -36,22 +36,29 @@ export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>
     exportToPDF
   }));
 
-  // Generate PDF and convert to display URL
+  // Generate PNG preview (same as what gets printed)
   useEffect(() => {
-    const generatePreviewPDF = async () => {
+    const generatePreviewImage = async () => {
       setIsLoading(true);
       try {
-        const pdfBase64 = await generateLabelPDF(fieldConfig, labelData, 203);
-        const pdfUrl = `data:application/pdf;base64,${pdfBase64}`;
-        setPdfDataUrl(pdfUrl);
+        const pngBlob = await generateLabelPNG(fieldConfig, labelData, 203);
+        const imageUrl = URL.createObjectURL(pngBlob);
+        setPreviewImageUrl(imageUrl);
       } catch (error) {
-        console.error('Error generating PDF preview:', error);
+        console.error('Error generating PNG preview:', error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    generatePreviewPDF();
+    generatePreviewImage();
+
+    // Cleanup function to revoke object URL
+    return () => {
+      if (previewImageUrl) {
+        URL.revokeObjectURL(previewImageUrl);
+      }
+    };
   }, [fieldConfig, labelData]);
 
   return (
@@ -63,18 +70,19 @@ export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>
         <div className="flex justify-center">
           {isLoading ? (
             <div className="w-80 h-60 bg-muted flex items-center justify-center border rounded">
-              <span className="text-muted-foreground">Generating PDF preview...</span>
+              <span className="text-muted-foreground">Generating preview...</span>
             </div>
-          ) : pdfDataUrl ? (
-            <iframe
-              src={pdfDataUrl}
-              width="320"
-              height="240"
+          ) : previewImageUrl ? (
+            <img
+              src={previewImageUrl}
+              alt="Label Preview"
               style={{
+                maxWidth: '320px',
+                maxHeight: '240px',
                 border: '1px solid hsl(var(--border))',
-                borderRadius: '4px'
+                borderRadius: '4px',
+                backgroundColor: 'white'
               }}
-              title="Label PDF Preview"
             />
           ) : (
             <div className="w-80 h-60 bg-muted flex items-center justify-center border rounded">
@@ -83,7 +91,7 @@ export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>
           )}
         </div>
         <p className="text-sm text-muted-foreground mt-2 text-center">
-          This preview uses the same settings as your Label Designer. Update settings in the Label Designer to change how labels appear.
+          This preview shows exactly what will be printed. Update settings in the Label Designer to change how labels appear.
         </p>
       </CardContent>
     </Card>
