@@ -1077,7 +1077,11 @@ const Index = () => {
                                         <div className="space-y-4">
                                            <LabelPreviewCanvas 
                                              fieldConfig={getLabelDesignerSettings().fieldConfig}
-                                             labelData={buildLabelDataFromItem(b)}
+                                             labelData={(() => {
+                                               const data = buildLabelDataFromItem(b);
+                                               console.log('Preview data for item:', b, 'Generated label data:', data);
+                                               return data;
+                                             })()}
                                              showGuides={getLabelDesignerSettings().showGuides}
                                            />
                                           <div className="text-xs text-muted-foreground">

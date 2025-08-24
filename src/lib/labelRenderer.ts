@@ -145,15 +145,14 @@ export const renderLabelToCanvas = (
   }
 
   // Top left content (Condition)
-  if (fieldConfig.includeCondition) {
+  if (fieldConfig.includeCondition && labelData.condition) {
     drawText(ctx, labelData.condition, padding + 5, padding + 5, topLeftWidth - 10, topRowHeight - 10, 'center');
   }
 
   // Top right content (Price)
-  if (fieldConfig.includePrice) {
+  if (fieldConfig.includePrice && labelData.price) {
     const topRightX = padding + topLeftWidth + padding;
-    const priceText = labelData.price.startsWith('$') ? labelData.price : `$${labelData.price}`;
-    drawText(ctx, priceText, topRightX + 5, padding + 5, topRightWidth - 10, topRowHeight - 10, 'center');
+    drawText(ctx, labelData.price, topRightX + 5, padding + 5, topRightWidth - 10, topRowHeight - 10, 'center');
   }
 
   // Middle section (Barcode/QR)
@@ -164,7 +163,7 @@ export const renderLabelToCanvas = (
   }
 
   // Bottom content (Title)
-  if (fieldConfig.includeTitle) {
+  if (fieldConfig.includeTitle && labelData.title) {
     const bottomY = padding + topRowHeight + padding + middleHeight + padding;
     drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
   }
