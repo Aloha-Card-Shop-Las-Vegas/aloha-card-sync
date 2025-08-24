@@ -37,7 +37,7 @@ export function buildLabelDataFromItem(item: CardItem): LabelData {
   const formatPrice = (price?: string) => {
     if (!price) return '';
     const numPrice = parseFloat(price);
-    return isNaN(numPrice) ? price : `$${numPrice.toFixed(2)}`;
+    return isNaN(numPrice) ? price : `$${Math.round(numPrice)}`;
   };
 
   return {

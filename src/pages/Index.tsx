@@ -27,7 +27,7 @@ const formatMoney = (price?: string): string => {
   if (!price) return '';
   const numPrice = parseFloat(price);
   if (isNaN(numPrice)) return price;
-  return `$${numPrice.toFixed(2)}`;
+  return `$${Math.round(numPrice)}`;
 };
 
 
