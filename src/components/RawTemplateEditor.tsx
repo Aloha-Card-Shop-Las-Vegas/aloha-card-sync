@@ -6,8 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { usePrintNode } from '@/hooks/usePrintNode';
+import { useRawTemplates } from '@/hooks/useRawTemplates';
+import { Save, FolderOpen, Trash2 } from 'lucide-react';
 
 const DEFAULT_ZPL = `^XA
 ^PW406
@@ -27,6 +30,7 @@ PRINT 1`;
 
 export function RawTemplateEditor() {
   const { printRAW, selectedPrinterId, isConnected } = usePrintNode();
+  const { templates, saveTemplate, deleteTemplate, detectEngine } = useRawTemplates();
   const [engine, setEngine] = useState<'ZPL' | 'TSPL'>('ZPL');
   const [template, setTemplate] = useState(DEFAULT_ZPL);
   const [values, setValues] = useState<Record<string, string>>({
@@ -35,6 +39,9 @@ export function RawTemplateEditor() {
     module_width: "2",
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
 
   const detectTokens = (template: string): string[] => {
     const regex = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
@@ -83,6 +90,28 @@ export function RawTemplateEditor() {
   const onEngineChange = (newEngine: 'ZPL' | 'TSPL') => {
     setEngine(newEngine);
     setTemplate(newEngine === 'ZPL' ? DEFAULT_ZPL : DEFAULT_TSPL);
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim()) {
+      toast.error('Please enter a template name');
+      return;
+    }
+    
+    await saveTemplate(templateName, template);
+    setTemplateName('');
+    setSaveDialogOpen(false);
+  };
+
+  const handleLoadTemplate = (selectedTemplate: any) => {
+    setTemplate(selectedTemplate.body);
+    setEngine(detectEngine(selectedTemplate.body));
+    setLoadDialogOpen(false);
+    toast.success('Template loaded successfully');
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    await deleteTemplate(templateId);
   };
 
   const handlePrint = async () => {
@@ -145,14 +174,92 @@ export function RawTemplateEditor() {
                 <SelectItem value="TSPL">TSPL</SelectItem>
               </SelectContent>
             </Select>
-            <Button 
-              onClick={handlePrint}
-              disabled={isLoading || !selectedPrinterId || !isConnected}
-              className="ml-auto bg-purple-600 hover:bg-purple-700 text-white"
-              size="sm"
-            >
-              {isLoading ? "Printing..." : "Print Raw"}
-            </Button>
+            
+            <div className="flex gap-2 ml-auto">
+              <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Save className="h-4 w-4 mr-1" />
+                    Save
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Save Template</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div>
+                      <Label htmlFor="template-name">Template Name</Label>
+                      <Input
+                        id="template-name"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        placeholder="Enter template name"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleSaveTemplate}>
+                        Save Template
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={loadDialogOpen} onOpenChange={setLoadDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <FolderOpen className="h-4 w-4 mr-1" />
+                    Load
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Load Template</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4 max-h-96 overflow-auto">
+                    {templates.length === 0 ? (
+                      <p className="text-muted-foreground text-center py-4">No saved templates found</p>
+                    ) : (
+                      templates.map((temp) => (
+                        <div key={temp.id} className="flex items-center justify-between p-3 border rounded">
+                          <div className="flex-1">
+                            <div className="font-medium">{temp.id}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {detectEngine(temp.body)} • {temp.required_fields.length} variables
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleLoadTemplate(temp)}>
+                              Load
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive"
+                              onClick={() => handleDeleteTemplate(temp.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Button 
+                onClick={handlePrint}
+                disabled={isLoading || !selectedPrinterId || !isConnected}
+                className="bg-purple-600 hover:bg-purple-700 text-white"
+                size="sm"
+              >
+                {isLoading ? "Printing..." : "Print Raw"}
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
