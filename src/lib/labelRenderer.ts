@@ -165,20 +165,20 @@ export const renderLabelToCanvas = (
     ctx.fillText(labelData.price, topRightX + topRightWidth/2, padding + topRowHeight/2);
   }
 
-  // Middle section (Larger Barcode/QR)
+  // Barcode section - positioned right below the price box
   if (fieldConfig.barcodeMode !== 'none') {
-    const middleY = padding + topRowHeight + padding;
-    const barcodeWidth = LABEL_WIDTH - padding * 6; // Slightly narrower for centering
-    const barcodeHeight = (middleHeight - 20) * 1.2; // 20% taller barcode
-    const barcodeX = padding + 25; // Move to the left for better centering
-    drawBarcode(ctx, barcodeX, middleY + 2, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
+    const barcodeY = padding + topRowHeight + 5; // Right below price box with small gap
+    const barcodeWidth = LABEL_WIDTH - padding * 4; // Full width with padding
+    const barcodeHeight = 50; // Fixed height for barcode
+    const barcodeX = padding * 2; // Centered
+    drawBarcode(ctx, barcodeX, barcodeY, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
     
     // Add SKU below barcode if included
     if (fieldConfig.includeSku && labelData.sku) {
       ctx.font = '10px Arial';
       ctx.fillStyle = '#666666';
       ctx.textAlign = 'center';
-      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, middleY + barcodeHeight + 15);
+      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, barcodeY + barcodeHeight + 12);
     }
   }
 
