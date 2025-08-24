@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useImperativeHandle } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface LabelPreviewCanvasProps {
@@ -22,8 +22,48 @@ interface LabelPreviewCanvasProps {
   showGuides?: boolean;
 }
 
-export const LabelPreviewCanvas = ({ fieldConfig, labelData, showGuides = false }: LabelPreviewCanvasProps) => {
+export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>(({ fieldConfig, labelData, showGuides = false }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Export function to get high-DPI PNG for printing
+  const exportToPNG = (dpi: number = 203): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        reject(new Error('Canvas not available'));
+        return;
+      }
+
+      // Create a new high-DPI canvas
+      const exportCanvas = document.createElement('canvas');
+      const scaleFactor = dpi / 96; // 96 is standard screen DPI
+      exportCanvas.width = LABEL_WIDTH * scaleFactor;
+      exportCanvas.height = LABEL_HEIGHT * scaleFactor;
+      
+      const ctx = exportCanvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('Could not get canvas context'));
+        return;
+      }
+
+      // Scale the context to match DPI
+      ctx.scale(scaleFactor, scaleFactor);
+      
+      // Redraw the label content at high DPI
+      drawLabelContent(ctx, fieldConfig, labelData, showGuides);
+      
+      exportCanvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+        } else {
+          reject(new Error('Failed to create PNG blob'));
+        }
+      }, 'image/png');
+    });
+  };
+
+  // Expose export function via ref
+  (canvasRef as any).current?.exportToPNG && ((canvasRef as any).current.exportToPNG = exportToPNG);
 
   // Constants for 2x1 inch label at 203 DPI
   const LABEL_WIDTH = 406; // 2 inches * 203 DPI
@@ -93,13 +133,8 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData, showGuides = false 
     ctx.fillText(text, drawX, y + maxHeight / 2);
   };
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
+  // Shared drawing function for both display and export
+  const drawLabelContent = (ctx: CanvasRenderingContext2D, fieldConfig: any, labelData: any, showGuides: boolean) => {
     // Clear canvas
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, LABEL_WIDTH, LABEL_HEIGHT);
@@ -110,61 +145,73 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData, showGuides = false 
     ctx.strokeRect(1, 1, LABEL_WIDTH - 2, LABEL_HEIGHT - 2);
 
     // Always use boxed layout
-    {
-      // Boxed layout - match the user's image
-      const padding = 10;
-      const topRowHeight = 60;
-      const middleHeight = 60; // Reduced further to give more space to title
-      const bottomHeight = LABEL_HEIGHT - topRowHeight - middleHeight - padding * 3;
+    const padding = 10;
+    const topRowHeight = 60;
+    const middleHeight = 60;
+    const bottomHeight = LABEL_HEIGHT - topRowHeight - middleHeight - padding * 3;
 
-      // Top row boxes
-      const topLeftWidth = 120;
-      const topRightWidth = LABEL_WIDTH - topLeftWidth - padding * 3;
+    // Top row boxes
+    const topLeftWidth = 120;
+    const topRightWidth = LABEL_WIDTH - topLeftWidth - padding * 3;
 
-      // Draw guide outlines only if showGuides is enabled
-      if (showGuides) {
-        ctx.strokeStyle = '#cccccc';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([4, 4]);
-        
-        // Top left box (Condition)
-        ctx.strokeRect(padding, padding, topLeftWidth, topRowHeight);
-        
-        // Top right box (Price)
-        const topRightX = padding + topLeftWidth + padding;
-        ctx.strokeRect(topRightX, padding, topRightWidth, topRowHeight);
-        
-        // Bottom box (Title)
-        const bottomY = padding + topRowHeight + padding + middleHeight + padding;
-        ctx.strokeRect(padding, bottomY, LABEL_WIDTH - padding * 2, bottomHeight);
-        
-        ctx.setLineDash([]); // Reset to solid line
-      }
-
-      // Top left content (Condition)
-      if (fieldConfig.includeCondition) {
-        drawText(ctx, labelData.condition, padding + 5, padding + 5, topLeftWidth - 10, topRowHeight - 10, 'center');
-      }
-
-      // Top right content (Price)
-      if (fieldConfig.includePrice) {
-        const topRightX = padding + topLeftWidth + padding;
-        drawText(ctx, labelData.price, topRightX + 5, padding + 5, topRightWidth - 10, topRowHeight - 10, 'center');
-      }
-
-      // Middle section (Barcode/QR)
-      if (fieldConfig.barcodeMode !== 'none') {
-        const middleY = padding + topRowHeight + padding;
-        const barcodeWidth = LABEL_WIDTH - padding * 2;
-        drawBarcode(ctx, padding + 50, middleY + 10, barcodeWidth - 100, middleHeight - 20, labelData.barcode, fieldConfig.barcodeMode);
-      }
-
-      // Bottom content (Title)
-      if (fieldConfig.includeTitle) {
-        const bottomY = padding + topRowHeight + padding + middleHeight + padding;
-        drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
-      }
+    // Draw guide outlines only if showGuides is enabled
+    if (showGuides) {
+      ctx.strokeStyle = '#cccccc';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      
+      // Top left box (Condition)
+      ctx.strokeRect(padding, padding, topLeftWidth, topRowHeight);
+      
+      // Top right box (Price)
+      const topRightX = padding + topLeftWidth + padding;
+      ctx.strokeRect(topRightX, padding, topRightWidth, topRowHeight);
+      
+      // Bottom box (Title)
+      const bottomY = padding + topRowHeight + padding + middleHeight + padding;
+      ctx.strokeRect(padding, bottomY, LABEL_WIDTH - padding * 2, bottomHeight);
+      
+      ctx.setLineDash([]); // Reset to solid line
     }
+
+    // Top left content (Condition)
+    if (fieldConfig.includeCondition) {
+      drawText(ctx, labelData.condition, padding + 5, padding + 5, topLeftWidth - 10, topRowHeight - 10, 'center');
+    }
+
+    // Top right content (Price)
+    if (fieldConfig.includePrice) {
+      const topRightX = padding + topLeftWidth + padding;
+      drawText(ctx, labelData.price, topRightX + 5, padding + 5, topRightWidth - 10, topRowHeight - 10, 'center');
+    }
+
+    // Middle section (Barcode/QR)
+    if (fieldConfig.barcodeMode !== 'none') {
+      const middleY = padding + topRowHeight + padding;
+      const barcodeWidth = LABEL_WIDTH - padding * 2;
+      drawBarcode(ctx, padding + 50, middleY + 10, barcodeWidth - 100, middleHeight - 20, labelData.barcode, fieldConfig.barcodeMode);
+    }
+
+    // Bottom content (Title)
+    if (fieldConfig.includeTitle) {
+      const bottomY = padding + topRowHeight + padding + middleHeight + padding;
+      drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
+    }
+  };
+
+  // Expose the export function through the ref
+  useImperativeHandle(ref, () => ({
+    exportToPNG
+  }));
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    drawLabelContent(ctx, fieldConfig, labelData, showGuides);
   }, [fieldConfig, labelData, showGuides]);
 
   return (
@@ -189,4 +236,4 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData, showGuides = false 
       </CardContent>
     </Card>
   );
-};
+});

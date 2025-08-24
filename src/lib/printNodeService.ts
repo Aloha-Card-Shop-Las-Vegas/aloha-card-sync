@@ -156,6 +156,52 @@ class PrintNodeService {
     }
   }
 
+  async printPNG(
+    pngBlob: Blob,
+    printerId: number,
+    options: PrintJobOptions = {}
+  ): Promise<PrintJobResult> {
+    try {
+      // Convert blob to base64
+      const arrayBuffer = await pngBlob.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+      
+      const printJob = {
+        printerId,
+        title: options.title || 'Label PNG',
+        contentType: 'png_base64',
+        content: base64,
+        source: 'web-app',
+        qty: options.copies || 1
+      };
+
+      console.log('PrintNode PNG job payload:', {
+        printerId,
+        title: printJob.title,
+        contentType: printJob.contentType,
+        qty: printJob.qty,
+        source: printJob.source,
+        contentSize: base64.length
+      });
+
+      const result = await this.makeRequest<PrintNodeJob>('/printjobs', {
+        method: 'POST',
+        body: JSON.stringify(printJob),
+      });
+
+      return {
+        jobId: result.id,
+        success: true
+      };
+    } catch (error) {
+      return {
+        jobId: -1,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  }
+
   async getJobStatus(jobId: number): Promise<PrintNodeJob> {
     return this.makeRequest<PrintNodeJob>(`/printjobs/${jobId}`);
   }

@@ -143,6 +143,13 @@ export function usePrintNode() {
     return printNodeService.printRAW(rawText, selectedPrinterId, options);
   }, [selectedPrinterId]);
 
+  const printPNG = useCallback(async (pngBlob: Blob, options?: { title?: string; copies?: number }) => {
+    if (!selectedPrinterId) {
+      throw new Error('No printer selected');
+    }
+    return printNodeService.printPNG(pngBlob, selectedPrinterId, options);
+  }, [selectedPrinterId]);
+
   const selectedPrinter = printers.find(p => p.id === selectedPrinterId) || null;
 
   return {
@@ -155,6 +162,7 @@ export function usePrintNode() {
     connectionError,
     refreshPrinters,
     printPDF,
-    printRAW
+    printRAW,
+    printPNG
   };
 }

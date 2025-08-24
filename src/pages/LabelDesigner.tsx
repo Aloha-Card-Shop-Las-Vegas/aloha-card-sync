@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,8 @@ import { useLocalStorageString } from "@/hooks/useLocalStorage";
 import { generateBoxedLayoutTSPL, type LabelFieldConfig } from "@/lib/tspl";
 import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
 import { Settings, Eye, Printer, ChevronDown, Home } from "lucide-react";
+import jsPDF from "jspdf";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -42,9 +44,15 @@ export default function LabelDesigner() {
   });
 
   const location = useLocation();
-  const { printRAW, isConnected: printNodeConnected, selectedPrinterId } = usePrintNode();
+  const { printRAW, printPDF, printPNG, isConnected: printNodeConnected, selectedPrinterId, selectedPrinter } = usePrintNode();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
+
+  // Print format selection with localStorage persistence
+  const [printFormat, setPrintFormat] = useLocalStorageString('print-format', 'pdf');
+  
+  // Ref for accessing canvas export function
+  const previewCanvasRef = useRef<any>(null);
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -109,7 +117,42 @@ export default function LabelDesigner() {
     }
   }, [labelData, fieldConfig, tsplSettings]);
 
-  // PrintNode printing function
+  // Generate PDF from canvas
+  const generatePDFFromCanvas = async (testData?: any, testConfig?: any): Promise<string> => {
+    try {
+      const canvas = previewCanvasRef.current;
+      if (!canvas || !canvas.exportToPNG) {
+        throw new Error('Canvas export function not available');
+      }
+
+      // Get high-DPI PNG from canvas
+      const pngBlob = await canvas.exportToPNG(203); // 203 DPI for thermal printing
+      
+      // Convert blob to data URL for jsPDF
+      const pngDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(pngBlob);
+      });
+
+      // Create PDF with exact 2x1 inch dimensions
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'in',
+        format: [2, 1] // 2x1 inches
+      });
+
+      // Add the image to fill the entire PDF
+      pdf.addImage(pngDataUrl, 'PNG', 0, 0, 2, 1);
+      
+      return pdf.output('datauristring').split(',')[1]; // Return base64 part only
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      throw error;
+    }
+  };
+
+  // PrintNode printing function with format selection
   const handlePrintNodePrint = async (isTest = false) => {
     if (!selectedPrinterId) {
       toast.error('Select a PrintNode printer first');
@@ -136,18 +179,41 @@ export default function LabelDesigner() {
         barcodeMode: 'qr' as const
       } : fieldConfig;
 
-      const tspl = generateBoxedLayoutTSPL(testData, testConfig, tsplSettings);
+      let result;
+      const jobTitle = isTest ? 'Test Label' : 'Label Print';
 
-      const result = await printRAW(tspl, {
-        title: isTest ? 'Test Label' : 'Label Print',
-        copies: 1
-      });
+      if (printFormat === 'raw') {
+        // RAW TSPL printing
+        const tspl = generateBoxedLayoutTSPL(testData, testConfig, tsplSettings);
+        result = await printRAW(tspl, {
+          title: jobTitle,
+          copies: 1
+        });
+      } else if (printFormat === 'pdf') {
+        // PDF printing from canvas
+        const pdfBase64 = await generatePDFFromCanvas(testData, testConfig);
+        result = await printPDF(pdfBase64, {
+          title: jobTitle,
+          copies: 1
+        });
+      } else if (printFormat === 'png') {
+        // PNG printing
+        const canvas = previewCanvasRef.current;
+        if (!canvas || !canvas.exportToPNG) {
+          throw new Error('Canvas export function not available');
+        }
+        const pngBlob = await canvas.exportToPNG(203);
+        result = await printPNG(pngBlob, {
+          title: jobTitle,
+          copies: 1
+        });
+      }
 
-      if (result.success) {
+      if (result?.success) {
         setHasPrinted(true);
-        toast.success(`${isTest ? 'Test' : 'Label'} sent to PrintNode printer successfully (Job ID: ${result.jobId})`);
+        toast.success(`${isTest ? 'Test' : 'Label'} sent to printer successfully (Job ID: ${result.jobId})`);
       } else {
-        throw new Error(result.error || 'Print failed');
+        throw new Error(result?.error || 'Print failed');
       }
       
     } catch (e) {
@@ -361,6 +427,7 @@ export default function LabelDesigner() {
                 <div className="space-y-4">
                   <div className="flex justify-center">
                     <LabelPreviewCanvas 
+                      ref={previewCanvasRef}
                       fieldConfig={{ ...fieldConfig, templateStyle: 'boxed' }}
                       labelData={labelData}
                       showGuides={showGuides === 'true'}
@@ -407,9 +474,34 @@ export default function LabelDesigner() {
                         <div className="h-2 w-2 rounded-full bg-green-500" />
                         <span className="text-sm font-medium text-green-800">Printer Ready</span>
                       </div>
-                      <p className="text-xs text-green-700 mb-3">
-                        PrintNode cloud printing available
+                      <p className="text-xs text-green-700">
+                        {selectedPrinter?.name || 'PrintNode printer selected'}
                       </p>
+                    </div>
+
+                    {/* Print Format Selection */}
+                    <div className="space-y-2">
+                      <Label className="text-sm font-medium">Print Format</Label>
+                      <RadioGroup value={printFormat} onValueChange={setPrintFormat}>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="pdf" id="pdf" />
+                          <Label htmlFor="pdf" className="text-sm">PDF (Recommended for Rollo)</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="png" id="png" />
+                          <Label htmlFor="png" className="text-sm">PNG Image</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="raw" id="raw" />
+                          <Label htmlFor="raw" className="text-sm">RAW TSPL</Label>
+                        </div>
+                      </RadioGroup>
+                      {(selectedPrinter?.name?.toLowerCase().includes('rollo') || 
+                        selectedPrinter?.description?.toLowerCase().includes('rollo')) && printFormat === 'raw' && (
+                        <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                          ⚠️ Rollo printers work better with PDF format
+                        </p>
+                      )}
                     </div>
                     
                     <div className="space-y-2">
