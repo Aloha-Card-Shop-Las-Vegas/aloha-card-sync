@@ -68,7 +68,7 @@ const Index = () => {
   });
   const [batch, setBatch] = useState<CardItem[]>([]);
   const [lookupCert, setLookupCert] = useState("");
-  const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("graded");
+  const [intakeMode, setIntakeMode] = useState<'graded' | 'raw'>("raw");
 
   // PrintNode state
   const [printers, setPrinters] = useState<any[]>([]);
