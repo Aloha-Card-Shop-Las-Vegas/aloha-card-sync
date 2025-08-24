@@ -7,16 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { toast } from "sonner";
 import { Link, useLocation } from "react-router-dom";
 import { PrinterPanel } from "@/components/PrinterPanel";
-import { LabelCanvasEditor } from "@/components/LabelCanvasEditor";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
-import { generateUnifiedTSPL, generateTSPLFromLayout, type LabelFieldConfig, type LabelLayout } from "@/lib/tspl";
-import { useLabelLayouts } from "@/hooks/useLabelLayouts";
+import { generateUnifiedTSPL, type LabelFieldConfig } from "@/lib/tspl";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -35,53 +32,6 @@ function useSEO(opts: { title: string; description?: string; canonical?: string 
   }, [opts.title, opts.description, opts.canonical]);
 }
 
-// Create a well-positioned starter layout
-const createStarterLayout = (): LabelLayout => ({
-  title: { 
-    visible: true, 
-    x: 15, 
-    y: 15, 
-    fontSize: 2,
-    prefix: '' 
-  },
-  sku: { 
-    visible: true, 
-    x: 15, 
-    y: 45, 
-    fontSize: 1,
-    prefix: 'SKU: ' 
-  },
-  price: { 
-    visible: true, 
-    x: 280, 
-    y: 15, 
-    fontSize: 3,
-    prefix: '$' 
-  },
-  lot: { 
-    visible: true, 
-    x: 15, 
-    y: 70, 
-    fontSize: 1,
-    prefix: 'LOT: ' 
-  },
-  condition: { 
-    visible: true, 
-    x: 200, 
-    y: 45, 
-    fontSize: 1,
-    prefix: '' 
-  },
-  barcode: { 
-    mode: 'qr' as const, 
-    x: 15, 
-    y: 100, 
-    size: 'M' as const,
-    width: 60,
-    height: 60
-  }
-});
-
 export default function LabelDesigner() {
   useSEO({ 
     title: "Label Designer 2x1 in | Aloha", 
@@ -92,23 +42,13 @@ export default function LabelDesigner() {
   const { printRAW, isConnected: printNodeConnected, selectedPrinterId } = usePrintNode();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
-  
-  // Layout management
-  const { layouts, saveLayout, updateLayout, deleteLayout, setAsDefault } = useLabelLayouts();
-  const [layoutMode, setLayoutMode] = useLocalStorageString('layout-mode', 'auto');
-  const [currentLayoutId, setCurrentLayoutId] = useLocalStorageString('current-layout-id', '');
-  const [currentLayout, setCurrentLayout] = useState<LabelLayout | null>(null);
-  const [useCanvasEditor, setUseCanvasEditor] = useLocalStorageString('use-canvas-editor', 'true');
-  const [layoutName, setLayoutName] = useState('');
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
   const [tsplSpeed, setTsplSpeed] = useLocalStorageString('tspl-speed', '4');
   const [tsplGap, setTsplGap] = useLocalStorageString('tspl-gap', '0');
 
-  // Field configuration with localStorage persistence (for Auto mode)
+  // Field configuration with localStorage persistence
   const [includeTitle, setIncludeTitle] = useLocalStorageString('field-title', 'true');
   const [includeSku, setIncludeSku] = useLocalStorageString('field-sku', 'true');
   const [includePrice, setIncludePrice] = useLocalStorageString('field-price', 'true');
@@ -151,83 +91,16 @@ export default function LabelDesigner() {
     gapInches: parseFloat(tsplGap) || 0
   };
 
-  // Load saved layout on mount and auto-create starter layout if needed
-  useEffect(() => {
-    if (currentLayoutId && layouts.length > 0) {
-      const savedLayout = layouts.find(l => l.id === currentLayoutId);
-      if (savedLayout) {
-        setCurrentLayout(savedLayout.layout);
-        setLayoutName(savedLayout.name);
-      }
-    } else if (layoutMode === 'custom' && !currentLayout) {
-      // Auto-create starter layout for better onboarding
-      const starterLayout = createStarterLayout();
-      setCurrentLayout(starterLayout);
-      setLayoutName('Untitled Layout');
-      setIsEditingName(true);
-    }
-  }, [currentLayoutId, layouts, layoutMode, currentLayout]);
-
   // Update preview when data or config changes
   useEffect(() => {
     try {
-      let tspl: string;
-      if (layoutMode === 'custom' && currentLayout) {
-        tspl = generateTSPLFromLayout(currentLayout, labelData, tsplSettings);
-      } else {
-        tspl = generateUnifiedTSPL(labelData, fieldConfig, tsplSettings);
-      }
+      const tspl = generateUnifiedTSPL(labelData, fieldConfig, tsplSettings);
       setPreviewTspl(tspl);
     } catch (error) {
       console.error('Failed to generate TSPL preview:', error);
       setPreviewTspl('// Error generating preview');
     }
-  }, [labelData, fieldConfig, tsplSettings, layoutMode, currentLayout]);
-
-  const handleSaveLayout = async (asNew = false) => {
-    if (!currentLayout || isSaving) return;
-    
-    const finalName = layoutName.trim() || 'Untitled Layout';
-    setIsSaving(true);
-    
-    try {
-      if (asNew || !currentLayoutId) {
-        // Save as new layout
-        const id = await saveLayout(finalName, currentLayout, false);
-        setCurrentLayoutId(id);
-        setIsEditingName(false);
-        toast.success(`Layout "${finalName}" saved successfully`);
-      } else {
-        // Update existing layout
-        await updateLayout(currentLayoutId, finalName, currentLayout);
-        setIsEditingName(false);
-        toast.success(`Layout "${finalName}" updated successfully`);
-      }
-    } catch (error) {
-      console.error('Save layout error:', error);
-      toast.error('Failed to save layout: ' + (error as Error).message);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleLoadLayout = (layoutId: string) => {
-    const layout = layouts.find(l => l.id === layoutId);
-    if (layout) {
-      setCurrentLayoutId(layoutId);
-      setCurrentLayout(layout.layout);
-      setLayoutName(layout.name);
-      setIsEditingName(false);
-    }
-  };
-
-  const handleCreateNewLayout = () => {
-    const starterLayout = createStarterLayout();
-    setCurrentLayout(starterLayout);
-    setLayoutName('New Layout');
-    setCurrentLayoutId('');
-    setIsEditingName(true);
-  };
+  }, [labelData, fieldConfig, tsplSettings]);
 
   const handlePrintNodePrint = async (isTest = false) => {
     if (!selectedPrinterId) {
@@ -255,12 +128,7 @@ export default function LabelDesigner() {
         barcodeMode: 'qr' as const
       } : fieldConfig;
 
-      let tspl: string;
-      if (layoutMode === 'custom' && currentLayout) {
-        tspl = generateTSPLFromLayout(currentLayout, testData, tsplSettings);
-      } else {
-        tspl = generateUnifiedTSPL(testData, testConfig, tsplSettings);
-      }
+      const tspl = generateUnifiedTSPL(testData, testConfig, tsplSettings);
 
       const result = await printRAW(tspl, {
         title: isTest ? 'Test Label' : 'Label Print',
@@ -303,230 +171,65 @@ export default function LabelDesigner() {
               <CardTitle>Label Data & Template</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Layout Mode Selection */}
+              {/* Include Fields */}
               <div>
-                <Label className="text-base font-medium">Layout Mode</Label>
-                <div className="flex gap-4 mt-2">
+                <Label className="text-base font-medium">Include Fields</Label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3">
                   <div className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      id="layout-auto"
-                      name="layout-mode"
-                      value="auto"
-                      checked={layoutMode === 'auto'}
-                      onChange={(e) => setLayoutMode(e.target.value)}
-                      className="h-4 w-4"
+                    <Checkbox 
+                      id="include-title" 
+                      checked={includeTitle === 'true'} 
+                      onCheckedChange={(checked) => setIncludeTitle(checked ? 'true' : 'false')}
                     />
-                    <Label htmlFor="layout-auto" className="text-sm">Auto Layout</Label>
+                    <Label htmlFor="include-title" className="text-sm">Title</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <input
-                      type="radio"
-                      id="layout-custom"
-                      name="layout-mode"
-                      value="custom"
-                      checked={layoutMode === 'custom'}
-                      onChange={(e) => setLayoutMode(e.target.value)}
-                      className="h-4 w-4"
+                    <Checkbox 
+                      id="include-sku" 
+                      checked={includeSku === 'true'} 
+                      onCheckedChange={(checked) => setIncludeSku(checked ? 'true' : 'false')}
                     />
-                    <Label htmlFor="layout-custom" className="text-sm">Visual Designer</Label>
+                    <Label htmlFor="include-sku" className="text-sm">SKU</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-price" 
+                      checked={includePrice === 'true'} 
+                      onCheckedChange={(checked) => setIncludePrice(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-price" className="text-sm">Price</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-lot" 
+                      checked={includeLot === 'true'} 
+                      onCheckedChange={(checked) => setIncludeLot(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-lot" className="text-sm">Lot Number</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-condition" 
+                      checked={includeCondition === 'true'} 
+                      onCheckedChange={(checked) => setIncludeCondition(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-condition" className="text-sm">Condition</Label>
+                  </div>
+                  <div>
+                    <Label htmlFor="barcode-mode" className="text-sm">Barcode</Label>
+                    <Select value={barcodeMode} onValueChange={setBarcodeMode}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="qr">QR Code</SelectItem>
+                        <SelectItem value="barcode">Barcode</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
-
-              {/* Auto Layout Fields */}
-              {layoutMode === 'auto' && (
-                <div>
-                  <Label className="text-base font-medium">Include Fields</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-title" 
-                        checked={includeTitle === 'true'} 
-                        onCheckedChange={(checked) => setIncludeTitle(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-title" className="text-sm">Title</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-sku" 
-                        checked={includeSku === 'true'} 
-                        onCheckedChange={(checked) => setIncludeSku(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-sku" className="text-sm">SKU</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-price" 
-                        checked={includePrice === 'true'} 
-                        onCheckedChange={(checked) => setIncludePrice(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-price" className="text-sm">Price</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-lot" 
-                        checked={includeLot === 'true'} 
-                        onCheckedChange={(checked) => setIncludeLot(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-lot" className="text-sm">Lot Number</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-condition" 
-                        checked={includeCondition === 'true'} 
-                        onCheckedChange={(checked) => setIncludeCondition(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-condition" className="text-sm">Condition</Label>
-                    </div>
-                    <div>
-                      <Label htmlFor="barcode-mode" className="text-sm">Barcode</Label>
-                      <Select value={barcodeMode} onValueChange={setBarcodeMode}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="qr">QR Code</SelectItem>
-                          <SelectItem value="barcode">Barcode</SelectItem>
-                          <SelectItem value="none">None</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Visual Designer Mode */}
-              {layoutMode === 'custom' && (
-                <div className="space-y-4">
-                  {/* Layout Management Header */}
-                  <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <h3 className="font-semibold text-lg">Visual Designer</h3>
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">Beta</Badge>
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        Drag and drop fields to create custom label layouts
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Layout Name and Actions */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 flex-1">
-                      {isEditingName ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <Input
-                            value={layoutName}
-                            onChange={(e) => setLayoutName(e.target.value)}
-                            placeholder="Layout name"
-                            className="max-w-xs"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSaveLayout();
-                              } else if (e.key === 'Escape') {
-                                setIsEditingName(false);
-                              }
-                            }}
-                            autoFocus
-                          />
-                          <Button size="sm" onClick={() => handleSaveLayout()}>Save</Button>
-                          <Button size="sm" variant="outline" onClick={() => setIsEditingName(false)}>Cancel</Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{layoutName || 'Untitled Layout'}</span>
-                          <Button size="sm" variant="ghost" onClick={() => setIsEditingName(true)}>
-                            Edit Name
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Select value={currentLayoutId} onValueChange={handleLoadLayout}>
-                        <SelectTrigger className="w-48">
-                          <SelectValue placeholder="Load saved layout" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {layouts.map(layout => (
-                            <SelectItem key={layout.id} value={layout.id}>
-                              {layout.name} {layout.is_default && '(Default)'}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Button variant="outline" size="sm" onClick={handleCreateNewLayout}>
-                        New Layout
-                      </Button>
-
-                      <Button 
-                        size="sm" 
-                        onClick={() => handleSaveLayout(true)}
-                        disabled={!currentLayout}
-                      >
-                        Save as New
-                      </Button>
-
-                      {currentLayoutId && (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => {
-                            if (confirm('Delete this layout?')) {
-                              deleteLayout(currentLayoutId).then(() => {
-                                setCurrentLayoutId('');
-                                setCurrentLayout(null);
-                                setLayoutName('');
-                                toast.success('Layout deleted successfully');
-                              }).catch((error) => {
-                                toast.error('Failed to delete layout: ' + error.message);
-                              });
-                            }
-                          }}
-                        >
-                          Delete
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Visual Canvas Editor */}
-                  {currentLayout && (
-                    <div className="border rounded-lg bg-gradient-to-br from-gray-50 to-gray-100 p-1">
-                      <LabelCanvasEditor
-                        layout={currentLayout}
-                        onChange={(newLayout) => {
-                          setCurrentLayout(newLayout);
-                          // Auto-save if layout exists and has a valid ID, but not if manual save is in progress
-                          if (currentLayoutId && layoutName && !isSaving) {
-                            updateLayout(currentLayoutId, layoutName, newLayout)
-                              .then(() => {
-                                console.log('Layout auto-saved');
-                              })
-                              .catch((error) => {
-                                console.warn('Auto-save failed:', error);
-                              });
-                          }
-                        }}
-                        labelData={labelData}
-                        printerDpi={203}
-                      />
-                    </div>
-                  )}
-
-                  {!currentLayout && (
-                    <div className="text-center py-12 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
-                      <p className="text-muted-foreground mb-4">No layout selected</p>
-                      <Button onClick={handleCreateNewLayout}>
-                        Create Starter Layout
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Label Data Inputs */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
