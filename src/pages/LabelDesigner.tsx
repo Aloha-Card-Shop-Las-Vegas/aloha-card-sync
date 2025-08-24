@@ -7,14 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import { toast } from "sonner";
 import { Link, useLocation } from "react-router-dom";
 import { PrinterPanel } from "@/components/PrinterPanel";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
 import { generateBoxedLayoutTSPL, type LabelFieldConfig } from "@/lib/tspl";
-import { useTemplates } from "@/hooks/useTemplates";
 import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
@@ -42,14 +40,8 @@ export default function LabelDesigner() {
 
   const location = useLocation();
   const { printRAW, isConnected: printNodeConnected, selectedPrinterId } = usePrintNode();
-  const { templates, loading: templatesLoading, saveTemplate, setAsDefault, loadDefaultTemplate, refreshTemplates } = useTemplates();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
-  
-  // Template management state
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  const [templateName, setTemplateName] = useState('');
-  const [templateStyle, setTemplateStyle] = useLocalStorageString('template-style', 'boxed');
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -112,68 +104,9 @@ export default function LabelDesigner() {
       console.error('Failed to generate TSPL preview:', error);
       setPreviewTspl('// Error generating preview');
     }
-  }, [labelData, fieldConfig, tsplSettings, templateStyle]);
+  }, [labelData, fieldConfig, tsplSettings]);
 
-  // Template management functions
-  const handleSaveTemplate = async () => {
-    if (!templateName.trim()) {
-      toast.error('Please enter a template name');
-      return;
-    }
-
-    const result = await saveTemplate(templateName, { ...fieldConfig, templateStyle }, labelData, tsplSettings, selectedTemplateId || undefined);
-    if (result) {
-      setSelectedTemplateId(result.id);
-      setTemplateName('');
-    }
-  };
-
-  const handleLoadTemplate = (templateId: string) => {
-    const template = templates.find(t => t.id === templateId);
-    if (!template) return;
-
-    const { fieldConfig: config, labelData: data, tsplSettings: settings } = template.canvas;
-    
-    // Load field configuration
-    setIncludeTitle(config.includeTitle ? 'true' : 'false');
-    setIncludeSku(config.includeSku ? 'true' : 'false');
-    setIncludePrice(config.includePrice ? 'true' : 'false');
-    setIncludeLot(config.includeLot ? 'true' : 'false');
-    setIncludeCondition(config.includeCondition ? 'true' : 'false');
-    setBarcodeMode(config.barcodeMode);
-    
-    // Load template style if available
-    if (config.templateStyle) {
-      setTemplateStyle(config.templateStyle);
-    }
-
-    // Load label data
-    setTitle(data.title);
-    setSku(data.sku);
-    setPrice(data.price);
-    setLot(data.lot);
-    setCondition(data.condition);
-    setBarcodeValue(data.barcode);
-
-    // Load TSPL settings
-    setTsplDensity(settings.density.toString());
-    setTsplSpeed(settings.speed.toString());
-    setTsplGap(settings.gapInches.toString());
-
-    setSelectedTemplateId(templateId);
-    setTemplateName(template.name);
-    toast.success(`Template "${template.name}" loaded`);
-  };
-
-  const handleLoadDefault = () => {
-    const defaultTemplate = loadDefaultTemplate();
-    if (defaultTemplate) {
-      handleLoadTemplate(defaultTemplate.id);
-    } else {
-      toast.error('No default template found');
-    }
-  };
-
+  // PrintNode printing function
   const handlePrintNodePrint = async (isTest = false) => {
     if (!selectedPrinterId) {
       toast.error('Select a PrintNode printer first');
@@ -237,10 +170,10 @@ export default function LabelDesigner() {
       </header>
 
       <main className="container mx-auto px-6 py-8">
-        <div className="grid lg:grid-cols-3 gap-6">
-          <Card className="shadow-aloha lg:col-span-2">
+        <div className="grid lg:grid-cols-2 gap-6">
+          <Card className="shadow-aloha">
             <CardHeader>
-              <CardTitle>Label Data & Template</CardTitle>
+              <CardTitle>Label Designer</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Barcode Selection */}
@@ -379,179 +312,105 @@ export default function LabelDesigner() {
             </CardContent>
           </Card>
 
-          <div className="space-y-6">
-            <Card className="shadow-aloha">
-              <CardHeader>
-                <CardTitle>Templates</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="template-select">Load Template</Label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={refreshTemplates}
-                    disabled={templatesLoading}
-                  >
-                    Refresh
-                  </Button>
-                </div>
-                <Select value={selectedTemplateId} onValueChange={handleLoadTemplate}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={
-                      templatesLoading ? "Loading templates..." : 
-                      templates.length === 0 ? "No templates yet" :
-                      "Select a template..."
-                    } />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((template) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name} {template.is_default && '(Default)'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {templates.length === 0 && !templatesLoading && (
-                  <p className="text-xs text-muted-foreground">
-                    Save your first template to get started
-                  </p>
-                )}
-                
-                <div>
-                  <Label htmlFor="template-name">Template Name</Label>
-                  <Input
-                    id="template-name"
-                    value={templateName}
-                    onChange={(e) => setTemplateName(e.target.value)}
-                    placeholder="Enter template name..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSaveTemplate}
-                    disabled={!templateName.trim() || templatesLoading}
-                  >
-                    {selectedTemplateId ? 'Update' : 'Save New'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => selectedTemplateId && setAsDefault(selectedTemplateId)}
-                    disabled={!selectedTemplateId || templatesLoading}
-                  >
-                    Set Default
-                  </Button>
-                </div>
-
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleLoadDefault}
-                  className="w-full"
-                  disabled={templatesLoading}
-                >
-                  Load Default
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="shadow-aloha">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  PrintNode Cloud Printing
-                  {printNodeConnected ? (
-                    <Badge variant="default" className="bg-green-600">
-                      Connected
-                    </Badge>
-                  ) : (
-                    <Badge variant="destructive">Not Connected</Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {printNodeConnected && selectedPrinterId ? (
-                  <div className="space-y-4">
-                    <div className="p-3 border rounded-lg bg-green-50">
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm font-medium text-green-800">✓ PrintNode Ready</Label>
-                        <div className="h-2 w-2 rounded-full bg-green-500" />
-                      </div>
-                      <p className="text-xs text-green-700 mb-3">
-                        Reliable raw TSPL printing available
-                      </p>
-                      
-                      <div className="flex gap-2 mt-3">
-                        <Button 
-                          size="sm" 
-                          onClick={() => handlePrintNodePrint(true)}
-                          disabled={printLoading}
-                          variant="outline"
-                          className="flex-1 border-green-600 text-green-700 hover:bg-green-50"
-                        >
-                          {printLoading ? "Testing..." : "Test Print"}
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          onClick={() => handlePrintNodePrint(false)}
-                          disabled={printLoading}
-                          className={`flex-1 text-white ${
-                            hasPrinted 
-                              ? 'bg-orange-600 hover:bg-orange-700' 
-                              : 'bg-green-600 hover:bg-green-700'
-                          }`}
-                        >
-                          {printLoading ? "Printing..." : hasPrinted ? "Reprint" : "Print Label"}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+          {/* Right Column - PrintNode Integration */}
+          <Card className="shadow-aloha">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                PrintNode Cloud Printing
+                {printNodeConnected ? (
+                  <Badge variant="default" className="bg-green-600">
+                    Connected
+                  </Badge>
                 ) : (
-                  <div className="p-3 border rounded-lg bg-red-50">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="h-2 w-2 rounded-full bg-red-500" />
-                      <Label className="text-sm font-medium text-red-800">PrintNode Not Available</Label>
-                    </div>
-                    <p className="text-sm text-red-700 mb-2">
-                      {!printNodeConnected ? 
-                        "Check your PrintNode API key configuration in Supabase secrets." :
-                        "No printer selected. Use the PrintNode panel below."}
-                    </p>
-                  </div>
+                  <Badge variant="destructive">Not Connected</Badge>
                 )}
-              </CardContent>
-            </Card>
-
-            <PrinterPanel />
-
-            <Card className="shadow-aloha">
-              <CardHeader>
-                <CardTitle>TSPL for Rollo Printers</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <h4 className="font-medium">Optimized for Rollo:</h4>
-                    <ul className="list-disc list-inside text-muted-foreground space-y-1 mt-1">
-                      <li>Field-based layout generation</li>
-                      <li>Raw TSPL for crisp thermal printing</li>
-                      <li>QR codes and barcodes supported</li>
-                      <li>2×1 inch label size optimized</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <h4 className="font-medium">Print Quality:</h4>
-                    <p className="text-muted-foreground">
-                      Direct TSPL commands ensure maximum print quality on Rollo thermal printers.
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {printNodeConnected && selectedPrinterId ? (
+                <div className="space-y-4">
+                  <div className="p-3 border rounded-lg bg-green-50">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium text-green-800">✓ PrintNode Ready</Label>
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
+                    </div>
+                    <p className="text-xs text-green-700 mb-3">
+                      Reliable raw TSPL printing available
                     </p>
+                    
+                    <div className="flex gap-2 mt-3">
+                      <Button 
+                        size="sm" 
+                        onClick={() => handlePrintNodePrint(true)}
+                        disabled={printLoading}
+                        variant="outline"
+                        className="flex-1 border-green-600 text-green-700 hover:bg-green-50"
+                      >
+                        {printLoading ? "Testing..." : "Test Print"}
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        onClick={() => handlePrintNodePrint(false)}
+                        disabled={printLoading}
+                        className={`flex-1 text-white ${
+                          hasPrinted 
+                            ? 'bg-orange-600 hover:bg-orange-700' 
+                            : 'bg-green-600 hover:bg-green-700'
+                        }`}
+                      >
+                        {printLoading ? "Printing..." : hasPrinted ? "Reprint" : "Print Label"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              ) : (
+                <div className="p-3 border rounded-lg bg-red-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="h-2 w-2 rounded-full bg-red-500" />
+                    <Label className="text-sm font-medium text-red-800">PrintNode Not Available</Label>
+                  </div>
+                  <p className="text-sm text-red-700 mb-2">
+                    {!printNodeConnected ? 
+                      "Check your PrintNode API key configuration in Supabase secrets." :
+                      "No printer selected. Use the PrintNode panel below."}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* PrintNode Panel - Full Width Below */}
+        <div className="mt-6">
+          <PrinterPanel />
+        </div>
+
+        {/* Info Card - Full Width Below */}
+        <div className="mt-6">
+          <Card className="shadow-aloha">
+            <CardHeader>
+              <CardTitle>TSPL for Rollo Printers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 text-sm">
+                <div>
+                  <h4 className="font-medium">Optimized for Rollo:</h4>
+                  <ul className="list-disc list-inside text-muted-foreground space-y-1 mt-1">
+                    <li>Boxed layout with condition, price, barcode, and title</li>
+                    <li>Raw TSPL for crisp thermal printing</li>
+                    <li>QR codes and barcodes supported</li>
+                    <li>2×1 inch label size optimized</li>
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-medium">Print Quality:</h4>
+                  <p className="text-muted-foreground">
+                    Direct TSPL commands ensure maximum print quality on Rollo thermal printers.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>
