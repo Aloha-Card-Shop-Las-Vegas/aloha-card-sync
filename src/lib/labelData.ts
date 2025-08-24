@@ -80,7 +80,7 @@ export function buildLabelDataFromItem(item: CardItem): LabelData {
     sku: item.sku || item.id?.toString() || 'NO-SKU',
     price: formatPrice(item.price),
     lot: item.lot || '',
-    condition: abbreviateGrade(item.grade),
+    condition: abbreviateGrade(item.grade || item.variant),
     barcode: item.sku || item.id?.toString() || 'NO-SKU'
   };
 }
