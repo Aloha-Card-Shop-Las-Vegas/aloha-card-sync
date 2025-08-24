@@ -34,7 +34,7 @@ export interface LabelTemplate {
   updated_at: string;
 }
 
-export function useTemplates() {
+export function useTemplates(templateType: 'general' | 'raw' = 'general') {
   const [templates, setTemplates] = useState<LabelTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [defaultTemplate, setDefaultTemplate] = useState<LabelTemplate | null>(null);
@@ -44,7 +44,7 @@ export function useTemplates() {
       const { data, error } = await supabase
         .from('label_templates')
         .select('*')
-        .eq('template_type', 'general')
+        .eq('template_type', templateType)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -102,7 +102,7 @@ export function useTemplates() {
           labelData,
           tsplSettings
         },
-        template_type: 'general'
+        template_type: templateType
       };
 
       let result;
@@ -160,7 +160,7 @@ export function useTemplates() {
     try {
       const { error } = await supabase.rpc('set_template_default', {
         template_id: templateId,
-        template_type_param: 'general'
+        template_type_param: templateType
       });
 
       if (error) throw error;

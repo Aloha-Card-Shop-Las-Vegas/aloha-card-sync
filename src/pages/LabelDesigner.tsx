@@ -16,9 +16,10 @@ import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
 import { generateBoxedLayoutTSPL, type LabelFieldConfig } from "@/lib/tspl";
 import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
-import { Settings, Eye, Printer, ChevronDown, Home } from "lucide-react";
+import { Settings, Eye, Printer, ChevronDown, Home, Save } from "lucide-react";
 import jsPDF from "jspdf";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { useRawTemplates } from "@/hooks/useRawTemplates";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -47,6 +48,10 @@ export default function LabelDesigner() {
   const { printPDF, isConnected: printNodeConnected, selectedPrinterId, selectedPrinter } = usePrintNode();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+
+  // Raw templates for Label Designer persistence
+  const { templates: rawTemplates, defaultTemplate, saveTemplate, setAsDefault, loading: templatesLoading } = useRawTemplates();
 
   // PDF is the only print format now
   const printFormat = 'pdf';
@@ -110,6 +115,56 @@ export default function LabelDesigner() {
       setPreviewTspl('// Error generating preview');
     }
   }, [labelData, fieldConfig, tsplSettings]);
+
+  // Load default template settings on mount
+  useEffect(() => {
+    if (defaultTemplate && !templatesLoading) {
+      const config = defaultTemplate.canvas?.fieldConfig;
+      if (config) {
+        setIncludeTitle(config.includeTitle ? 'true' : 'false');
+        setIncludeSku(config.includeSku ? 'true' : 'false'); 
+        setIncludePrice(config.includePrice ? 'true' : 'false');
+        setIncludeLot(config.includeLot ? 'true' : 'false');
+        setIncludeCondition(config.includeCondition ? 'true' : 'false');
+        setBarcodeMode(config.barcodeMode || 'barcode');
+      }
+
+      const data = defaultTemplate.canvas?.labelData;
+      if (data && !location.state) {
+        setTitle(data.title || '');
+        setSku(data.sku || '');
+        setPrice(data.price || '');
+        setLot(data.lot || '');
+        setCondition(data.condition || '');
+        setBarcodeValue(data.barcode || '');
+      }
+    }
+  }, [defaultTemplate, templatesLoading, location.state]);
+
+  // Save current configuration to database
+  const handleSaveTemplate = async () => {
+    setSaveLoading(true);
+    try {
+      const result = await saveTemplate(
+        'Optimized Barcode Template',
+        fieldConfig,
+        labelData,
+        tsplSettings,
+        defaultTemplate?.id
+      );
+
+      if (result) {
+        toast.success('Template saved successfully');
+      } else {
+        toast.error('Failed to save template');
+      }
+    } catch (error) {
+      console.error('Save template error:', error);
+      toast.error('Failed to save template');
+    } finally {
+      setSaveLoading(false);
+    }
+  };
 
   // Generate PDF from canvas
   const generatePDFFromCanvas = async (testData?: any, testConfig?: any): Promise<string> => {
@@ -335,6 +390,17 @@ export default function LabelDesigner() {
                 </div>
 
                 <Separator />
+
+                {/* Save Template Button */}
+                <Button 
+                  onClick={handleSaveTemplate}
+                  disabled={saveLoading}
+                  variant="outline"
+                  className="w-full gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  {saveLoading ? 'Saving...' : 'Save Template'}
+                </Button>
 
                 {/* Note: PDF printing only */}
                 <div className="p-2 bg-blue-50 border border-blue-200 rounded-md">
