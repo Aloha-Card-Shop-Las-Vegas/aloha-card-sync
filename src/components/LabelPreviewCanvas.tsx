@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useImperativeHandle } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import jsPDF from 'jspdf';
+import JsBarcode from 'jsbarcode';
 
 interface LabelPreviewCanvasProps {
   fieldConfig: {
@@ -111,11 +112,31 @@ export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>
   };
 
   const drawBarcode = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, data: string, mode: 'qr' | 'barcode') => {
-    // Simple barcode/QR representation
-    ctx.fillStyle = '#000000';
-    
-    if (mode === 'qr') {
-      // Draw QR code pattern
+    if (mode === 'barcode') {
+      // Create a temporary canvas for JsBarcode
+      const barcodeCanvas = document.createElement('canvas');
+      try {
+        JsBarcode(barcodeCanvas, data, {
+          format: "CODE128",
+          width: 2,
+          height: height,
+          displayValue: false,
+          margin: 0
+        });
+        
+        // Draw the barcode on the main canvas
+        ctx.drawImage(barcodeCanvas, x, y, width, height);
+      } catch (error) {
+        console.error('Barcode generation failed:', error);
+        // Fallback to text if barcode fails
+        ctx.fillStyle = '#000000';
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(data, x + width/2, y + height/2);
+      }
+    } else if (mode === 'qr') {
+      // Simple QR placeholder pattern
+      ctx.fillStyle = '#000000';
       const cellSize = Math.min(width, height) / 21; // 21x21 grid for QR
       for (let i = 0; i < 21; i++) {
         for (let j = 0; j < 21; j++) {
@@ -123,14 +144,6 @@ export const LabelPreviewCanvas = React.forwardRef<any, LabelPreviewCanvasProps>
           if ((i + j + data.length) % 3 === 0) {
             ctx.fillRect(x + j * cellSize, y + i * cellSize, cellSize, cellSize);
           }
-        }
-      }
-    } else {
-      // Draw barcode pattern
-      const barWidth = width / 50;
-      for (let i = 0; i < 50; i++) {
-        if ((i + data.charCodeAt(i % data.length)) % 3 === 0) {
-          ctx.fillRect(x + i * barWidth, y, barWidth, height);
         }
       }
     }

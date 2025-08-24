@@ -44,20 +44,18 @@ export default function LabelDesigner() {
   });
 
   const location = useLocation();
-  const { printRAW, printPDF, printPNG, isConnected: printNodeConnected, selectedPrinterId, selectedPrinter } = usePrintNode();
+  const { printPDF, isConnected: printNodeConnected, selectedPrinterId, selectedPrinter } = usePrintNode();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
 
-  // Print format selection with localStorage persistence
-  const [printFormat, setPrintFormat] = useLocalStorageString('print-format', 'pdf');
+  // PDF is the only print format now
+  const printFormat = 'pdf';
   
   // Ref for accessing canvas export function
   const previewCanvasRef = useRef<any>(null);
 
-  // TSPL settings with localStorage persistence
-  const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
-  const [tsplSpeed, setTsplSpeed] = useLocalStorageString('tspl-speed', '4');
-  const [tsplGap, setTsplGap] = useLocalStorageString('tspl-gap', '0');
+  // TSPL settings are no longer used for PDF printing
+  const tsplSettings = { density: 10, speed: 4, gapInches: 0 };
 
   // Field configuration with localStorage persistence
   const [includeTitle, setIncludeTitle] = useLocalStorageString('field-title', 'true');
@@ -65,7 +63,7 @@ export default function LabelDesigner() {
   const [includePrice, setIncludePrice] = useLocalStorageString('field-price', 'true');
   const [includeLot, setIncludeLot] = useLocalStorageString('field-lot', 'true');
   const [includeCondition, setIncludeCondition] = useLocalStorageString('field-condition', 'true');
-  const [barcodeMode, setBarcodeMode] = useLocalStorageString('barcode-mode', 'qr');
+  const [barcodeMode, setBarcodeMode] = useLocalStorageString('barcode-mode', 'barcode');
   
   // State for showGuides option
   const [showGuides, setShowGuides] = useLocalStorageString('labelDesigner_showGuides', 'false');
@@ -99,11 +97,7 @@ export default function LabelDesigner() {
     barcodeMode: barcodeMode as 'qr' | 'barcode' | 'none'
   };
 
-  const tsplSettings = {
-    density: parseInt(tsplDensity) || 10,
-    speed: parseInt(tsplSpeed) || 4,
-    gapInches: parseFloat(tsplGap) || 0
-  };
+  // tsplSettings already defined above
 
   // Update preview when data or config changes
   useEffect(() => {
@@ -182,32 +176,12 @@ export default function LabelDesigner() {
       let result;
       const jobTitle = isTest ? 'Test Label' : 'Label Print';
 
-      if (printFormat === 'raw') {
-        // RAW TSPL printing
-        const tspl = generateBoxedLayoutTSPL(testData, testConfig, tsplSettings);
-        result = await printRAW(tspl, {
-          title: jobTitle,
-          copies: 1
-        });
-      } else if (printFormat === 'pdf') {
-        // PDF printing from canvas
-        const pdfBase64 = await generatePDFFromCanvas(testData, testConfig);
-        result = await printPDF(pdfBase64, {
-          title: jobTitle,
-          copies: 1
-        });
-      } else if (printFormat === 'png') {
-        // PNG printing
-        const canvas = previewCanvasRef.current;
-        if (!canvas || !canvas.exportToPNG) {
-          throw new Error('Canvas export function not available');
-        }
-        const pngBlob = await canvas.exportToPNG(203);
-        result = await printPNG(pngBlob, {
-          title: jobTitle,
-          copies: 1
-        });
-      }
+      // PDF printing from canvas
+      const pdfBase64 = await generatePDFFromCanvas(testData, testConfig);
+      result = await printPDF(pdfBase64, {
+        title: jobTitle,
+        copies: 1
+      });
 
       if (result?.success) {
         setHasPrinted(true);
@@ -236,40 +210,16 @@ export default function LabelDesigner() {
       let result;
       const timestamp = new Date().toLocaleTimeString();
       
-      if (printFormat === 'pdf') {
-        if (!previewCanvasRef.current?.exportToPDF) {
-          toast.error('PDF export not available');
-          return;
-        }
-        
-        const pdfBase64 = await previewCanvasRef.current.exportToPDF();
-        result = await printPDF(pdfBase64, {
-          title: `Layout Test PDF - ${timestamp}`,
-          copies: 1
-        });
-      } else if (printFormat === 'png') {
-        if (!previewCanvasRef.current?.exportToPNG) {
-          toast.error('PNG export not available');
-          return;
-        }
-        
-        const pngBlob = await previewCanvasRef.current.exportToPNG();
-        result = await printPNG(pngBlob, {
-          title: `Layout Test PNG - ${timestamp}`,
-          copies: 1
-        });
-      } else {
-        // RAW format
-        if (!previewTspl) {
-          toast.error('No preview available to print');
-          return;
-        }
-        
-        result = await printRAW(previewTspl, {
-          title: `Layout Test RAW - ${timestamp}`,
-          copies: 1
-        });
+      if (!previewCanvasRef.current?.exportToPDF) {
+        toast.error('PDF export not available');
+        return;
       }
+      
+      const pdfBase64 = await previewCanvasRef.current.exportToPDF();
+      result = await printPDF(pdfBase64, {
+        title: `Layout Test PDF - ${timestamp}`,
+        copies: 1
+      });
 
       if (result.success) {
         toast.success(`Layout test sent to printer - Job ID: ${result.jobId}`);
@@ -370,71 +320,28 @@ export default function LabelDesigner() {
                         onChange={(e) => setBarcodeValue(e.target.value)}
                         placeholder="123456789"
                       />
-                      <Select value={barcodeMode} onValueChange={setBarcodeMode}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="qr">QR Code</SelectItem>
-                          <SelectItem value="barcode">Barcode</SelectItem>
-                          <SelectItem value="none">None</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <Select value={barcodeMode} onValueChange={setBarcodeMode}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="barcode">Code128 (Recommended)</SelectItem>
+                            <SelectItem value="qr">QR Code</SelectItem>
+                            <SelectItem value="none">None</SelectItem>
+                          </SelectContent>
+                        </Select>
                     </div>
                   </div>
                 </div>
 
                 <Separator />
 
-                {/* Advanced Settings */}
-                <Collapsible>
-                  <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="w-full justify-between p-0 h-auto font-normal">
-                      <span className="text-sm font-medium">Printer Settings</span>
-                      <ChevronDown className="h-4 w-4" />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="space-y-3 mt-3">
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label htmlFor="density" className="text-xs">Density</Label>
-                        <Input 
-                          id="density" 
-                          type="number" 
-                          min="0" 
-                          max="15" 
-                          value={tsplDensity} 
-                          onChange={(e) => setTsplDensity(e.target.value)}
-                          className="mt-1 h-8 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="speed" className="text-xs">Speed</Label>
-                        <Input 
-                          id="speed" 
-                          type="number" 
-                          min="2" 
-                          max="8" 
-                          value={tsplSpeed} 
-                          onChange={(e) => setTsplSpeed(e.target.value)}
-                          className="mt-1 h-8 text-xs"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="gap" className="text-xs">Gap</Label>
-                        <Input 
-                          id="gap" 
-                          type="number" 
-                          step="0.1" 
-                          min="0" 
-                          value={tsplGap} 
-                          onChange={(e) => setTsplGap(e.target.value)}
-                          className="mt-1 h-8 text-xs"
-                        />
-                      </div>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
+                {/* Note: PDF printing only */}
+                <div className="p-2 bg-blue-50 border border-blue-200 rounded-md">
+                  <p className="text-xs text-blue-700">
+                    🔵 PDF printing only - Settings automatically optimized for Rollo printers
+                  </p>
+                </div>
               </CardContent>
             </Card>
 
@@ -507,29 +414,15 @@ export default function LabelDesigner() {
                       </p>
                     </div>
 
-                    {/* Print Format Selection */}
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Print Format</Label>
-                      <RadioGroup value={printFormat} onValueChange={setPrintFormat}>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="pdf" id="pdf" />
-                          <Label htmlFor="pdf" className="text-sm">PDF (Recommended for Rollo)</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="png" id="png" />
-                          <Label htmlFor="png" className="text-sm">PNG Image</Label>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <RadioGroupItem value="raw" id="raw" />
-                          <Label htmlFor="raw" className="text-sm">RAW TSPL</Label>
-                        </div>
-                      </RadioGroup>
-                      {(selectedPrinter?.name?.toLowerCase().includes('rollo') || 
-                        selectedPrinter?.description?.toLowerCase().includes('rollo')) && printFormat === 'raw' && (
-                        <p className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
-                          ⚠️ Rollo printers work better with PDF format
-                        </p>
-                      )}
+                    {/* PDF Only Notice */}
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="h-2 w-2 rounded-full bg-blue-500" />
+                        <span className="text-sm font-medium text-blue-800">PDF Format Only</span>
+                      </div>
+                      <p className="text-xs text-blue-700">
+                        Optimized for Rollo thermal printers with scannable Code128 barcodes
+                      </p>
                     </div>
                     
                     <div className="space-y-2">
@@ -544,7 +437,7 @@ export default function LabelDesigner() {
                       </Button>
                       <Button 
                         onClick={handleTestPrintLayout}
-                        disabled={printLoading || (printFormat === 'raw' && !previewTspl)}
+                        disabled={printLoading}
                         variant="outline"
                         size="sm"
                         className="w-full gap-2"
@@ -582,19 +475,30 @@ export default function LabelDesigner() {
               </CardContent>
             </Card>
 
-            {/* TSPL Code */}
+            {/* PDF Info */}
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">TSPL Code</CardTitle>
+                <CardTitle className="text-lg">Print Information</CardTitle>
               </CardHeader>
               <CardContent>
-                <Textarea 
-                  value={previewTspl} 
-                  readOnly 
-                  className="font-mono text-xs resize-none" 
-                  rows={12}
-                  placeholder="TSPL code will appear here..."
-                />
+                <div className="space-y-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Format:</span>
+                    <span>PDF (2×1 inch)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Barcode:</span>
+                    <span>Code128 (scannable)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Resolution:</span>
+                    <span>203 DPI</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Printer:</span>
+                    <span>Thermal (Rollo optimized)</span>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

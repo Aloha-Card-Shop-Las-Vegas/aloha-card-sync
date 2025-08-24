@@ -13,6 +13,8 @@ import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
 import { cleanupAuthState } from "@/lib/auth";
 import { printNodeService } from "@/lib/printNodeService";
+import jsPDF from 'jspdf';
+import JsBarcode from 'jsbarcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Eye } from "lucide-react";
 
@@ -646,6 +648,116 @@ const Index = () => {
     }
   };
 
+  const generateLabelPDF = (item: CardItem): string => {
+    const formattedTitle = buildTitleFromParts(
+      item.year,
+      item.brandTitle,
+      item.cardNumber,
+      item.subject,
+      item.variant
+    );
+
+    // Create PDF with exact 2x1 inch dimensions
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'in',
+      format: [2, 1] // 2x1 inches
+    });
+
+    // White background
+    pdf.setFillColor(255, 255, 255);
+    pdf.rect(0, 0, 2, 1, 'F');
+
+    // Title (top section)
+    pdf.setFontSize(10);
+    pdf.setTextColor(0, 0, 0);
+    pdf.text(formattedTitle.substring(0, 30), 0.1, 0.15, { maxWidth: 1.8 });
+
+    // Price and Lot (middle section)
+    pdf.setFontSize(8);
+    pdf.text(item.lot || "LOT-000000", 0.1, 0.35);
+    const priceText = item.price ? `$${Number(item.price).toFixed(2)}` : "";
+    pdf.text(priceText, 1.5, 0.35);
+
+    // Generate barcode
+    const barcodeData = item.sku || item.id || "NO-SKU";
+    const canvas = document.createElement('canvas');
+    
+    try {
+      JsBarcode(canvas, barcodeData, {
+        format: "CODE128",
+        width: 2,
+        height: 40,
+        displayValue: false,
+        margin: 0
+      });
+      
+      // Add barcode to PDF
+      const barcodeDataUrl = canvas.toDataURL();
+      pdf.addImage(barcodeDataUrl, 'PNG', 0.2, 0.5, 1.6, 0.3);
+    } catch (error) {
+      console.error('Barcode generation failed:', error);
+      // Fallback to text
+      pdf.setFontSize(12);
+      pdf.text(barcodeData, 1.0, 0.65, { align: 'center' });
+    }
+
+    // Grade
+    pdf.setFontSize(6);
+    pdf.text(`Grade: ${item.grade || "Ungraded"}`, 1.0, 0.9, { align: 'center' });
+
+    return pdf.output('datauristring').split(',')[1]; // Return base64 part only
+  };
+
+  const handlePrintRow = async (item: CardItem) => {
+    if (!selectedPrinterId) {
+      toast.error("No printer selected");
+      return;
+    }
+
+    if (!item.id) return;
+    if (!acquireGlobalLock()) return;
+    if (!acquireRowLock(item.id)) { releaseGlobalLock(); return; }
+
+    const formattedTitle = buildTitleFromParts(
+      item.year,
+      item.brandTitle,
+      item.cardNumber,
+      item.subject,
+      item.variant
+    );
+
+    try {
+      // Generate PDF for the item
+      const pdfBase64 = generateLabelPDF(item);
+      
+      // Print via PrintNode PDF
+      const result = await printNodeService.printPDF(
+        pdfBase64,
+        selectedPrinterId,
+        { title: `Batch Print - ${formattedTitle}`, copies: 1 }
+      );
+
+      if (result.success) {
+        setBatch(prev => prev.map(b => 
+          b.id === item.id 
+            ? { ...b, printedAt: new Date().toISOString() }
+            : b
+        ));
+        await markPrinted([item.id]);
+        toast.success(`Printed: ${formattedTitle}`);
+      } else {
+        throw new Error(result.error || 'Print failed');
+      }
+    } catch (error) {
+      console.error('Print failed:', error);
+      toast.error(`Print failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      releaseRowLock(item.id);
+      releaseGlobalLock();
+    }
+  };
+
   // Once helper to prevent double export/POST
   function once<T extends (...a: any[]) => any>(fn: T) {
     let called = false;
@@ -656,7 +768,7 @@ const Index = () => {
     };
   }
 
-  // PrintNode RAW printing using TSPL only
+  // PDF printing for bulk operations
   const printNodeLabels = async (items: CardItem[]): Promise<boolean> => {
     if (!selectedPrinterId) {
       toast.error('No PrintNode printer selected');
@@ -667,7 +779,7 @@ const Index = () => {
       const printers = await printNodeService.getPrinters();
       const printer = printers.find(p => p.id === selectedPrinterId);
       
-      console.log(`=== SENDING TO PRINTNODE RAW ===`);
+      console.log(`=== SENDING TO PRINTNODE PDF ===`);
       console.log(`Printer: ${printer?.name} (ID: ${selectedPrinterId})`);
       console.log(`Pages: ${items.length}`);
       
@@ -679,36 +791,18 @@ const Index = () => {
         const title = buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant);
         
         try {
-          // Call edge function to render TSPL label
-          const { data: labelData, error } = await supabase.functions.invoke('render-label', {
-            body: {
-              title,
-              lot_number: item.lot,
-              price: item.price?.toString(),
-              grade: item.grade,
-              sku: item.sku,
-              id: item.id
-            }
-          });
-          
-          if (error) {
-            console.error('Label render error:', error);
-            toast.error(`Failed to render label for ${title}`);
-            continue;
-          }
-          
-          const { program, correlationId } = labelData;
-          const barcodeValue = item.sku || item.id || 'NO-SKU';
-          
-          console.log(`CorrelationId: ${correlationId}`);
-          console.log(`Barcode: ${barcodeValue}`);
-          console.log(`Pages: 1`);
+          // Generate PDF for the item
+          const pdfBase64 = generateLabelPDF(item);
           
           // Send to PrintNode
-          const result = await printNodeService.printRAW(program, selectedPrinterId, {
-            title: `Label RAW · ${correlationId}`,
-            copies: 1
-          });
+          const result = await printNodeService.printPDF(
+            pdfBase64,
+            selectedPrinterId,
+            {
+              title: `Label PDF - ${title}`,
+              copies: 1
+            }
+          );
           
           if (result.success) {
             console.log(`PrintNode Response: Job ID ${result.jobId}`);
@@ -740,27 +834,7 @@ const Index = () => {
 
   // Legacy Fabric/PDF code removed - now using TSPL RAW printing only
 
-  const handlePrintRow = async (b: CardItem) => {
-    if (!b.id) return;
-    if (!printNodeConnected || !selectedPrinterId) {
-      toast.error('PrintNode not connected or no printer selected');
-      return;
-    }
-    if (!acquireGlobalLock()) return;
-    if (!acquireRowLock(b.id)) { releaseGlobalLock(); return; }
-
-    try {
-      console.log(`=== SENDING TO PRINTNODE RAW === Single Row Print`);
-      const ok = await printNodeLabels([b]);
-      if (ok) await markPrinted([b.id]);
-    } catch (e) {
-      console.error(e);
-      toast.error('Failed to print');
-    } finally {
-      releaseRowLock(b.id);
-      releaseGlobalLock();
-    }
-  };
+  // handlePrintRow is now defined above in the generateLabelPDF section
   const handlePushRow = async (b: CardItem) => {
     if (!b.id) return;
     try {
