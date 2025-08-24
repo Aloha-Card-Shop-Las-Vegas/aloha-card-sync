@@ -303,36 +303,36 @@ export function generateBoxedLayoutTSPL(
   // Top row boxes (condition and price)
   const topBoxWidth = Math.floor(labelWidth / 2) - 5; // Leave small gap between boxes
   
-  // Condition box (top left)
+  // Condition box (top left) - dynamic font sizing
   if (fieldConfig.includeCondition && data.condition) {
-    const conditionFontSize = calculateOptimalFontSize(data.condition, topBoxWidth - 10, 3);
+    const conditionFontSize = calculateOptimalFontSize(data.condition, topBoxWidth - 10, 5, 1);
     textLines.push({
       text: data.condition,
-      x: 5,
+      x: Math.floor(topBoxWidth / 2) - Math.floor(data.condition.length * conditionFontSize * 3), // Center text
       y: 15,
       fontSize: conditionFontSize
     });
   }
   
-  // Price box (top right)  
+  // Price box (top right) - dynamic font sizing
   if (fieldConfig.includePrice && data.price) {
     const priceText = data.price.startsWith('$') ? data.price : `$${data.price}`;
-    const priceFontSize = calculateOptimalFontSize(priceText, topBoxWidth - 10, 4);
+    const priceFontSize = calculateOptimalFontSize(priceText, topBoxWidth - 10, 5, 1);
     textLines.push({
       text: priceText,
-      x: Math.floor(labelWidth / 2) + 5,
+      x: Math.floor(labelWidth / 2) + 5 + Math.floor((topBoxWidth - priceText.length * priceFontSize * 6) / 2), // Center in right box
       y: 15,
       fontSize: priceFontSize
     });
   }
 
-  // Title box (bottom)
+  // Title box (bottom) - dynamic font sizing
   if (fieldConfig.includeTitle && data.title) {
-    const titleFontSize = calculateOptimalFontSize(data.title, labelWidth - 10, 3);
+    const titleFontSize = calculateOptimalFontSize(data.title, labelWidth - 10, 4, 1);
     textLines.push({
       text: data.title,
-      x: 5,
-      y: labelHeight - titleBoxHeight + 10,
+      x: Math.floor((labelWidth - data.title.length * titleFontSize * 6) / 2), // Center text
+      y: labelHeight - titleBoxHeight + 20,
       fontSize: titleFontSize
     });
   }

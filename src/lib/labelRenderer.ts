@@ -144,15 +144,25 @@ export const renderLabelToCanvas = (
     ctx.setLineDash([]); // Reset to solid line
   }
 
-  // Top left content (Condition)
+  // Top left content (Condition) - dynamic sizing to fill box
   if (fieldConfig.includeCondition && labelData.condition) {
-    drawText(ctx, labelData.condition, padding + 5, padding + 5, topLeftWidth - 10, topRowHeight - 10, 'center');
+    const fontSize = calculateFontSize(labelData.condition, topLeftWidth - 10, topRowHeight - 10, ctx);
+    ctx.font = `${fontSize}px Arial`;
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelData.condition, padding + topLeftWidth/2, padding + topRowHeight/2);
   }
 
-  // Top right content (Price)
+  // Top right content (Price) - dynamic sizing to fill box
   if (fieldConfig.includePrice && labelData.price) {
     const topRightX = padding + topLeftWidth + padding;
-    drawText(ctx, labelData.price, topRightX + 5, padding + 5, topRightWidth - 10, topRowHeight - 10, 'center');
+    const fontSize = calculateFontSize(labelData.price, topRightWidth - 10, topRowHeight - 10, ctx);
+    ctx.font = `${fontSize}px Arial`;
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelData.price, topRightX + topRightWidth/2, padding + topRowHeight/2);
   }
 
   // Middle section (Larger Barcode/QR)
@@ -172,10 +182,15 @@ export const renderLabelToCanvas = (
     }
   }
 
-  // Bottom content (Title)
+  // Bottom content (Title) - dynamic sizing to fill box
   if (fieldConfig.includeTitle && labelData.title) {
     const bottomY = padding + topRowHeight + padding + middleHeight + padding;
-    drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
+    const fontSize = calculateFontSize(labelData.title, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, ctx);
+    ctx.font = `${fontSize}px Arial`;
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(labelData.title, LABEL_WIDTH/2, bottomY + bottomHeight/2);
   }
 
   // Add lot number support if included
