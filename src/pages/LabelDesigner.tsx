@@ -231,17 +231,45 @@ export default function LabelDesigner() {
       return;
     }
 
-    if (!previewTspl) {
-      toast.error('No preview available to print');
-      return;
-    }
-
     setPrintLoading(true);
     try {
-      const result = await printRAW(previewTspl, {
-        title: `Layout Test - ${new Date().toLocaleTimeString()}`,
-        copies: 1
-      });
+      let result;
+      const timestamp = new Date().toLocaleTimeString();
+      
+      if (printFormat === 'pdf') {
+        if (!previewCanvasRef.current?.exportToPDF) {
+          toast.error('PDF export not available');
+          return;
+        }
+        
+        const pdfBase64 = await previewCanvasRef.current.exportToPDF();
+        result = await printPDF(pdfBase64, {
+          title: `Layout Test PDF - ${timestamp}`,
+          copies: 1
+        });
+      } else if (printFormat === 'png') {
+        if (!previewCanvasRef.current?.exportToPNG) {
+          toast.error('PNG export not available');
+          return;
+        }
+        
+        const pngBlob = await previewCanvasRef.current.exportToPNG();
+        result = await printPNG(pngBlob, {
+          title: `Layout Test PNG - ${timestamp}`,
+          copies: 1
+        });
+      } else {
+        // RAW format
+        if (!previewTspl) {
+          toast.error('No preview available to print');
+          return;
+        }
+        
+        result = await printRAW(previewTspl, {
+          title: `Layout Test RAW - ${timestamp}`,
+          copies: 1
+        });
+      }
 
       if (result.success) {
         toast.success(`Layout test sent to printer - Job ID: ${result.jobId}`);
@@ -516,7 +544,7 @@ export default function LabelDesigner() {
                       </Button>
                       <Button 
                         onClick={handleTestPrintLayout}
-                        disabled={printLoading || !previewTspl}
+                        disabled={printLoading || (printFormat === 'raw' && !previewTspl)}
                         variant="outline"
                         size="sm"
                         className="w-full gap-2"
