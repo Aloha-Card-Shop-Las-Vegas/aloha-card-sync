@@ -217,19 +217,27 @@ export const renderLabelToCanvas = (
     const titleHeight = LABEL_HEIGHT - titleStartY - padding; // To near bottom
     const titleWidth = LABEL_WIDTH - padding * 2;
     
-    // Set up font and calculate optimal size for two lines
-    let fontSize = Math.min(titleHeight / 2.5, 30); // Start with size that fits 2 lines
-    ctx.font = `${fontSize}px Arial`;
+    // Start with maximum font size that fits the height for 2 lines
+    let fontSize = Math.floor(titleHeight / 2.2); // Allow space for 2 lines with some padding
+    fontSize = Math.min(fontSize, 50); // Cap at reasonable maximum
     
-    // Wrap text to maximum 2 lines
-    const lines = wrapText(ctx, labelData.title, titleWidth - 10);
+    let lines: string[] = [];
+    let finalFontSize = fontSize;
     
-    // Adjust font size if needed to fit both lines
-    while (fontSize > 10 && lines.length > 0) {
-      const totalTextHeight = lines.length * fontSize * 1.2; // Line height factor
-      if (totalTextHeight <= titleHeight - 10) break;
-      fontSize -= 1;
-      ctx.font = `${fontSize}px Arial`;
+    // Find the largest font size that fits the content
+    while (finalFontSize > 8) {
+      ctx.font = `${finalFontSize}px Arial`;
+      lines = wrapText(ctx, labelData.title, titleWidth - 10);
+      
+      // Check if it fits within height constraints
+      const lineHeight = finalFontSize * 1.2;
+      const totalTextHeight = lines.length * lineHeight;
+      
+      if (totalTextHeight <= titleHeight - 10 && lines.length <= 2) {
+        break; // Found optimal size
+      }
+      
+      finalFontSize -= 1;
     }
     
     // Draw the lines centered
@@ -237,7 +245,7 @@ export const renderLabelToCanvas = (
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    const lineHeight = fontSize * 1.2;
+    const lineHeight = finalFontSize * 1.2;
     const totalTextHeight = lines.length * lineHeight;
     const startY = titleStartY + (titleHeight - totalTextHeight) / 2;
     
