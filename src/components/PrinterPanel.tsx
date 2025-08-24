@@ -4,10 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Printer, Cloud, WifiOff, TestTube, FileText } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Printer, Cloud, WifiOff, TestTube, FileText, Edit2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { printNodeService } from "@/lib/printNodeService";
 import { supabase } from "@/integrations/supabase/client";
+import { usePrinterNames } from "@/hooks/usePrinterNames";
 import jsPDF from 'jspdf';
 
 interface PrintNodePrinter {
@@ -25,6 +27,10 @@ export function PrinterPanel() {
   const [testingPDF, setTestingPDF] = useState<boolean>(false);
   const [keySource, setKeySource] = useState<string>('');
   const [connectionError, setConnectionError] = useState<string>('');
+  const [editingPrinterId, setEditingPrinterId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState<string>('');
+  
+  const { getDisplayName, setCustomName, resetName, hasCustomName } = usePrinterNames();
 
   useEffect(() => {
     loadPrinterSettings();
@@ -286,27 +292,115 @@ export function PrinterPanel() {
         </div>
 
         {/* Printer Selection */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Selected Printer:</label>
-          <Select 
-            value={selectedPrinter?.id.toString() || ''} 
-            onValueChange={(value) => {
-              const printer = printers.find(p => p.id.toString() === value);
-              setSelectedPrinter(printer || null);
-            }}
-            disabled={!printNodeOnline}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Choose printer" />
-            </SelectTrigger>
-            <SelectContent>
-              {printers.map((printer) => (
-                <SelectItem key={printer.id} value={printer.id.toString()}>
-                  {printer.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="space-y-3">
+          <label className="text-sm font-medium">Printers:</label>
+          
+          {/* Available Printers List */}
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {printers.map((printer) => (
+              <div key={printer.id} className="flex items-center gap-2 p-2 border rounded-md">
+                <input
+                  type="radio"
+                  id={`printer-${printer.id}`}
+                  name="selectedPrinter"
+                  checked={selectedPrinter?.id === printer.id}
+                  onChange={() => setSelectedPrinter(printer)}
+                  className="h-4 w-4"
+                />
+                
+                <div className="flex-1 min-w-0">
+                  {editingPrinterId === printer.id ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        className="h-7 text-sm"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setCustomName(printer.id, editingName);
+                            setEditingPrinterId(null);
+                            toast.success('Printer name updated');
+                          } else if (e.key === 'Escape') {
+                            setEditingPrinterId(null);
+                          }
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => {
+                          setCustomName(printer.id, editingName);
+                          setEditingPrinterId(null);
+                          toast.success('Printer name updated');
+                        }}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0"
+                        onClick={() => setEditingPrinterId(null)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <label 
+                          htmlFor={`printer-${printer.id}`}
+                          className="font-medium text-sm cursor-pointer"
+                        >
+                          {getDisplayName(printer.id, printer.name)}
+                        </label>
+                        {hasCustomName(printer.id) && (
+                          <div className="text-xs text-muted-foreground">
+                            Original: {printer.name}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => {
+                            setEditingPrinterId(printer.id);
+                            setEditingName(getDisplayName(printer.id, printer.name));
+                          }}
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </Button>
+                        {hasCustomName(printer.id) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 text-muted-foreground"
+                            onClick={() => {
+                              resetName(printer.id);
+                              toast.success('Printer name reset');
+                            }}
+                            title="Reset to original name"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            
+            {printers.length === 0 && printNodeOnline && (
+              <div className="text-sm text-muted-foreground text-center py-4">
+                No printers found
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Actions */}
