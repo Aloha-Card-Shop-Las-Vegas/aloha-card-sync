@@ -13,7 +13,7 @@ import { Link, useLocation } from "react-router-dom";
 import { PrinterPanel } from "@/components/PrinterPanel";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
-import { generateUnifiedTSPL, generateBoxedLayoutTSPL, type LabelFieldConfig } from "@/lib/tspl";
+import { generateBoxedLayoutTSPL, type LabelFieldConfig } from "@/lib/tspl";
 import { useTemplates } from "@/hooks/useTemplates";
 import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
 
@@ -49,7 +49,7 @@ export default function LabelDesigner() {
   // Template management state
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [templateName, setTemplateName] = useState('');
-  const [templateStyle, setTemplateStyle] = useLocalStorageString('template-style', 'auto');
+  const [templateStyle, setTemplateStyle] = useLocalStorageString('template-style', 'boxed');
 
   // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
@@ -105,14 +105,8 @@ export default function LabelDesigner() {
   // Update preview when data or config changes
   useEffect(() => {
     try {
-      let tspl;
-      if (templateStyle === 'boxed') {
-        // Use the boxed layout from the image
-        tspl = generateBoxedLayoutTSPL(labelData, fieldConfig, tsplSettings);
-      } else {
-        // Use the original auto layout
-        tspl = generateUnifiedTSPL(labelData, fieldConfig, tsplSettings);
-      }
+      // Always use boxed layout
+      const tspl = generateBoxedLayoutTSPL(labelData, fieldConfig, tsplSettings);
       setPreviewTspl(tspl);
     } catch (error) {
       console.error('Failed to generate TSPL preview:', error);
@@ -206,9 +200,7 @@ export default function LabelDesigner() {
         barcodeMode: 'qr' as const
       } : fieldConfig;
 
-      const tspl = templateStyle === 'boxed' 
-        ? generateBoxedLayoutTSPL(testData, testConfig, tsplSettings)
-        : generateUnifiedTSPL(testData, testConfig, tsplSettings);
+      const tspl = generateBoxedLayoutTSPL(testData, testConfig, tsplSettings);
 
       const result = await printRAW(tspl, {
         title: isTest ? 'Test Label' : 'Label Print',
@@ -251,90 +243,23 @@ export default function LabelDesigner() {
               <CardTitle>Label Data & Template</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Template Selection */}
+              {/* Barcode Selection */}
               <div>
-                <Label className="text-base font-medium">Template Style</Label>
-                <Select 
-                  value={templateStyle} 
-                  onValueChange={setTemplateStyle}
-                >
+                <Label className="text-base font-medium">Barcode Type</Label>
+                <Select value={barcodeMode} onValueChange={setBarcodeMode}>
                   <SelectTrigger className="mt-2">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto">Auto Layout</SelectItem>
-                    <SelectItem value="boxed">Boxed Layout</SelectItem>
+                    <SelectItem value="qr">QR Code</SelectItem>
+                    <SelectItem value="barcode">Barcode</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {templateStyle === 'boxed' 
-                    ? 'Structured boxes with dynamic text sizing - condition, price, barcode, title. SKU and lot fields are not used in this layout.'
-                    : 'Flexible layout with all available fields'
-                  }
+                  Boxed layout with condition, price, barcode, and title sections
                 </p>
               </div>
-
-              {/* Include Fields */}
-              {templateStyle !== 'boxed' && (
-                <div>
-                  <Label className="text-base font-medium">Include Fields</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-title" 
-                        checked={includeTitle === 'true'} 
-                        onCheckedChange={(checked) => setIncludeTitle(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-title" className="text-sm">Title</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-sku" 
-                        checked={includeSku === 'true'} 
-                        onCheckedChange={(checked) => setIncludeSku(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-sku" className="text-sm">SKU</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-price" 
-                        checked={includePrice === 'true'} 
-                        onCheckedChange={(checked) => setIncludePrice(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-price" className="text-sm">Price</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-lot" 
-                        checked={includeLot === 'true'} 
-                        onCheckedChange={(checked) => setIncludeLot(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-lot" className="text-sm">Lot Number</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox 
-                        id="include-condition" 
-                        checked={includeCondition === 'true'} 
-                        onCheckedChange={(checked) => setIncludeCondition(checked ? 'true' : 'false')}
-                      />
-                      <Label htmlFor="include-condition" className="text-sm">Condition</Label>
-                    </div>
-                    <div>
-                      <Label htmlFor="barcode-mode" className="text-sm">Barcode</Label>
-                      <Select value={barcodeMode} onValueChange={setBarcodeMode}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="qr">QR Code</SelectItem>
-                          <SelectItem value="barcode">Barcode</SelectItem>
-                          <SelectItem value="none">None</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Label Data Inputs */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -356,17 +281,6 @@ export default function LabelDesigner() {
                     placeholder="99.99" 
                   />
                 </div>
-                {templateStyle !== 'boxed' && (
-                  <div>
-                    <Label htmlFor="sku">SKU</Label>
-                    <Input 
-                      id="sku" 
-                      value={sku} 
-                      onChange={(e) => setSku(e.target.value)}
-                      placeholder="SKU123" 
-                    />
-                  </div>
-                )}
                 <div>
                   <Label htmlFor="condition">Condition</Label>
                   <Select value={condition} onValueChange={setCondition}>
@@ -384,17 +298,6 @@ export default function LabelDesigner() {
                     </SelectContent>
                   </Select>
                 </div>
-                {templateStyle !== 'boxed' && (
-                  <div>
-                    <Label htmlFor="lot">Lot Number</Label>
-                    <Input 
-                      id="lot" 
-                      value={lot} 
-                      onChange={(e) => setLot(e.target.value)}
-                      placeholder="LOT-000001" 
-                    />
-                  </div>
-                )}
                 <div>
                   <Label htmlFor="barcode">Barcode/QR Data</Label>
                   <Input 
@@ -448,7 +351,7 @@ export default function LabelDesigner() {
 
               {/* Visual Label Preview */}
               <LabelPreviewCanvas 
-                fieldConfig={{ ...fieldConfig, templateStyle }}
+                fieldConfig={{ ...fieldConfig, templateStyle: 'boxed' }}
                 labelData={labelData}
                 showGuides={showGuides === 'true'}
               />

@@ -109,7 +109,8 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData, showGuides = false 
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, LABEL_WIDTH - 2, LABEL_HEIGHT - 2);
 
-    if (fieldConfig.templateStyle === 'boxed') {
+    // Always use boxed layout
+    {
       // Boxed layout - match the user's image
       const padding = 10;
       const topRowHeight = 60;
@@ -163,44 +164,8 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData, showGuides = false 
         const bottomY = padding + topRowHeight + padding + middleHeight + padding;
         drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
       }
-    } else {
-      // Unified layout
-      let currentY = 10;
-      const fieldHeight = 25;
-      const padding = 10;
-
-      if (fieldConfig.includeTitle) {
-        drawText(ctx, labelData.title, padding, currentY, LABEL_WIDTH - padding * 2, fieldHeight, 'center');
-        currentY += fieldHeight + 5;
-      }
-
-      if (fieldConfig.includeSku) {
-        drawText(ctx, `SKU: ${labelData.sku}`, padding, currentY, LABEL_WIDTH - padding * 2, fieldHeight);
-        currentY += fieldHeight + 5;
-      }
-
-      if (fieldConfig.includePrice) {
-        drawText(ctx, `Price: ${labelData.price}`, padding, currentY, LABEL_WIDTH - padding * 2, fieldHeight);
-        currentY += fieldHeight + 5;
-      }
-
-      if (fieldConfig.includeLot) {
-        drawText(ctx, `Lot: ${labelData.lot}`, padding, currentY, LABEL_WIDTH - padding * 2, fieldHeight);
-        currentY += fieldHeight + 5;
-      }
-
-      if (fieldConfig.includeCondition) {
-        drawText(ctx, `Condition: ${labelData.condition}`, padding, currentY, LABEL_WIDTH - padding * 2, fieldHeight);
-        currentY += fieldHeight + 5;
-      }
-
-      // Barcode at bottom
-      if (fieldConfig.barcodeMode !== 'none') {
-        const barcodeY = LABEL_HEIGHT - 50;
-        drawBarcode(ctx, padding, barcodeY, LABEL_WIDTH - padding * 2, 40, labelData.barcode, fieldConfig.barcodeMode);
-      }
     }
-  }, [fieldConfig, labelData]);
+  }, [fieldConfig, labelData, showGuides]);
 
   return (
     <Card>
