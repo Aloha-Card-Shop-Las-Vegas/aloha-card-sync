@@ -33,10 +33,17 @@ export function buildTitleFromParts(
  * This ensures consistent data mapping between preview and printing
  */
 export function buildLabelDataFromItem(item: CardItem): LabelData {
+  // Format price with $ symbol
+  const formatPrice = (price?: string) => {
+    if (!price) return '';
+    const numPrice = parseFloat(price);
+    return isNaN(numPrice) ? price : `$${numPrice.toFixed(2)}`;
+  };
+
   return {
     title: buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant),
     sku: item.sku || item.id?.toString() || 'NO-SKU',
-    price: item.price?.toString() || '',
+    price: formatPrice(item.price),
     lot: item.lot || '',
     condition: item.grade || '',
     barcode: item.sku || item.id?.toString() || 'NO-SKU'

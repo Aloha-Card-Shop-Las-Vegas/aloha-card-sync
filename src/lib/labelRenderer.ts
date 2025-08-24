@@ -169,9 +169,16 @@ export const renderLabelToCanvas = (
     drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
   }
 
-  // Add lot number support if included and not shown elsewhere
+  // Add SKU support if included  
+  if (fieldConfig.includeSku && labelData.sku) {
+    ctx.font = '10px Arial';
+    ctx.fillStyle = '#666666';
+    ctx.textAlign = 'left';
+    ctx.fillText(`SKU: ${labelData.sku}`, padding + 5, padding + 15);
+  }
+
+  // Add lot number support if included
   if (fieldConfig.includeLot && labelData.lot) {
-    // Add lot number in a small corner or as subtitle
     ctx.font = '10px Arial';
     ctx.fillStyle = '#666666';
     ctx.textAlign = 'right';
