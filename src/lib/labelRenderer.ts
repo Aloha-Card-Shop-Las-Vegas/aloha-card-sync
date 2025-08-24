@@ -165,32 +165,61 @@ export const renderLabelToCanvas = (
     ctx.fillText(labelData.price, topRightX + topRightWidth/2, padding + topRowHeight/2);
   }
 
-  // Middle section (Larger Barcode/QR)
-  if (fieldConfig.barcodeMode !== 'none') {
-    const middleY = padding + topRowHeight + padding;
-    const barcodeWidth = LABEL_WIDTH - padding * 6; // Slightly narrower for centering
-    const barcodeHeight = (middleHeight - 20) * 1.2; // 20% taller barcode
-    const barcodeX = padding + 25; // Move to the left for better centering
-    drawBarcode(ctx, barcodeX, middleY + 2, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
-    
-    // Add SKU below barcode if included
-    if (fieldConfig.includeSku && labelData.sku) {
-      ctx.font = '10px Arial';
-      ctx.fillStyle = '#666666';
-      ctx.textAlign = 'center';
-      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, middleY + barcodeHeight + 15);
-    }
+  // Add SKU below top row
+  if (fieldConfig.includeSku && labelData.sku) {
+    ctx.font = '10px Arial';
+    ctx.fillStyle = '#666666';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`SKU: ${labelData.sku}`, padding, padding + topRowHeight + 5);
   }
 
-  // Bottom content (Title) - dynamic sizing to fill box
+  // Title below SKU - two lines with larger text
   if (fieldConfig.includeTitle && labelData.title) {
-    const bottomY = padding + topRowHeight + padding + middleHeight + padding;
-    const fontSize = calculateFontSize(labelData.title, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, ctx);
-    ctx.font = `${fontSize}px Arial`;
+    const titleY = padding + topRowHeight + 25; // Start below SKU
+    const titleWidth = LABEL_WIDTH - padding * 2;
+    const titleHeight = 40; // Height for two lines
+    
+    // Split title into words and create up to 2 lines
+    const words = labelData.title.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+    
+    // Calculate font size for the available space
+    const testFontSize = calculateFontSize(labelData.title, titleWidth, titleHeight / 2, ctx);
+    ctx.font = `${testFontSize}px Arial`;
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+      
+      if (metrics.width <= titleWidth && lines.length < 2) {
+        currentLine = testLine;
+      } else {
+        if (currentLine) lines.push(currentLine);
+        currentLine = word;
+        if (lines.length >= 2) break; // Limit to 2 lines
+      }
+    }
+    if (currentLine && lines.length < 2) lines.push(currentLine);
+    
+    // Draw the lines
     ctx.fillStyle = '#000000';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(labelData.title, LABEL_WIDTH/2, bottomY + bottomHeight/2);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    
+    lines.forEach((line, index) => {
+      ctx.fillText(line, padding, titleY + (index * (testFontSize + 2)));
+    });
+  }
+
+  // Barcode below title area
+  if (fieldConfig.barcodeMode !== 'none') {
+    const barcodeY = padding + topRowHeight + 75; // Position below title
+    const barcodeWidth = LABEL_WIDTH - padding * 4;
+    const barcodeHeight = 30; // Smaller to fit below title
+    const barcodeX = padding * 2;
+    drawBarcode(ctx, barcodeX, barcodeY, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
   }
 
   // Add lot number support if included
