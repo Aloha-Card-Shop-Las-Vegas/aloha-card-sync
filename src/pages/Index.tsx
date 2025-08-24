@@ -18,192 +18,9 @@ import JsBarcode from 'jsbarcode';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Eye } from "lucide-react";
 import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
-import { getLabelDesignerSettings } from "@/lib/labelDesignerSettings";
-import { buildLabelDataFromItem, buildTitleFromParts } from '@/lib/labelData';
-import { generateLabelPDF } from '@/lib/labelRenderer';
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-
-// Configure pdf.js worker
-(pdfjsLib as any).GlobalWorkerOptions.workerSrc = pdfjsWorker;
-
-const LABEL_PREVIEW_LEGACY =
-  typeof import.meta !== "undefined" &&
-  import.meta?.env?.VITE_LABEL_PREVIEW_LEGACY === "1";
-
-// Helpers
-function base64ToUint8Array(base64: string): Uint8Array {
-  // strip data: prefix if present
-  if (base64.startsWith("data:")) {
-    base64 = base64.split(",")[1] || "";
-  }
-  const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-function ensureUint8Array(pdfOut: unknown): Uint8Array {
-  if (pdfOut instanceof Uint8Array) return pdfOut;
-  if (pdfOut instanceof ArrayBuffer) return new Uint8Array(pdfOut);
-  if (typeof pdfOut === "string") return base64ToUint8Array(pdfOut);
-  throw new Error("Unsupported PDF data type from generateLabelPDF");
-}
-
-const PDFLabelPreview: React.FC<{ item: CardItem }> = ({ item }) => {
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [embedFailed, setEmbedFailed] = useState(false);
-
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    let urlToRevoke: string | null = null;
-
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        setEmbedFailed(false);
-
-        // 1) Generate the exact same PDF as printing
-        const labelData = buildLabelDataFromItem(item);
-        const fieldConfig = {
-          includeTitle: true,
-          includeSku: true,
-          includePrice: true,
-          includeLot: true,
-          includeCondition: true,
-          barcodeMode: 'barcode' as const
-        };
-        const out = await generateLabelPDF(fieldConfig, labelData);
-        const bytes = ensureUint8Array(out);
-
-        // 2) Prefer a Blob URL (more CSP-friendly than data:)
-        const blob = new Blob([bytes], { type: "application/pdf" });
-        const url = URL.createObjectURL(blob);
-        urlToRevoke = url;
-        if (!mounted) return;
-        setBlobUrl(url);
-
-        // 3) Give the <object> a moment to load; if it fails, we'll draw with pdf.js
-        // We detect failure via onError handler below OR a short timeout if needed.
-      } catch (e: any) {
-        if (!mounted) return;
-        setError(e?.message || "Failed to create preview PDF");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-      if (urlToRevoke) URL.revokeObjectURL(urlToRevoke);
-    };
-  }, [item]);
-
-  // If embed fails or user setting forces download, draw the first page with pdf.js
-  const renderWithPdfJs = async () => {
-    try {
-      setEmbedFailed(true); // switch UI to canvas
-      if (!blobUrl) throw new Error("No PDF to render");
-      const loadingTask = pdfjsLib.getDocument({ url: blobUrl });
-      const pdf = await loadingTask.promise;
-      const page = await pdf.getPage(1);
-      const viewport = page.getViewport({ scale: 1.0 });
-
-      // Fit to our preview box (320x160). Compute scale to fit width.
-      const targetW = 320;
-      const scale = targetW / viewport.width;
-      const scaledViewport = page.getViewport({ scale });
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-
-      canvas.width = Math.floor(scaledViewport.width);
-      canvas.height = Math.floor(scaledViewport.height);
-
-      await page.render({ 
-        canvasContext: ctx, 
-        viewport: scaledViewport,
-        canvas: canvas
-      }).promise;
-    } catch (e) {
-      setError((e as any)?.message || "Failed to render PDF preview");
-    }
-  };
-
-  useEffect(() => {
-    if (embedFailed) {
-      // delay a tick to ensure the canvas is in the DOM
-      const t = setTimeout(() => { renderWithPdfJs(); }, 0);
-      return () => clearTimeout(t);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedFailed]);
-
-  if (loading) {
-    return (
-      <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-sm">
-        Generating preview…
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div className="w-80 h-40 bg-muted flex items-center justify-center border rounded text-xs text-red-600">
-        {error}
-      </div>
-    );
-  }
-
-  if (!blobUrl) return null;
-
-  if (embedFailed) {
-    // Canvas fallback (pdf.js)
-    return (
-      <div className="border rounded p-2">
-        <canvas
-          ref={canvasRef}
-          className="block"
-          width={320}
-          height={160}
-          aria-label="Label PDF Preview (canvas fallback)"
-        />
-        <div className="text-[10px] text-muted-foreground mt-1">
-          Canvas preview (pdf.js) — generated from the same PDF as print.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <object
-      data={blobUrl}
-      type="application/pdf"
-      width={320}
-      height={160}
-      aria-label="Label PDF Preview"
-      className="border rounded"
-      // Some Chrome setups will fire onError if viewer is disabled / download forced
-      onError={() => setEmbedFailed(true)}
-    >
-      <iframe
-        src={blobUrl}
-        width={320}
-        height={160}
-        title="Label PDF Preview"
-        // If the iframe also fails, switch to pdf.js
-        onError={() => setEmbedFailed(true)}
-      />
-    </object>
-  );
-};
+import { buildTitleFromParts, buildLabelDataFromItem } from '@/lib/labelData';
+import { getLabelDesignerSettings } from '@/lib/labelDesignerSettings';
+import PDFLabelPreview from "@/components/PDFLabelPreview";
 
 
 type CardItem = {
@@ -821,10 +638,10 @@ const Index = () => {
     const { generateLabelPDF: sharedGenerateLabelPDF } = await import('@/lib/labelRenderer');
     
     // Use Label Designer settings and centralized data mapping
-    const designerSettings = getLabelDesignerSettings();
+    const { fieldConfig } = getLabelDesignerSettings();
     const labelData = buildLabelDataFromItem(item);
 
-    return sharedGenerateLabelPDF(designerSettings.fieldConfig, labelData, 203);
+    return sharedGenerateLabelPDF(fieldConfig, labelData, 203);
   };
 
   const handlePrintRow = async (item: CardItem) => {
@@ -1258,32 +1075,12 @@ const Index = () => {
                                         <DialogHeader>
                                           <DialogTitle>Label Preview</DialogTitle>
                                         </DialogHeader>
-                                         <div className="space-y-4">
-                                           {LABEL_PREVIEW_LEGACY ? (
-                                             <LabelPreviewCanvas 
-                                               fieldConfig={
-                                                 defaultTemplates.raw?.canvas?.fieldConfig || {
-                                                   includeTitle: true,
-                                                   includeSku: true,
-                                                   includePrice: true,
-                                                   includeLot: true,
-                                                   includeCondition: true,
-                                                   barcodeMode: 'barcode' as const
-                                                 }
-                                               }
-                                              labelData={buildLabelDataFromItem(b)}
-                                              showGuides={getLabelDesignerSettings().showGuides}
-                                            />
-                                           ) : (
-                                             <PDFLabelPreview item={b} />
-                                           )}
-                                           <div className="text-xs text-muted-foreground">
-                                             This preview is generated from the exact same PDF sent to the printer.
-                                           </div>
-                                           <div className="text-xs text-muted-foreground">
-                                             This preview uses your saved template settings. Update settings in the Label Designer to change how labels appear.
-                                           </div>
-                                         </div>
+                                          <div className="space-y-4">
+                                            <PDFLabelPreview item={b} />
+                                            <div className="text-xs text-muted-foreground">
+                                              This preview is generated from the exact same PDF sent to the printer.
+                                            </div>
+                                          </div>
                                       </DialogContent>
                                    </Dialog>
                                    <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>
