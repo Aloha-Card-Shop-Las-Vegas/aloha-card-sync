@@ -74,7 +74,7 @@ export function useLabelLayouts() {
       const { data, error } = await supabase
         .from('label_templates')
         .select('id, name, canvas, is_default, created_at, updated_at')
-        .eq('template_type', 'tspl-layout')
+        .eq('template_type', 'general')
         .order('name');
 
       if (error) throw error;
@@ -109,7 +109,7 @@ export function useLabelLayouts() {
         .insert({
           name,
           canvas: cleanLayout as any,
-          template_type: 'tspl-layout',
+          template_type: 'general',
           is_default: isDefault
         })
         .select()
@@ -129,7 +129,7 @@ export function useLabelLayouts() {
       if (isDefault) {
         await supabase.rpc('set_template_default', {
           template_id: data.id,
-          template_type_param: 'tspl-layout'
+          template_type_param: 'general'
         });
       }
 
@@ -155,7 +155,7 @@ export function useLabelLayouts() {
         .update({
           name,
           canvas: cleanLayout as any,
-          template_type: 'tspl-layout',
+          template_type: 'general',
           updated_at: new Date().toISOString()
         })
         .eq('id', id);
@@ -199,7 +199,7 @@ export function useLabelLayouts() {
     try {
       await supabase.rpc('set_template_default', {
         template_id: id,
-        template_type_param: 'tspl-layout'
+        template_type_param: 'general'
       });
 
       await loadLayouts();
