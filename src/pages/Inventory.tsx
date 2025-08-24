@@ -333,10 +333,27 @@ export default function Inventory() {
                       </TableCell>
                       <TableCell>{new Date(it.created_at).toLocaleString()}</TableCell>
                       <TableCell className="text-right">
+                        <div className="flex gap-2 justify-end">
+                          <Link
+                            to="/labels"
+                            state={{
+                              title,
+                              sku: it.sku,
+                              price: it.price?.toString(),
+                              lot: it.lot_number,
+                              condition: it.grade || "Near Mint",
+                              barcode: it.sku || it.id
+                            }}
+                          >
+                            <Button size="sm" variant="secondary">
+                              Print
+                            </Button>
+                          </Link>
                           <Button size="sm" variant="destructive" onClick={() => handleDeleteRow(it)}>
                             Delete
                           </Button>
-                        </TableCell>
+                        </div>
+                      </TableCell>
                       </TableRow>
                     );
                   })}

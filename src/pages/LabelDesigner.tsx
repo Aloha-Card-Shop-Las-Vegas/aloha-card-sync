@@ -6,19 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { PrinterPanel } from "@/components/PrinterPanel";
-import { RawTemplateEditor } from "@/components/RawTemplateEditor";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
-import { useTemplateDefault } from "@/hooks/useTemplateDefault";
-import { 
-  AVAILABLE_TEMPLATES, 
-  generateLabelTSPL, 
-  type LabelData, 
-  type TSPLSettings 
-} from "@/lib/labelTemplates";
+import { generateUnifiedTSPL, type LabelFieldConfig } from "@/lib/tspl";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -40,37 +34,39 @@ function useSEO(opts: { title: string; description?: string; canonical?: string 
 export default function LabelDesigner() {
   useSEO({ 
     title: "Label Designer 2x1 in | Aloha", 
-    description: "Design and print 2x1 inch labels with barcode, lot, SKU, price, and more using reliable TSPL templates." 
+    description: "Design and print 2x1 inch labels with barcode, lot, SKU, price, and more using TSPL for Rollo printers." 
   });
 
+  const location = useLocation();
   const { printRAW, isConnected: printNodeConnected, selectedPrinterId } = usePrintNode();
   const [printLoading, setPrintLoading] = useState(false);
   const [hasPrinted, setHasPrinted] = useState(false);
   
-  // Template and settings with localStorage persistence
-  const { 
-    selectedTemplateId, 
-    setSelectedTemplateId, 
-    setAsDefault, 
-    resetToAppDefault, 
-    isUsingAppDefault 
-  } = useTemplateDefault();
+  // TSPL settings with localStorage persistence
   const [tsplDensity, setTsplDensity] = useLocalStorageString('tspl-density', '10');
   const [tsplSpeed, setTsplSpeed] = useLocalStorageString('tspl-speed', '4');
   const [tsplGap, setTsplGap] = useLocalStorageString('tspl-gap', '0');
 
-  // Label data
-  const [barcodeValue, setBarcodeValue] = useState("120979260");
-  const [title, setTitle] = useState("POKEMON GENGAR VMAX #020");
-  const [lot, setLot] = useState("LOT-000001");
-  const [price, setPrice] = useState("1000");
-  const [sku, setSku] = useState("120979260");
-  const [condition, setCondition] = useState("Near Mint");
+  // Field configuration with localStorage persistence
+  const [includeTitle, setIncludeTitle] = useLocalStorageString('field-title', 'true');
+  const [includeSku, setIncludeSku] = useLocalStorageString('field-sku', 'true');
+  const [includePrice, setIncludePrice] = useLocalStorageString('field-price', 'true');
+  const [includeLot, setIncludeLot] = useLocalStorageString('field-lot', 'true');
+  const [includeCondition, setIncludeCondition] = useLocalStorageString('field-condition', 'true');
+  const [barcodeMode, setBarcodeMode] = useLocalStorageString('barcode-mode', 'qr');
+
+  // Label data - pre-fill from route state if coming from inventory
+  const [title, setTitle] = useState(location.state?.title || "POKEMON GENGAR VMAX #020");
+  const [sku, setSku] = useState(location.state?.sku || "120979260");
+  const [price, setPrice] = useState(location.state?.price || "1000");
+  const [lot, setLot] = useState(location.state?.lot || "LOT-000001");
+  const [condition, setCondition] = useState(location.state?.condition || "Near Mint");
+  const [barcodeValue, setBarcodeValue] = useState(location.state?.barcode || location.state?.sku || "120979260");
   
   // Preview TSPL
   const [previewTspl, setPreviewTspl] = useState("");
 
-  const labelData: LabelData = {
+  const labelData = {
     title,
     sku,
     price,
@@ -79,22 +75,31 @@ export default function LabelDesigner() {
     barcode: barcodeValue
   };
 
-  const tsplSettings: TSPLSettings = {
+  const fieldConfig: LabelFieldConfig = {
+    includeTitle: includeTitle === 'true',
+    includeSku: includeSku === 'true',
+    includePrice: includePrice === 'true',
+    includeLot: includeLot === 'true',
+    includeCondition: includeCondition === 'true',
+    barcodeMode: barcodeMode as 'qr' | 'barcode' | 'none'
+  };
+
+  const tsplSettings = {
     density: parseInt(tsplDensity) || 10,
     speed: parseInt(tsplSpeed) || 4,
     gapInches: parseFloat(tsplGap) || 0
   };
 
-  // Update preview when data or template changes
+  // Update preview when data or config changes
   useEffect(() => {
     try {
-      const tspl = generateLabelTSPL(selectedTemplateId, labelData, tsplSettings);
+      const tspl = generateUnifiedTSPL(labelData, fieldConfig, tsplSettings);
       setPreviewTspl(tspl);
     } catch (error) {
       console.error('Failed to generate TSPL preview:', error);
       setPreviewTspl('// Error generating preview');
     }
-  }, [selectedTemplateId, labelData, tsplSettings]);
+  }, [labelData, fieldConfig, tsplSettings]);
 
   const handlePrintNodePrint = async (isTest = false) => {
     if (!selectedPrinterId) {
@@ -113,7 +118,16 @@ export default function LabelDesigner() {
         barcode: "123456789"
       } : labelData;
 
-      const tspl = generateLabelTSPL(selectedTemplateId, testData, tsplSettings);
+      const testConfig = isTest ? {
+        includeTitle: true,
+        includeSku: true,
+        includePrice: true,
+        includeLot: true,
+        includeCondition: true,
+        barcodeMode: 'qr' as const
+      } : fieldConfig;
+
+      const tspl = generateUnifiedTSPL(testData, testConfig, tsplSettings);
 
       const result = await printRAW(tspl, {
         title: isTest ? 'Test Label' : 'Label Print',
@@ -134,8 +148,6 @@ export default function LabelDesigner() {
       setPrintLoading(false);
     }
   };
-
-  const selectedTemplate = AVAILABLE_TEMPLATES.find(t => t.id === selectedTemplateId);
 
   return (
     <div className="min-h-screen bg-background">
@@ -158,57 +170,64 @@ export default function LabelDesigner() {
               <CardTitle>Label Data & Template</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Template Selection */}
+              {/* Field Selection */}
               <div>
-                <Label htmlFor="template-select">Label Template</Label>
-                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {AVAILABLE_TEMPLATES.map(template => (
-                      <SelectItem key={template.id} value={template.id}>
-                        <div>
-                          <div className="font-medium">{template.name}</div>
-                          <div className="text-xs text-muted-foreground">{template.description}</div>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedTemplate && (
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-sm text-muted-foreground">
-                      {selectedTemplate.description}
-                    </p>
-                    <div className="flex gap-2">
-                      {!isUsingAppDefault && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            resetToAppDefault();
-                            toast.success('Reset to app default template');
-                          }}
-                          className="text-xs"
-                        >
-                          Reset Default
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setAsDefault(selectedTemplateId);
-                          toast.success(`${selectedTemplate.name} set as default template`);
-                        }}
-                        className="text-xs"
-                      >
-                        Set as Default
-                      </Button>
-                    </div>
+                <Label className="text-base font-medium">Include Fields</Label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-title" 
+                      checked={includeTitle === 'true'} 
+                      onCheckedChange={(checked) => setIncludeTitle(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-title" className="text-sm">Title</Label>
                   </div>
-                )}
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-sku" 
+                      checked={includeSku === 'true'} 
+                      onCheckedChange={(checked) => setIncludeSku(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-sku" className="text-sm">SKU</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-price" 
+                      checked={includePrice === 'true'} 
+                      onCheckedChange={(checked) => setIncludePrice(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-price" className="text-sm">Price</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-lot" 
+                      checked={includeLot === 'true'} 
+                      onCheckedChange={(checked) => setIncludeLot(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-lot" className="text-sm">Lot Number</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="include-condition" 
+                      checked={includeCondition === 'true'} 
+                      onCheckedChange={(checked) => setIncludeCondition(checked ? 'true' : 'false')}
+                    />
+                    <Label htmlFor="include-condition" className="text-sm">Condition</Label>
+                  </div>
+                  <div>
+                    <Label htmlFor="barcode-mode" className="text-sm">Barcode</Label>
+                    <Select value={barcodeMode} onValueChange={setBarcodeMode}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="qr">QR Code</SelectItem>
+                        <SelectItem value="barcode">Barcode</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
 
               {/* Label Data Inputs */}
@@ -399,30 +418,25 @@ export default function LabelDesigner() {
 
             <PrinterPanel />
 
-            <RawTemplateEditor 
-              labelData={labelData}
-              tsplSettings={tsplSettings}
-            />
-
             <Card className="shadow-aloha">
               <CardHeader>
-                <CardTitle>Template Information</CardTitle>
+                <CardTitle>TSPL for Rollo Printers</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3 text-sm">
                   <div>
-                    <h4 className="font-medium">Template Features:</h4>
+                    <h4 className="font-medium">Optimized for Rollo:</h4>
                     <ul className="list-disc list-inside text-muted-foreground space-y-1 mt-1">
-                      <li>Code-defined templates for consistent output</li>
-                      <li>Direct TSPL generation for crisp printing</li>
-                      <li>Reliable barcode/QR code positioning</li>
-                      <li>No rasterization or DPI issues</li>
+                      <li>Field-based layout generation</li>
+                      <li>Raw TSPL for crisp thermal printing</li>
+                      <li>QR codes and barcodes supported</li>
+                      <li>2×1 inch label size optimized</li>
                     </ul>
                   </div>
                   <div>
                     <h4 className="font-medium">Print Quality:</h4>
                     <p className="text-muted-foreground">
-                      Raw TSPL commands ensure maximum print quality and reliability on thermal printers.
+                      Direct TSPL commands ensure maximum print quality on Rollo thermal printers.
                     </p>
                   </div>
                 </div>

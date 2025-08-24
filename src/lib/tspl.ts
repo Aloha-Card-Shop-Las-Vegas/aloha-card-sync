@@ -111,49 +111,112 @@ export function buildSampleLabel(): string {
   });
 }
 
-// Convert label data to TSPL for common use cases
-export function labelDataToTSPL(data: {
-  title?: string;
-  sku?: string;
-  price?: string;
-  lot?: string;
-  barcode?: string;
-  condition?: string;
-}, tsplSettings?: { density?: number; speed?: number; gapInches?: number }): string {
+// Unified TSPL generator with field selection
+export interface LabelFieldConfig {
+  includeTitle: boolean;
+  includeSku: boolean;
+  includePrice: boolean;
+  includeLot: boolean;
+  includeCondition: boolean;
+  barcodeMode: 'qr' | 'barcode' | 'none';
+}
+
+export function generateUnifiedTSPL(
+  data: {
+    title?: string;
+    sku?: string;
+    price?: string;
+    lot?: string;
+    barcode?: string;
+    condition?: string;
+  },
+  fieldConfig: LabelFieldConfig,
+  tsplSettings?: { density?: number; speed?: number; gapInches?: number }
+): string {
   const textLines: TSPLOptions['textLines'] = [];
-  
-  if (data.title) {
-    textLines.push({ text: data.title, x: 10, y: 10, fontSize: 2 });
+  let yPos = 10;
+
+  // Title
+  if (fieldConfig.includeTitle && data.title) {
+    textLines.push({ 
+      text: data.title.slice(0, 25), 
+      x: 10, 
+      y: yPos, 
+      fontSize: 2 
+    });
+    yPos += 25;
+  }
+
+  // Second row: SKU and Condition
+  let secondRowY = yPos;
+  if (fieldConfig.includeSku && data.sku) {
+    textLines.push({ 
+      text: `SKU: ${data.sku}`, 
+      x: 10, 
+      y: secondRowY, 
+      fontSize: 1 
+    });
   }
   
-  if (data.sku) {
-    textLines.push({ text: `SKU: ${data.sku}`, x: 10, y: 40, fontSize: 1 });
+  if (fieldConfig.includeCondition && data.condition) {
+    textLines.push({ 
+      text: data.condition, 
+      x: 200, 
+      y: secondRowY, 
+      fontSize: 1 
+    });
   }
   
-  if (data.lot) {
-    textLines.push({ text: `LOT: ${data.lot}`, x: 10, y: 60, fontSize: 1 });
+  if (fieldConfig.includeSku || fieldConfig.includeCondition) {
+    yPos = secondRowY + 20;
   }
-  
-  if (data.condition) {
-    textLines.push({ text: data.condition, x: 200, y: 40, fontSize: 1 });
+
+  // Lot number
+  if (fieldConfig.includeLot && data.lot) {
+    textLines.push({ 
+      text: `LOT: ${data.lot}`, 
+      x: 10, 
+      y: yPos, 
+      fontSize: 1 
+    });
+    yPos += 20;
   }
-  
-  if (data.price) {
-    textLines.push({ text: `$${data.price}`, x: 300, y: 10, fontSize: 3 });
+
+  // Price (always on right if included)
+  if (fieldConfig.includePrice && data.price) {
+    const priceText = data.price.startsWith('$') ? data.price : `$${data.price}`;
+    textLines.push({ 
+      text: priceText, 
+      x: 280, 
+      y: 10, 
+      fontSize: 3 
+    });
   }
 
   const options: TSPLOptions = { 
     textLines,
     ...tsplSettings
   };
-  
-  if (data.barcode) {
-    options.qrcode = {
-      data: data.barcode,
-      x: 10,
-      y: 90,
-      size: 'M'
-    };
+
+  // Barcode/QR code
+  if (fieldConfig.barcodeMode !== 'none' && data.barcode) {
+    if (fieldConfig.barcodeMode === 'qr') {
+      options.qrcode = {
+        data: data.barcode,
+        x: 10,
+        y: Math.max(yPos + 10, 90),
+        size: 'M'
+      };
+    } else if (fieldConfig.barcodeMode === 'barcode') {
+      options.barcode = {
+        data: data.barcode,
+        x: 10,
+        y: Math.max(yPos + 10, 90),
+        height: 50,
+        width: 2,
+        type: 'CODE128'
+      };
+    }
   }
 
   return buildTSPL(options);
