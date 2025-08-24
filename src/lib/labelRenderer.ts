@@ -169,7 +169,7 @@ export const renderLabelToCanvas = (
   if (fieldConfig.barcodeMode !== 'none') {
     const middleY = padding + topRowHeight + padding;
     const barcodeWidth = LABEL_WIDTH - padding * 6; // Slightly narrower for centering
-    const barcodeHeight = middleHeight - 20; // Taller barcode
+    const barcodeHeight = (middleHeight - 20) * 1.2; // 20% taller barcode
     const barcodeX = padding + 25; // Move to the left for better centering
     drawBarcode(ctx, barcodeX, middleY + 2, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
     
