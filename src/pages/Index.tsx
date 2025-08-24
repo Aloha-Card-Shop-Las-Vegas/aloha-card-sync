@@ -1074,16 +1074,19 @@ const Index = () => {
                                         <DialogHeader>
                                           <DialogTitle>Label Preview</DialogTitle>
                                         </DialogHeader>
-                                        <div className="space-y-4">
-                                           <LabelPreviewCanvas 
-                                             fieldConfig={getLabelDesignerSettings().fieldConfig}
-                                             labelData={buildLabelDataFromItem(b)}
-                                             showGuides={getLabelDesignerSettings().showGuides}
-                                           />
-                                          <div className="text-xs text-muted-foreground">
-                                            This preview uses the same settings as your Label Designer. Update settings in the Label Designer to change how labels appear.
-                                          </div>
-                                        </div>
+                                         <div className="space-y-4">
+                                            <LabelPreviewCanvas 
+                                              fieldConfig={
+                                                defaultTemplates.raw?.canvas_config || 
+                                                getLabelDesignerSettings().fieldConfig
+                                              }
+                                              labelData={buildLabelDataFromItem(b)}
+                                              showGuides={getLabelDesignerSettings().showGuides}
+                                            />
+                                           <div className="text-xs text-muted-foreground">
+                                             This preview uses your saved template settings. Update settings in the Label Designer to change how labels appear.
+                                           </div>
+                                         </div>
                                       </DialogContent>
                                    </Dialog>
                                    <Button size="sm" onClick={() => handlePushRow(b)}>Push</Button>

@@ -13,13 +13,23 @@ export interface LabelDesignerSettings {
 export function getLabelDesignerSettings(): LabelDesignerSettings {
   try {
     // Read settings from localStorage (same keys used in LabelDesigner.tsx)
-    const includeTitle = localStorage.getItem('field-title') === 'true';
-    const includeSku = localStorage.getItem('field-sku') === 'true';
-    const includePrice = localStorage.getItem('field-price') === 'true';
-    const includeLot = localStorage.getItem('field-lot') === 'true';
-    const includeCondition = localStorage.getItem('field-condition') === 'true';
+    // Default to true if key doesn't exist (missing localStorage keys)
+    const includeTitle = localStorage.getItem('field-title') !== 'false';
+    const includeSku = localStorage.getItem('field-sku') !== 'false';
+    const includePrice = localStorage.getItem('field-price') !== 'false';
+    const includeLot = localStorage.getItem('field-lot') !== 'false';
+    const includeCondition = localStorage.getItem('field-condition') !== 'false';
     const barcodeMode = localStorage.getItem('barcode-mode') || 'barcode';
     const showGuides = localStorage.getItem('labelDesigner_showGuides') === 'true';
+
+    console.log('Label Designer Settings loaded:', {
+      includeTitle,
+      includeSku,
+      includePrice,
+      includeLot,
+      includeCondition,
+      barcodeMode
+    });
 
     return {
       fieldConfig: {

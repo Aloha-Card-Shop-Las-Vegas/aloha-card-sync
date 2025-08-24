@@ -14,12 +14,22 @@ export function useRawTemplates() {
   const initializeDefaultRawTemplate = async () => {
     if (loading || templates.length > 0) return;
 
-    const currentSettings = getLabelDesignerSettings();
+    // Use normalized field config with all fields enabled for default template
+    const normalizedConfig = {
+      includeTitle: true,
+      includeSku: true,
+      includePrice: true,
+      includeLot: true,
+      includeCondition: true,
+      barcodeMode: 'barcode' as const
+    };
     
-    // Create default raw template with current optimized settings
+    console.log('Creating default raw template with normalized config:', normalizedConfig);
+    
+    // Create default raw template with all fields enabled
     const result = await saveTemplate(
       'Optimized Barcode Template',
-      currentSettings.fieldConfig,
+      normalizedConfig,
       {
         title: "POKEMON GENGAR VMAX #020",
         sku: "120979260", 
