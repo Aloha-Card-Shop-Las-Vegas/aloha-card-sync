@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Eye } from "lucide-react";
 import { LabelPreviewCanvas } from "@/components/LabelPreviewCanvas";
 import { getLabelDesignerSettings } from "@/lib/labelDesignerSettings";
+import { buildLabelDataFromItem, buildTitleFromParts } from '@/lib/labelData';
 
 
 type CardItem = {
@@ -139,25 +140,7 @@ const Index = () => {
     }
   };
 
-  // Build a display title similar to PSA fetch formatting
-  const buildTitleFromParts = (
-    year?: string | null,
-    brandTitle?: string | null,
-    cardNumber?: string | null,
-    subject?: string | null,
-    variant?: string | null
-  ) => {
-    return [
-      year,
-      (brandTitle || "").replace(/&amp;/g, "&"),
-      cardNumber ? `#${String(cardNumber).replace(/^#/, "")}` : undefined,
-      (subject || "").replace(/&amp;/g, "&"),
-      (variant || "").replace(/&amp;/g, "&"),
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-  };
+  // buildTitleFromParts moved to labelData.ts for reuse
 
   // Common PSA grades for quick selection
   const PSA_GRADE_OPTIONS = [
@@ -653,17 +636,9 @@ const Index = () => {
   const generateLabelPDF = async (item: CardItem): Promise<string> => {
     const { generateLabelPDF: sharedGenerateLabelPDF } = await import('@/lib/labelRenderer');
     
-    // Use Label Designer settings instead of hardcoded values
+    // Use Label Designer settings and centralized data mapping
     const designerSettings = getLabelDesignerSettings();
-    
-    const labelData = {
-      title: buildTitleFromParts(item.year, item.brandTitle, item.cardNumber, item.subject, item.variant),
-      sku: item.sku || item.id?.toString() || 'NO-SKU',
-      price: item.price?.toString() || '',
-      lot: item.lot || '',
-      condition: item.grade || '',
-      barcode: item.sku || item.id?.toString() || 'NO-SKU'
-    };
+    const labelData = buildLabelDataFromItem(item);
 
     return sharedGenerateLabelPDF(designerSettings.fieldConfig, labelData, 203);
   };
@@ -1100,21 +1075,11 @@ const Index = () => {
                                           <DialogTitle>Label Preview</DialogTitle>
                                         </DialogHeader>
                                         <div className="space-y-4">
-                                          <LabelPreviewCanvas 
-                                            fieldConfig={{
-                                              ...getLabelDesignerSettings().fieldConfig,
-                                              templateStyle: 'boxed'
-                                            }}
-                                            labelData={{
-                                              title: buildTitleFromParts(b.year, b.brandTitle, b.cardNumber, b.subject, b.variant),
-                                              sku: b.sku || b.id?.toString() || 'NO-SKU',
-                                              price: b.price?.toString() || '',
-                                              lot: b.lot || '',
-                                              condition: b.grade || '',
-                                              barcode: b.sku || b.id?.toString() || 'NO-SKU'
-                                            }}
-                                            showGuides={getLabelDesignerSettings().showGuides}
-                                          />
+                                           <LabelPreviewCanvas 
+                                             fieldConfig={getLabelDesignerSettings().fieldConfig}
+                                             labelData={buildLabelDataFromItem(b)}
+                                             showGuides={getLabelDesignerSettings().showGuides}
+                                           />
                                           <div className="text-xs text-muted-foreground">
                                             This preview uses the same settings as your Label Designer. Update settings in the Label Designer to change how labels appear.
                                           </div>
