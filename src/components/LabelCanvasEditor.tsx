@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { ZoomIn, ZoomOut, Grid3X3, RotateCcw } from 'lucide-react';
+import { ZoomIn, ZoomOut, Grid3X3, RotateCcw, Type, Hash, DollarSign, Package, Star, QrCode, Scan } from 'lucide-react';
 
 interface LabelCanvasEditorProps {
   layout: LabelLayout;
@@ -24,6 +24,20 @@ interface LabelCanvasEditorProps {
 const LABEL_WIDTH_DOTS = 386; // 2 inches * 203 DPI
 const LABEL_HEIGHT_DOTS = 203; // 1 inch * 203 DPI
 
+// Element palette data
+const FIELD_ELEMENTS = [
+  { id: 'title', label: 'Title', icon: Type, color: 'bg-blue-100 border-blue-300 text-blue-700' },
+  { id: 'sku', label: 'SKU', icon: Hash, color: 'bg-green-100 border-green-300 text-green-700' },
+  { id: 'price', label: 'Price', icon: DollarSign, color: 'bg-purple-100 border-purple-300 text-purple-700' },
+  { id: 'lot', label: 'Lot', icon: Package, color: 'bg-orange-100 border-orange-300 text-orange-700' },
+  { id: 'condition', label: 'Condition', icon: Star, color: 'bg-pink-100 border-pink-300 text-pink-700' },
+] as const;
+
+const BARCODE_ELEMENTS = [
+  { id: 'qr', label: 'QR Code', icon: QrCode, color: 'bg-indigo-100 border-indigo-300 text-indigo-700' },
+  { id: 'barcode', label: 'Barcode', icon: Scan, color: 'bg-cyan-100 border-cyan-300 text-cyan-700' },
+] as const;
+
 export const LabelCanvasEditor = ({ 
   layout, 
   onChange, 
@@ -36,6 +50,7 @@ export const LabelCanvasEditor = ({
   const [showGrid, setShowGrid] = useState(true);
   const [gridSize, setGridSize] = useState(8);
   const [gridObjects, setGridObjects] = useState<any[]>([]); // Cache grid objects
+  const [draggedElement, setDraggedElement] = useState<string | null>(null);
 
   // Initialize canvas
   useEffect(() => {
@@ -347,9 +362,73 @@ export const LabelCanvasEditor = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [fabricCanvas, gridSize]);
 
+  // Handle drag start
+  const handleDragStart = (elementId: string) => {
+    setDraggedElement(elementId);
+  };
+
+  // Handle drag end
+  const handleDragEnd = () => {
+    setDraggedElement(null);
+  };
+
+  // Handle drop on canvas
+  const handleCanvasDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggedElement || !fabricCanvas) return;
+
+    // Get canvas bounds
+    const canvasElement = fabricCanvas.getElement();
+    const canvasRect = canvasElement.getBoundingClientRect();
+    
+    // Convert screen coordinates to canvas coordinates
+    const canvasX = (e.clientX - canvasRect.left) / zoom;
+    const canvasY = (e.clientY - canvasRect.top) / zoom;
+    
+    // Snap to grid
+    const snappedX = Math.round(canvasX / gridSize) * gridSize;
+    const snappedY = Math.round(canvasY / gridSize) * gridSize;
+    
+    // Clamp to canvas bounds
+    const clampedX = Math.max(0, Math.min(LABEL_WIDTH_DOTS - 100, snappedX));
+    const clampedY = Math.max(0, Math.min(LABEL_HEIGHT_DOTS - 25, snappedY));
+    
+    // Update layout based on element type
+    const newLayout = { ...layout };
+    
+    if (draggedElement === 'qr' || draggedElement === 'barcode') {
+      // Handle barcode elements
+      const mode = draggedElement === 'qr' ? 'qr' : 'barcode';
+      newLayout.barcode = {
+        ...newLayout.barcode,
+        mode,
+        x: clampedX,
+        y: clampedY,
+      };
+    } else {
+      // Handle text field elements
+      const field = newLayout[draggedElement as keyof Omit<LabelLayout, 'barcode'>];
+      if (field && 'x' in field) {
+        field.x = clampedX;
+        field.y = clampedY;
+        field.visible = true; // Make field visible when dropped
+      }
+    }
+    
+    onChange(newLayout);
+    setDraggedElement(null);
+  };
+
+  // Handle drag over canvas
+  const handleCanvasDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
   return (
-    <div className="space-y-4">
-      {/* Canvas Controls */}
+    <div className="flex gap-6">
+      {/* Main Canvas Area */}
+      <div className="flex-1 space-y-4">
+        {/* Canvas Controls */}
       <div className="flex flex-wrap gap-2 items-center justify-between">
         <div className="flex items-center gap-2">
           <Button
@@ -405,36 +484,101 @@ export const LabelCanvasEditor = ({
         </div>
       </div>
 
-      {/* Canvas */}
-      <div className="border rounded-lg p-4 bg-gray-50 overflow-auto">
-        <div className="inline-block">
-          <canvas 
-            ref={canvasRef}
-            className="border border-gray-300 rounded shadow-sm bg-white"
-          />
+        {/* Canvas */}
+        <div 
+          className={`border rounded-lg p-4 bg-gray-50 overflow-auto transition-colors ${
+            draggedElement ? 'border-primary border-2 bg-primary/5' : ''
+          }`}
+          onDrop={handleCanvasDrop}
+          onDragOver={handleCanvasDragOver}
+        >
+          <div className="inline-block">
+            <canvas 
+              ref={canvasRef}
+              className="border border-gray-300 rounded shadow-sm bg-white"
+            />
+          </div>
+        </div>
+
+        {/* Enhanced field legend */}
+        <div className="bg-muted/50 rounded-lg p-3 text-sm">
+          <p className="font-medium mb-2">Field Legend:</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-white border border-blue-500 rounded"></div>
+              <span>Visible fields</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-gray-100 border border-gray-400 rounded"></div>
+              <span>Hidden fields</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-gray-100 border-2 border-blue-500 rounded"></div>
+              <span>Barcode areas</span>
+            </div>
+          </div>
+          <p className="mt-2 text-muted-foreground">
+            <strong>Tip:</strong> Drag objects to reposition • Arrow keys for precision • Shift+Arrow for larger steps
+          </p>
         </div>
       </div>
 
-      {/* Enhanced field legend */}
-      <div className="bg-muted/50 rounded-lg p-3 text-sm">
-        <p className="font-medium mb-2">Field Legend:</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-white border border-blue-500 rounded"></div>
-            <span>Visible fields</span>
+      {/* Elements Palette */}
+      <div className="w-64 space-y-4">
+        <div className="bg-card border rounded-lg p-4">
+          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+            <Type className="h-4 w-4" />
+            Elements
+          </h3>
+          
+          {/* Text Fields */}
+          <div className="space-y-2 mb-4">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Text Fields</p>
+            {FIELD_ELEMENTS.map((element) => {
+              const Icon = element.icon;
+              return (
+                <div
+                  key={element.id}
+                  draggable
+                  onDragStart={() => handleDragStart(element.id)}
+                  onDragEnd={handleDragEnd}
+                  className={`${element.color} border-2 border-dashed rounded-lg p-3 cursor-grab hover:shadow-sm transition-all active:cursor-grabbing flex items-center gap-2 text-sm`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="font-medium">{element.label}</span>
+                </div>
+              );
+            })}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-gray-100 border border-gray-400 rounded"></div>
-            <span>Hidden fields</span>
+
+          {/* Barcodes */}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Barcodes</p>
+            {BARCODE_ELEMENTS.map((element) => {
+              const Icon = element.icon;
+              return (
+                <div
+                  key={element.id}
+                  draggable
+                  onDragStart={() => handleDragStart(element.id)}
+                  onDragEnd={handleDragEnd}
+                  className={`${element.color} border-2 border-dashed rounded-lg p-3 cursor-grab hover:shadow-sm transition-all active:cursor-grabbing flex items-center gap-2 text-sm`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="font-medium">{element.label}</span>
+                </div>
+              );
+            })}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 bg-gray-100 border-2 border-blue-500 rounded"></div>
-            <span>Barcode areas</span>
+
+          {/* Instructions */}
+          <div className="mt-4 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground">
+            <p className="font-medium mb-1">How to use:</p>
+            <p>• Drag elements to the canvas</p>
+            <p>• Elements snap to grid automatically</p>
+            <p>• Dropped fields become visible</p>
           </div>
         </div>
-        <p className="mt-2 text-muted-foreground">
-          <strong>Tip:</strong> Drag objects to reposition • Arrow keys for precision • Shift+Arrow for larger steps
-        </p>
       </div>
     </div>
   );
