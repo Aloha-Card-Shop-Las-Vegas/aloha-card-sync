@@ -158,17 +158,17 @@ export const renderLabelToCanvas = (
   // Middle section (Larger Barcode/QR)
   if (fieldConfig.barcodeMode !== 'none') {
     const middleY = padding + topRowHeight + padding;
-    const barcodeWidth = LABEL_WIDTH - padding * 4; // Wider barcode
-    const barcodeHeight = middleHeight - 30; // Taller barcode
-    const barcodeX = padding + 20; // Center horizontally
-    drawBarcode(ctx, barcodeX, middleY + 5, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
+    const barcodeWidth = LABEL_WIDTH - padding * 6; // Slightly narrower for centering
+    const barcodeHeight = middleHeight - 20; // Taller barcode
+    const barcodeX = padding + 40; // Move more to the right for centering
+    drawBarcode(ctx, barcodeX, middleY + 2, barcodeWidth, barcodeHeight, labelData.barcode, fieldConfig.barcodeMode);
     
     // Add SKU below barcode if included
     if (fieldConfig.includeSku && labelData.sku) {
       ctx.font = '10px Arial';
       ctx.fillStyle = '#666666';
       ctx.textAlign = 'center';
-      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, middleY + barcodeHeight + 20);
+      ctx.fillText(`SKU: ${labelData.sku}`, LABEL_WIDTH / 2, middleY + barcodeHeight + 15);
     }
   }
 

@@ -345,12 +345,12 @@ export function generateBoxedLayoutTSPL(
 
   // Larger Barcode in middle section
   if (fieldConfig.barcodeMode !== 'none' && data.barcode) {
-    const barcodeY = topBoxHeight + 10;
-    const barcodeX = 30; // Center better
+    const barcodeY = topBoxHeight + 5;
+    const barcodeX = 50; // Move more to the right for better centering
     
     if (fieldConfig.barcodeMode === 'qr') {
       // Scale QR code based on available space - make larger
-      const availableHeight = barcodeBoxHeight - 40; // More space for SKU below
+      const availableHeight = barcodeBoxHeight - 35; // Space for SKU below
       let qrSize: 'S' | 'M' | 'L' = 'L';
       
       if (availableHeight < 70) qrSize = 'M';
@@ -363,7 +363,7 @@ export function generateBoxedLayoutTSPL(
         size: qrSize
       };
     } else if (fieldConfig.barcodeMode === 'barcode') {
-      const barcodeHeight = Math.min(70, barcodeBoxHeight - 40); // Larger barcode, space for SKU
+      const barcodeHeight = Math.min(80, barcodeBoxHeight - 35); // Taller barcode, space for SKU
       options.barcode = {
         data: data.barcode,
         x: barcodeX,
@@ -379,7 +379,7 @@ export function generateBoxedLayoutTSPL(
       textLines.push({
         text: `SKU: ${data.sku}`,
         x: Math.floor(labelWidth / 2) - 30, // Center under barcode
-        y: barcodeY + (fieldConfig.barcodeMode === 'barcode' ? 85 : 95), // Below barcode
+        y: barcodeY + (fieldConfig.barcodeMode === 'barcode' ? 95 : 105), // Below barcode
         fontSize: 1
       });
     }
