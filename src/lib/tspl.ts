@@ -337,19 +337,9 @@ export function generateBoxedLayoutTSPL(
     });
   }
 
-  // Add border lines to show the boxes
-  const lines = [
-    // Horizontal line separating top and middle
-    { x: 0, y: topBoxHeight, width: labelWidth, height: 2 },
-    // Horizontal line separating middle and bottom
-    { x: 0, y: labelHeight - titleBoxHeight, width: labelWidth, height: 2 },
-    // Vertical line separating condition and price
-    { x: Math.floor(labelWidth / 2), y: 0, width: 2, height: topBoxHeight }
-  ];
-
+  // Options without border lines (boxes are reference only)
   const options: TSPLOptions = {
     textLines,
-    lines,
     ...tsplSettings
   };
 

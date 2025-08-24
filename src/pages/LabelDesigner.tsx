@@ -63,6 +63,9 @@ export default function LabelDesigner() {
   const [includeLot, setIncludeLot] = useLocalStorageString('field-lot', 'true');
   const [includeCondition, setIncludeCondition] = useLocalStorageString('field-condition', 'true');
   const [barcodeMode, setBarcodeMode] = useLocalStorageString('barcode-mode', 'qr');
+  
+  // State for showGuides option
+  const [showGuides, setShowGuides] = useLocalStorageString('labelDesigner_showGuides', 'false');
 
   // Label data - pre-fill from route state if coming from inventory
   const [title, setTitle] = useState(location.state?.title || "POKEMON GENGAR VMAX #020");
@@ -447,7 +450,18 @@ export default function LabelDesigner() {
               <LabelPreviewCanvas 
                 fieldConfig={{ ...fieldConfig, templateStyle }}
                 labelData={labelData}
+                showGuides={showGuides === 'true'}
               />
+
+              {/* Preview Options */}
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="show-guides" 
+                  checked={showGuides === 'true'} 
+                  onCheckedChange={(checked) => setShowGuides(checked ? 'true' : 'false')}
+                />
+                <Label htmlFor="show-guides" className="text-sm">Show guides (preview only)</Label>
+              </div>
 
               {/* TSPL Preview */}
               <div>

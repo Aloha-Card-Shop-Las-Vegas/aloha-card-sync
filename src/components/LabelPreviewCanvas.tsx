@@ -19,9 +19,10 @@ interface LabelPreviewCanvasProps {
     condition: string;
     barcode: string;
   };
+  showGuides?: boolean;
 }
 
-export const LabelPreviewCanvas = ({ fieldConfig, labelData }: LabelPreviewCanvasProps) => {
+export const LabelPreviewCanvas = ({ fieldConfig, labelData, showGuides = false }: LabelPreviewCanvasProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Constants for 2x1 inch label at 203 DPI
@@ -119,20 +120,34 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData }: LabelPreviewCanva
       const topLeftWidth = 120;
       const topRightWidth = LABEL_WIDTH - topLeftWidth - padding * 3;
 
-      // Draw box borders
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 1;
-
-      // Top left box (Condition)
-      if (fieldConfig.includeCondition) {
+      // Draw guide outlines only if showGuides is enabled
+      if (showGuides) {
+        ctx.strokeStyle = '#cccccc';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        
+        // Top left box (Condition)
         ctx.strokeRect(padding, padding, topLeftWidth, topRowHeight);
+        
+        // Top right box (Price)
+        const topRightX = padding + topLeftWidth + padding;
+        ctx.strokeRect(topRightX, padding, topRightWidth, topRowHeight);
+        
+        // Bottom box (Title)
+        const bottomY = padding + topRowHeight + padding + middleHeight + padding;
+        ctx.strokeRect(padding, bottomY, LABEL_WIDTH - padding * 2, bottomHeight);
+        
+        ctx.setLineDash([]); // Reset to solid line
+      }
+
+      // Top left content (Condition)
+      if (fieldConfig.includeCondition) {
         drawText(ctx, labelData.condition, padding + 5, padding + 5, topLeftWidth - 10, topRowHeight - 10, 'center');
       }
 
-      // Top right box (Price)
+      // Top right content (Price)
       if (fieldConfig.includePrice) {
         const topRightX = padding + topLeftWidth + padding;
-        ctx.strokeRect(topRightX, padding, topRightWidth, topRowHeight);
         drawText(ctx, labelData.price, topRightX + 5, padding + 5, topRightWidth - 10, topRowHeight - 10, 'center');
       }
 
@@ -143,10 +158,9 @@ export const LabelPreviewCanvas = ({ fieldConfig, labelData }: LabelPreviewCanva
         drawBarcode(ctx, padding + 50, middleY + 10, barcodeWidth - 100, middleHeight - 20, labelData.barcode, fieldConfig.barcodeMode);
       }
 
-      // Bottom box (Title)
+      // Bottom content (Title)
       if (fieldConfig.includeTitle) {
         const bottomY = padding + topRowHeight + padding + middleHeight + padding;
-        ctx.strokeRect(padding, bottomY, LABEL_WIDTH - padding * 2, bottomHeight);
         drawText(ctx, labelData.title, padding + 5, bottomY + 5, LABEL_WIDTH - padding * 2 - 10, bottomHeight - 10, 'center');
       }
     } else {
