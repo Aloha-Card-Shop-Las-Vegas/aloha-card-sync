@@ -10,6 +10,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Navigation } from '@/components/Navigation';
 
 interface ShopifyConfig {
   storeDomain: string;
@@ -397,11 +398,18 @@ const Admin = () => {
   }, []);
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-2 mb-6">
-        <Settings className="h-6 w-6" />
-        <h1 className="text-3xl font-bold">Admin Settings</h1>
-      </div>
+    <div className="min-h-screen bg-background">
+      <header className="border-b">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Settings className="h-6 w-6" />
+            <h1 className="text-2xl font-bold text-foreground">Admin Settings</h1>
+          </div>
+          <Navigation />
+        </div>
+      </header>
+
+      <div className="container mx-auto p-6 space-y-6">
 
       {error && (
         <Alert variant="destructive">
@@ -695,6 +703,7 @@ const Admin = () => {
           </Button>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 };
