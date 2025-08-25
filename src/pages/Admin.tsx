@@ -59,6 +59,18 @@ export default function Admin() {
   // Secrets management state
   const [secrets, setSecrets] = useState<{[key: string]: boolean}>({});
   const [loadingSecrets, setLoadingSecrets] = useState(false);
+  
+  // API Keys management state
+  const [apiKeys, setApiKeys] = useState<Array<{
+    id: string;
+    key_name: string;
+    key_value: string;
+    description: string;
+    category: string;
+  }>>([]);
+  const [loadingApiKeys, setLoadingApiKeys] = useState(false);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [keyValues, setKeyValues] = useState<{[key: string]: string}>({});
 
   const loadStatus = async () => {
     if (!selectedStore) return;
@@ -164,6 +176,66 @@ export default function Admin() {
     }
   };
 
+  // API Keys management functions
+  const loadApiKeys = async () => {
+    setLoadingApiKeys(true);
+    try {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('*')
+        .order('category', { ascending: true })
+        .order('key_name', { ascending: true });
+      
+      if (error) throw error;
+      setApiKeys(data || []);
+      
+      // Initialize keyValues with current values
+      const values: {[key: string]: string} = {};
+      (data || []).forEach(item => {
+        values[item.key_name] = item.key_value || '';
+      });
+      setKeyValues(values);
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to load API keys');
+    } finally {
+      setLoadingApiKeys(false);
+    }
+  };
+
+  const updateApiKey = async (keyName: string, newValue: string) => {
+    try {
+      const { error } = await supabase
+        .from('system_settings')
+        .update({ key_value: newValue })
+        .eq('key_name', keyName);
+      
+      if (error) throw error;
+      
+      toast.success(`${keyName} updated successfully`);
+      setEditingKey(null);
+      loadApiKeys();
+    } catch (e) {
+      console.error(e);
+      toast.error('Failed to update API key');
+    }
+  };
+
+  const handleKeyEdit = (keyName: string) => {
+    setEditingKey(keyName);
+  };
+
+  const handleKeySave = (keyName: string) => {
+    const newValue = keyValues[keyName] || '';
+    updateApiKey(keyName, newValue);
+  };
+
+  const handleKeyCancel = () => {
+    setEditingKey(null);
+    // Reset to original values
+    loadApiKeys();
+  };
+
   // Check admin status
   useEffect(() => {
     const sub = supabase.auth.onAuthStateChange((_e, session) => {
@@ -193,6 +265,7 @@ export default function Admin() {
       loadMappings();
     }
     loadUsers();
+    loadApiKeys();
   }, [selectedStore]);
 
   const handlePush = async (id: string) => {
@@ -264,6 +337,7 @@ export default function Admin() {
           <TabsList>
             <TabsTrigger value="diagnostics">Shopify Diagnostics</TabsTrigger>
             <TabsTrigger value="secrets">Shopify Configuration</TabsTrigger>
+            <TabsTrigger value="apikeys">API Keys</TabsTrigger>
             <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="assignments">User Assignments</TabsTrigger>
           </TabsList>
@@ -556,6 +630,131 @@ export default function Admin() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+          
+          <TabsContent value="apikeys" className="space-y-6">
+            {!isAdmin ? (
+              <Card className="shadow-aloha">
+                <CardContent className="p-6">
+                  <p className="text-muted-foreground text-center">You must be an admin to view API key management.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                <Card className="shadow-aloha">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>API Keys & System Settings</CardTitle>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={loadApiKeys} 
+                      disabled={loadingApiKeys}
+                    >
+                      {loadingApiKeys ? "Loading…" : "Refresh"}
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {/* Group by category */}
+                      {['printing', 'shopify', 'external'].map(category => {
+                        const categoryKeys = apiKeys.filter(key => key.category === category);
+                        if (categoryKeys.length === 0) return null;
+                        
+                        return (
+                          <div key={category} className="space-y-3">
+                            <h4 className="font-medium text-sm uppercase tracking-wide text-muted-foreground">
+                              {category === 'printing' ? 'PrintNode Settings' : 
+                               category === 'shopify' ? 'Shopify Settings' : 
+                               'External Services'}
+                            </h4>
+                            <div className="space-y-3">
+                              {categoryKeys.map((apiKey) => (
+                                <div key={apiKey.id} className="border rounded-lg p-4">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div>
+                                      <Label className="font-medium">{apiKey.key_name}</Label>
+                                      <p className="text-xs text-muted-foreground">{apiKey.description}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      {editingKey === apiKey.key_name ? (
+                                        <>
+                                          <Button 
+                                            size="sm" 
+                                            onClick={() => handleKeySave(apiKey.key_name)}
+                                          >
+                                            Save
+                                          </Button>
+                                          <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            onClick={handleKeyCancel}
+                                          >
+                                            Cancel
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline" 
+                                          onClick={() => handleKeyEdit(apiKey.key_name)}
+                                        >
+                                          Edit
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {editingKey === apiKey.key_name ? (
+                                      <Input
+                                        type="password"
+                                        value={keyValues[apiKey.key_name] || ''}
+                                        onChange={(e) => setKeyValues(prev => ({
+                                          ...prev,
+                                          [apiKey.key_name]: e.target.value
+                                        }))}
+                                        placeholder="Enter API key value..."
+                                        className="font-mono"
+                                      />
+                                    ) : (
+                                      <Input
+                                        type="password"
+                                        value={apiKey.key_value ? '••••••••••••••••' : ''}
+                                        disabled
+                                        placeholder={apiKey.key_value ? 'API key is set' : 'No API key set'}
+                                        className="font-mono"
+                                      />
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      
+                      {apiKeys.length === 0 && (
+                        <div className="text-center py-8 text-muted-foreground">
+                          {loadingApiKeys ? "Loading API keys..." : "No API keys found"}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card className="shadow-aloha">
+                  <CardContent className="p-6">
+                    <div className="text-center space-y-4">
+                      <h3 className="text-lg font-medium">Migration from Supabase Secrets</h3>
+                      <div className="text-sm text-muted-foreground space-y-2">
+                        <p>This system replaces Supabase secrets for easier management.</p>
+                        <p>Update your API keys here, and they will be used by all edge functions.</p>
+                        <p>Edge functions will automatically fall back to Supabase secrets if keys are not set here.</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </TabsContent>
           
           <TabsContent value="users" className="space-y-6">

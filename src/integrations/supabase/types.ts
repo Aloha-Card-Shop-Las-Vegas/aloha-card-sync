@@ -405,6 +405,39 @@ export type Database = {
         }
         Relationships: []
       }
+      system_settings: {
+        Row: {
+          category: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_encrypted: boolean | null
+          key_name: string
+          key_value: string | null
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_encrypted?: boolean | null
+          key_name: string
+          key_value?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_encrypted?: boolean | null
+          key_name?: string
+          key_value?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       trade_ins: {
         Row: {
           card_number: string | null

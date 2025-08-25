@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.render-label]
 verify_jwt = false
+
+[functions.get-system-setting]
+verify_jwt = false
