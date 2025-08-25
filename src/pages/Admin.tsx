@@ -574,12 +574,12 @@ export default function Admin() {
               </Card>
             ) : (
               <div className="grid gap-6 lg:grid-cols-2">
+                {/* Las Vegas Store Configuration */}
                 <Card className="shadow-aloha">
                   <CardHeader>
                     <CardTitle>Las Vegas Store Configuration</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Las Vegas store configuration fields */}
                     {[
                       { key: 'SHOPIFY_STORE_DOMAIN_LASVEGAS', label: 'Store Domain', placeholder: 'lasvegas-store.myshopify.com', description: 'Your Las Vegas Shopify store domain' },
                       { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_LASVEGAS', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Las Vegas store', isPassword: true },
@@ -647,12 +647,12 @@ export default function Admin() {
                   </CardContent>
                 </Card>
 
+                {/* Hawaii Store Configuration */}
                 <Card className="shadow-aloha">
                   <CardHeader>
                     <CardTitle>Hawaii Store Configuration</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Hawaii store configuration fields */}
                     {[
                       { key: 'SHOPIFY_STORE_DOMAIN_HAWAII', label: 'Store Domain', placeholder: 'hawaii-store.myshopify.com', description: 'Your Hawaii Shopify store domain' },
                       { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_HAWAII', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Hawaii store', isPassword: true },
@@ -721,19 +721,6 @@ export default function Admin() {
                 </Card>
               </div>
             )}
-            
-            <Card className="shadow-aloha">
-              <CardContent className="p-6">
-                <div className="text-center space-y-4">
-                  <h3 className="text-lg font-medium">Multi-Store Configuration</h3>
-                  <div className="text-sm text-muted-foreground space-y-2">
-                    <p>Configure separate Shopify credentials for your Las Vegas and Hawaii stores.</p>
-                    <p>Each store requires its own set of API credentials from your Shopify admin panel.</p>
-                    <p>After configuration, use the store selector to switch between stores for operations.</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
           
           <TabsContent value="apikeys" className="space-y-6">
@@ -759,20 +746,18 @@ export default function Admin() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-6">
-                      {/* Group by category */}
-                      {['printing', 'shopify', 'external'].map(category => {
-                        const categoryKeys = apiKeys.filter(key => key.category === category);
-                        if (categoryKeys.length === 0) return null;
+                      {/* PrintNode Settings */}
+                      {(() => {
+                        const printingKeys = apiKeys.filter(key => key.category === 'printing');
+                        if (printingKeys.length === 0) return null;
                         
                         return (
-                          <div key={category} className="space-y-3">
+                          <div className="space-y-3">
                             <h4 className="font-medium text-sm uppercase tracking-wide text-muted-foreground">
-                              {category === 'printing' ? 'PrintNode Settings' : 
-                               category === 'shopify' ? 'Shopify Settings' : 
-                               'External Services'}
+                              PrintNode Settings
                             </h4>
                             <div className="space-y-3">
-                              {categoryKeys.map((apiKey) => (
+                              {printingKeys.map((apiKey) => (
                                 <div key={apiKey.id} className="border rounded-lg p-4">
                                   <div className="flex items-center justify-between mb-2">
                                     <div>
@@ -834,7 +819,240 @@ export default function Admin() {
                             </div>
                           </div>
                         );
-                      })}
+                      })()}
+
+                      {/* Las Vegas Store Settings */}
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm uppercase tracking-wide text-muted-foreground">
+                          Las Vegas Store Settings
+                        </h4>
+                        <div className="space-y-3">
+                          {[
+                            { key: 'SHOPIFY_STORE_DOMAIN_LASVEGAS', label: 'Store Domain', description: 'Las Vegas Shopify store domain (e.g., lasvegas-store.myshopify.com)' },
+                            { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_LASVEGAS', label: 'Admin Access Token', description: 'Private app access token for Las Vegas store' },
+                            { key: 'SHOPIFY_API_KEY_LASVEGAS', label: 'API Key', description: 'Public app API key for Las Vegas store' },
+                            { key: 'SHOPIFY_API_SECRET_LASVEGAS', label: 'API Secret', description: 'Private app API secret for Las Vegas store' },
+                            { key: 'SHOPIFY_WEBHOOK_SECRET_LASVEGAS', label: 'Webhook Secret', description: 'Webhook signing secret for Las Vegas store' }
+                          ].map((field) => {
+                            const existingKey = apiKeys.find(k => k.key_name === field.key);
+                            const isEditing = editingKey === field.key;
+                            
+                            return (
+                              <div key={field.key} className="border rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div>
+                                    <Label className="font-medium">{field.label}</Label>
+                                    <p className="text-xs text-muted-foreground">{field.description}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    {isEditing ? (
+                                      <>
+                                        <Button 
+                                          size="sm" 
+                                          onClick={() => handleKeySave(field.key)}
+                                        >
+                                          Save
+                                        </Button>
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline" 
+                                          onClick={handleKeyCancel}
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline" 
+                                        onClick={() => handleKeyEdit(field.key)}
+                                      >
+                                        {existingKey ? 'Edit' : 'Add'}
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {isEditing ? (
+                                    <Input
+                                      type={field.key.includes('DOMAIN') ? "text" : "password"}
+                                      value={keyValues[field.key] || ''}
+                                      onChange={(e) => setKeyValues(prev => ({
+                                        ...prev,
+                                        [field.key]: e.target.value
+                                      }))}
+                                      placeholder={`Enter ${field.label.toLowerCase()}...`}
+                                      className="font-mono"
+                                    />
+                                  ) : (
+                                    <Input
+                                      type={field.key.includes('DOMAIN') ? "text" : "password"}
+                                      value={existingKey?.key_value ? (field.key.includes('DOMAIN') ? existingKey.key_value : '••••••••••••••••') : ''}
+                                      disabled
+                                      placeholder={existingKey?.key_value ? `${field.label} is set` : `No ${field.label.toLowerCase()} set`}
+                                      className="font-mono"
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Hawaii Store Settings */}
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm uppercase tracking-wide text-muted-foreground">
+                          Hawaii Store Settings
+                        </h4>
+                        <div className="space-y-3">
+                          {[
+                            { key: 'SHOPIFY_STORE_DOMAIN_HAWAII', label: 'Store Domain', description: 'Hawaii Shopify store domain (e.g., hawaii-store.myshopify.com)' },
+                            { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_HAWAII', label: 'Admin Access Token', description: 'Private app access token for Hawaii store' },
+                            { key: 'SHOPIFY_API_KEY_HAWAII', label: 'API Key', description: 'Public app API key for Hawaii store' },
+                            { key: 'SHOPIFY_API_SECRET_HAWAII', label: 'API Secret', description: 'Private app API secret for Hawaii store' },
+                            { key: 'SHOPIFY_WEBHOOK_SECRET_HAWAII', label: 'Webhook Secret', description: 'Webhook signing secret for Hawaii store' }
+                          ].map((field) => {
+                            const existingKey = apiKeys.find(k => k.key_name === field.key);
+                            const isEditing = editingKey === field.key;
+                            
+                            return (
+                              <div key={field.key} className="border rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div>
+                                    <Label className="font-medium">{field.label}</Label>
+                                    <p className="text-xs text-muted-foreground">{field.description}</p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    {isEditing ? (
+                                      <>
+                                        <Button 
+                                          size="sm" 
+                                          onClick={() => handleKeySave(field.key)}
+                                        >
+                                          Save
+                                        </Button>
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline" 
+                                          onClick={handleKeyCancel}
+                                        >
+                                          Cancel
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline" 
+                                        onClick={() => handleKeyEdit(field.key)}
+                                      >
+                                        {existingKey ? 'Edit' : 'Add'}
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {isEditing ? (
+                                    <Input
+                                      type={field.key.includes('DOMAIN') ? "text" : "password"}
+                                      value={keyValues[field.key] || ''}
+                                      onChange={(e) => setKeyValues(prev => ({
+                                        ...prev,
+                                        [field.key]: e.target.value
+                                      }))}
+                                      placeholder={`Enter ${field.label.toLowerCase()}...`}
+                                      className="font-mono"
+                                    />
+                                  ) : (
+                                    <Input
+                                      type={field.key.includes('DOMAIN') ? "text" : "password"}
+                                      value={existingKey?.key_value ? (field.key.includes('DOMAIN') ? existingKey.key_value : '••••••••••••••••') : ''}
+                                      disabled
+                                      placeholder={existingKey?.key_value ? `${field.label} is set` : `No ${field.label.toLowerCase()} set`}
+                                      className="font-mono"
+                                    />
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* External Services */}
+                      {(() => {
+                        const externalKeys = apiKeys.filter(key => key.category === 'external');
+                        if (externalKeys.length === 0) return null;
+                        
+                        return (
+                          <div className="space-y-3">
+                            <h4 className="font-medium text-sm uppercase tracking-wide text-muted-foreground">
+                              External Services
+                            </h4>
+                            <div className="space-y-3">
+                              {externalKeys.map((apiKey) => (
+                                <div key={apiKey.id} className="border rounded-lg p-4">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <div>
+                                      <Label className="font-medium">{apiKey.key_name}</Label>
+                                      <p className="text-xs text-muted-foreground">{apiKey.description}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      {editingKey === apiKey.key_name ? (
+                                        <>
+                                          <Button 
+                                            size="sm" 
+                                            onClick={() => handleKeySave(apiKey.key_name)}
+                                          >
+                                            Save
+                                          </Button>
+                                          <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            onClick={handleKeyCancel}
+                                          >
+                                            Cancel
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <Button 
+                                          size="sm" 
+                                          variant="outline" 
+                                          onClick={() => handleKeyEdit(apiKey.key_name)}
+                                        >
+                                          Edit
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="space-y-2">
+                                    {editingKey === apiKey.key_name ? (
+                                      <Input
+                                        type="password"
+                                        value={keyValues[apiKey.key_name] || ''}
+                                        onChange={(e) => setKeyValues(prev => ({
+                                          ...prev,
+                                          [apiKey.key_name]: e.target.value
+                                        }))}
+                                        placeholder="Enter API key value..."
+                                        className="font-mono"
+                                      />
+                                    ) : (
+                                      <Input
+                                        type="password"
+                                        value={apiKey.key_value ? '••••••••••••••••' : ''}
+                                        disabled
+                                        placeholder={apiKey.key_value ? 'API key is set' : 'No API key set'}
+                                        className="font-mono"
+                                      />
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                       
                       {apiKeys.length === 0 && (
                         <div className="text-center py-8 text-muted-foreground">
@@ -848,11 +1066,11 @@ export default function Admin() {
                 <Card className="shadow-aloha">
                   <CardContent className="p-6">
                     <div className="text-center space-y-4">
-                      <h3 className="text-lg font-medium">Migration from Supabase Secrets</h3>
+                      <h3 className="text-lg font-medium">Multi-Store API Management</h3>
                       <div className="text-sm text-muted-foreground space-y-2">
-                        <p>This system replaces Supabase secrets for easier management.</p>
-                        <p>Update your API keys here, and they will be used by all edge functions.</p>
-                        <p>Edge functions will automatically fall back to Supabase secrets if keys are not set here.</p>
+                        <p>Configure separate API credentials for your Las Vegas and Hawaii stores.</p>
+                        <p>Each store needs its own set of Shopify API credentials with location-specific suffixes.</p>
+                        <p>Edge functions will automatically use the correct credentials based on the selected store.</p>
                       </div>
                     </div>
                   </CardContent>
