@@ -3,8 +3,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Navigation } from "@/components/Navigation";
 import { PSABulkImport } from "@/components/PSABulkImport";
 import { TCGPlayerBulkImport } from "@/components/TCGPlayerBulkImport";
+import { RawCardIntake } from "@/components/RawCardIntake";
+import { useToast } from "@/hooks/use-toast";
 
 const BulkImport = () => {
+  const { toast } = useToast();
+
+  const handleCardPick = ({ card, chosenVariant }: {
+    card: any;
+    chosenVariant?: { condition: string; printing: string; price?: number };
+  }) => {
+    console.log('Selected card:', card);
+    console.log('Chosen variant:', chosenVariant);
+    
+    toast({
+      title: "Card Selected",
+      description: `${card.name} - ${chosenVariant?.condition || 'No condition'} - ${chosenVariant?.price ? `$${chosenVariant.price.toFixed(2)}` : 'No price'}`,
+    });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -36,6 +53,23 @@ const BulkImport = () => {
             </CardHeader>
             <CardContent>
               <TCGPlayerBulkImport />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Raw Card Intake (JustTCG)</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Search and select individual cards with intelligent pricing
+              </p>
+            </CardHeader>
+            <CardContent>
+              <RawCardIntake
+                defaultGame="pokemon"
+                defaultPrinting="Normal"
+                defaultConditions="NM,LP"
+                onPick={handleCardPick}
+              />
             </CardContent>
           </Card>
         </div>
