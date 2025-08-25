@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 import { Navigation } from "@/components/Navigation";
@@ -95,6 +96,14 @@ export default function Inventory() {
   const [lotFilter, setLotFilter] = useState("");
   const [sortKey, setSortKey] = useState<keyof ItemRow>("created_at");
   const [sortAsc, setSortAsc] = useState(false);
+  
+  // New filters
+  const [typeFilter, setTypeFilter] = useState<"all" | "graded" | "raw">("all");
+  const [conditionFilter, setConditionFilter] = useState("");
+  const [setFilter, setSetFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [yearFilter, setYearFilter] = useState("");
+  const [priceRange, setPriceRange] = useState({ min: "", max: "" });
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total]);
 
@@ -134,6 +143,43 @@ export default function Inventory() {
         if (pushed === "pushed") query = query.not("pushed_at", "is", null);
         if (pushed === "unpushed") query = query.is("pushed_at", null);
 
+        // New filter logic
+        if (typeFilter === "graded") {
+          query = query.not("psa_cert", "is", null);
+        } else if (typeFilter === "raw") {
+          query = query.is("psa_cert", null);
+        }
+
+        if (conditionFilter.trim()) {
+          query = query.ilike("grade", `%${conditionFilter.trim()}%`);
+        }
+
+        if (setFilter.trim()) {
+          query = query.ilike("brand_title", `%${setFilter.trim()}%`);
+        }
+
+        if (categoryFilter.trim()) {
+          query = query.ilike("category", `%${categoryFilter.trim()}%`);
+        }
+
+        if (yearFilter.trim()) {
+          query = query.ilike("year", `%${yearFilter.trim()}%`);
+        }
+
+        if (priceRange.min.trim()) {
+          const minPrice = parseFloat(priceRange.min);
+          if (!isNaN(minPrice)) {
+            query = query.gte("price", minPrice);
+          }
+        }
+
+        if (priceRange.max.trim()) {
+          const maxPrice = parseFloat(priceRange.max);
+          if (!isNaN(maxPrice)) {
+            query = query.lte("price", maxPrice);
+          }
+        }
+
         // Exclude soft-deleted records
         query = query.is("deleted_at", null);
 
@@ -151,7 +197,7 @@ export default function Inventory() {
     };
 
     fetchData();
-  }, [page, search, printed, pushed, lotFilter, sortKey, sortAsc]);
+  }, [page, search, printed, pushed, lotFilter, sortKey, sortAsc, typeFilter, conditionFilter, setFilter, categoryFilter, yearFilter, priceRange]);
 
   const toggleSort = (key: keyof ItemRow) => {
     if (sortKey === key) setSortAsc((v) => !v);
@@ -176,6 +222,20 @@ export default function Inventory() {
       console.error(e);
       toast.error("Failed to delete item");
     }
+  };
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setLotFilter("");
+    setPrinted("all");
+    setPushed("all");
+    setTypeFilter("all");
+    setConditionFilter("");
+    setSetFilter("");
+    setCategoryFilter("");
+    setYearFilter("");
+    setPriceRange({ min: "", max: "" });
+    setPage(1);
   };
 
   useEffect(() => {
@@ -206,10 +266,16 @@ export default function Inventory() {
       <main className="container mx-auto px-6 py-6">
         <Card className="shadow-aloha">
           <CardHeader>
-            <CardTitle>Inventory List</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Inventory List</CardTitle>
+              <Button variant="outline" onClick={clearAllFilters}>
+                Clear All Filters
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+            {/* Primary Filters Row */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               <div>
                 <Label htmlFor="search">Search</Label>
                 <Input
@@ -235,9 +301,119 @@ export default function Inventory() {
                 />
               </div>
               <div>
-                <Label>Status: Printed</Label>
+                <Label>Card Type</Label>
+                <Select value={typeFilter} onValueChange={(value: "all" | "graded" | "raw") => {
+                  setPage(1);
+                  setTypeFilter(value);
+                }}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="graded">Graded (PSA)</SelectItem>
+                    <SelectItem value="raw">Raw Cards</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="condition-filter">Condition/Grade</Label>
+                <Input
+                  id="condition-filter"
+                  value={conditionFilter}
+                  onChange={(e) => {
+                    setPage(1);
+                    setConditionFilter(e.target.value);
+                  }}
+                  placeholder="GEM MT 10, Near Mint, etc."
+                />
+              </div>
+            </div>
+
+            {/* Secondary Filters Row */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+              <div>
+                <Label htmlFor="set-filter">Set/Brand</Label>
+                <Input
+                  id="set-filter"
+                  value={setFilter}
+                  onChange={(e) => {
+                    setPage(1);
+                    setSetFilter(e.target.value);
+                  }}
+                  placeholder="Base Set, Sword & Shield, etc."
+                />
+              </div>
+              <div>
+                <Label htmlFor="category-filter">Category</Label>
+                <Input
+                  id="category-filter"
+                  value={categoryFilter}
+                  onChange={(e) => {
+                    setPage(1);
+                    setCategoryFilter(e.target.value);
+                  }}
+                  placeholder="TCG Cards, Pokemon, etc."
+                />
+              </div>
+              <div>
+                <Label htmlFor="year-filter">Year</Label>
+                <Input
+                  id="year-filter"
+                  value={yearFilter}
+                  onChange={(e) => {
+                    setPage(1);
+                    setYearFilter(e.target.value);
+                  }}
+                  placeholder="1999, 2021, etc."
+                />
+              </div>
+              <div>
+                <Label>Price Range</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={priceRange.min}
+                    onChange={(e) => {
+                      setPage(1);
+                      setPriceRange(prev => ({ ...prev, min: e.target.value }));
+                    }}
+                    placeholder="Min $"
+                    type="number"
+                  />
+                  <Input
+                    value={priceRange.max}
+                    onChange={(e) => {
+                      setPage(1);
+                      setPriceRange(prev => ({ ...prev, max: e.target.value }));
+                    }}
+                    placeholder="Max $"
+                    type="number"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Sort</Label>
+                <div className="flex gap-1 mt-2 flex-wrap">
+                  <Button size="sm" variant="outline" onClick={() => toggleSort("created_at")}>
+                    Date {sortKey === "created_at" ? (sortAsc ? "↑" : "↓") : ""}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => toggleSort("lot_number")}>
+                    Lot {sortKey === "lot_number" ? (sortAsc ? "↑" : "↓") : ""}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => toggleSort("price")}>
+                    Price {sortKey === "price" ? (sortAsc ? "↑" : "↓") : ""}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Status Filters Row */}
+            <div className="grid sm:grid-cols-2 gap-4 mb-6">
+              <div>
+                <Label>Print Status</Label>
                 <div className="flex gap-2 mt-2">
                   <Button
+                    size="sm"
                     variant={printed === "all" ? "default" : "outline"}
                     onClick={() => {
                       setPage(1);
@@ -247,6 +423,7 @@ export default function Inventory() {
                     All
                   </Button>
                   <Button
+                    size="sm"
                     variant={printed === "printed" ? "default" : "outline"}
                     onClick={() => {
                       setPage(1);
@@ -256,6 +433,7 @@ export default function Inventory() {
                     Printed
                   </Button>
                   <Button
+                    size="sm"
                     variant={printed === "unprinted" ? "default" : "outline"}
                     onClick={() => {
                       setPage(1);
@@ -267,9 +445,10 @@ export default function Inventory() {
                 </div>
               </div>
               <div>
-                <Label>Status: Pushed</Label>
+                <Label>Push Status</Label>
                 <div className="flex gap-2 mt-2">
                   <Button
+                    size="sm"
                     variant={pushed === "all" ? "default" : "outline"}
                     onClick={() => {
                       setPage(1);
@@ -279,6 +458,7 @@ export default function Inventory() {
                     All
                   </Button>
                   <Button
+                    size="sm"
                     variant={pushed === "pushed" ? "default" : "outline"}
                     onClick={() => {
                       setPage(1);
@@ -288,6 +468,7 @@ export default function Inventory() {
                     Pushed
                   </Button>
                   <Button
+                    size="sm"
                     variant={pushed === "unpushed" ? "default" : "outline"}
                     onClick={() => {
                       setPage(1);
@@ -296,15 +477,6 @@ export default function Inventory() {
                   >
                     Unpushed
                   </Button>
-                </div>
-              </div>
-              <div>
-                <Label>Sort</Label>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  <Button variant="outline" onClick={() => toggleSort("created_at")}>Date {sortKey === "created_at" ? (sortAsc ? "↑" : "↓") : ""}</Button>
-                  <Button variant="outline" onClick={() => toggleSort("lot_number")}>Lot {sortKey === "lot_number" ? (sortAsc ? "↑" : "↓") : ""}</Button>
-                  <Button variant="outline" onClick={() => toggleSort("price")}>Price {sortKey === "price" ? (sortAsc ? "↑" : "↓") : ""}</Button>
-                  <Button variant="outline" onClick={() => toggleSort("cost")}>Cost {sortKey === "cost" ? (sortAsc ? "↑" : "↓") : ""}</Button>
                 </div>
               </div>
             </div>
@@ -316,6 +488,9 @@ export default function Inventory() {
                     <TableHead>Lot</TableHead>
                     <TableHead>UUID</TableHead>
                     <TableHead>Title</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Condition</TableHead>
+                    <TableHead>Set</TableHead>
                     <TableHead>SKU</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>Cost</TableHead>
@@ -329,6 +504,7 @@ export default function Inventory() {
                 <TableBody>
                   {items.map((it) => {
                     const title = buildTitleFromParts(it.year, it.brand_title, it.card_number, it.subject, it.variant);
+                    const isGraded = !!it.psa_cert;
                     return (
                     <TableRow key={it.id}>
                       <TableCell className="font-medium">
@@ -343,7 +519,23 @@ export default function Inventory() {
                         </button>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{it.id}</TableCell>
-                      <TableCell>{title || "—"}</TableCell>
+                      <TableCell className="max-w-xs">
+                        <div className="truncate" title={title || "—"}>
+                          {title || "—"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={isGraded ? "default" : "secondary"}>
+                          {isGraded ? "Graded" : "Raw"}
+                        </Badge>
+                        {isGraded && it.psa_cert && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            PSA {it.psa_cert}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell>{it.grade || "—"}</TableCell>
+                      <TableCell>{it.brand_title || "—"}</TableCell>
                       <TableCell>{it.sku || "—"}</TableCell>
                       <TableCell>{it.price != null ? `$${Number(it.price).toLocaleString()}` : "—"}</TableCell>
                       <TableCell>{it.cost != null ? `$${Number(it.cost).toLocaleString()}` : "—"}</TableCell>
@@ -382,7 +574,7 @@ export default function Inventory() {
                   })}
                   {items.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={10} className="text-center text-muted-foreground">
+                      <TableCell colSpan={12} className="text-center text-muted-foreground">
                         {loading ? "Loading…" : "No items found"}
                       </TableCell>
                     </TableRow>
