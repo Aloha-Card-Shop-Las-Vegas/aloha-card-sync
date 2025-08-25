@@ -5,8 +5,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import { searchCards } from '@/integrations/justtcg';
 import { normalizeStr, normalizeNumber, includesLoose, similarityScore } from '@/lib/cardSearch';
 import type { GameKey, JObjectCard, Printing } from '@/lib/types';
@@ -16,6 +17,7 @@ interface RawCardIntakeProps {
   defaultGame?: GameKey;
   defaultPrinting?: Printing;
   defaultConditions?: string;
+  autoSaveToBatch?: boolean;
   onPick?: (payload: {
     card: JObjectCard;
     chosenVariant?: {
@@ -24,6 +26,7 @@ interface RawCardIntakeProps {
       price?: number;
     };
   }) => void;
+  onBatchAdd?: (item: any) => void;
 }
 
 const PRINTINGS: Printing[] = ['Normal', 'Foil'];
@@ -32,7 +35,9 @@ export function RawCardIntake({
   defaultGame = 'pokemon',
   defaultPrinting = 'Normal',
   defaultConditions = 'NM,LP',
+  autoSaveToBatch = false,
   onPick,
+  onBatchAdd,
 }: RawCardIntakeProps) {
   const [game, setGame] = useState<GameKey>(defaultGame);
   const [name, setName] = useState('');
@@ -43,6 +48,9 @@ export function RawCardIntake({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<JObjectCard | null>(null);
+  const [chosenVariant, setChosenVariant] = useState<any>(null);
+  const [quantity, setQuantity] = useState(1);
+  const [saving, setSaving] = useState(false);
 
   const { toast } = useToast();
   const debounceRef = useRef<NodeJS.Timeout>();
@@ -173,18 +181,104 @@ export function RawCardIntake({
     return variants.find(v => v.printing === printing) || variants[0];
   };
 
-  const handleSuggestionClick = (card: JObjectCard) => {
+  const generateSKU = (card: JObjectCard, variant: any, game: GameKey): string => {
+    const gameAbbr = game === 'pokemon' ? 'PKM' : game === 'pokemon_japan' ? 'PKJ' : 'MTG';
+    const conditionAbbr = String(variant?.condition || 'NM').replace(/[^A-Z]/g, '').substring(0, 2) || 'NM';
+    const randomSuffix = Math.random().toString(36).substring(2, 8).toUpperCase();
+    return `${gameAbbr}-${conditionAbbr}-${randomSuffix}`;
+  };
+
+  const mapGameToCategory = (game: GameKey): string => {
+    switch (game) {
+      case 'pokemon': return 'Pokémon';
+      case 'pokemon_japan': return 'Pokémon Japan';
+      case 'mtg': return 'Magic: The Gathering';
+      default: return 'Trading Cards';
+    }
+  };
+
+  const addToBatch = async () => {
+    if (!picked || !chosenVariant) {
+      toast({
+        title: 'No Card Selected',
+        description: 'Please select a card first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const sku = generateSKU(picked, chosenVariant, game);
+      
+      const { error } = await supabase
+        .from('intake_items')
+        .insert({
+          sku,
+          subject: picked.name,
+          card_number: String(picked.number || ''),
+          year: '', // JustTCG doesn't provide year directly
+          brand_title: picked.set || '',
+          category: mapGameToCategory(game),
+          variant: chosenVariant.printing,
+          quantity,
+          price: chosenVariant.price || null,
+          cost: null, // Cost not available from JustTCG
+        });
+
+      if (error) throw error;
+
+      // Dispatch event for real-time updates
+      window.dispatchEvent(new CustomEvent('intake:item-added', {
+        detail: { sku, name: picked.name, quantity }
+      }));
+
+      toast({
+        title: 'Added to Batch',
+        description: `${picked.name} (${quantity}x) added with SKU: ${sku}`,
+      });
+
+      onBatchAdd?.({ card: picked, variant: chosenVariant, sku, quantity });
+
+      // Clear selection
+      setPicked(null);
+      setChosenVariant(null);
+      setQuantity(1);
+      setName('');
+      setNumber('');
+      setSuggestions([]);
+
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to add item to batch',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSuggestionClick = async (card: JObjectCard) => {
     setPicked(card);
-    const chosenVariant = findBestVariant(card);
+    const variant = findBestVariant(card);
+    setChosenVariant(variant);
     
-    onPick?.({
+    const payload = {
       card,
-      chosenVariant: chosenVariant ? {
-        condition: String(chosenVariant.condition),
-        printing: chosenVariant.printing,
-        price: chosenVariant.price,
+      chosenVariant: variant ? {
+        condition: String(variant.condition),
+        printing: variant.printing,
+        price: variant.price,
       } : undefined,
-    });
+    };
+
+    onPick?.(payload);
+
+    // Auto-save if enabled
+    if (autoSaveToBatch && variant) {
+      setTimeout(addToBatch, 100);
+    }
   };
 
   return (
@@ -311,12 +405,41 @@ export function RawCardIntake({
             <CardHeader>
               <CardTitle className="text-lg">Selected Card</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <ChosenPricePanel 
                 card={picked} 
                 printing={printing} 
                 conditionCsv={conditionCsv} 
               />
+              
+              {/* Quantity and Add to Batch */}
+              <div className="flex items-center gap-4 pt-4 border-t">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="quantity">Quantity:</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    min="1"
+                    max="999"
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-20"
+                  />
+                </div>
+                
+                <Button 
+                  onClick={addToBatch}
+                  disabled={saving || !chosenVariant}
+                  className="flex items-center gap-2"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Plus className="h-4 w-4" />
+                  )}
+                  Add to Batch
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}

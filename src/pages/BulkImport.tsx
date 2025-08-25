@@ -15,10 +15,12 @@ const BulkImport = () => {
   }) => {
     console.log('Selected card:', card);
     console.log('Chosen variant:', chosenVariant);
-    
+  };
+
+  const handleBatchAdd = (item: any) => {
     toast({
-      title: "Card Selected",
-      description: `${card.name} - ${chosenVariant?.condition || 'No condition'} - ${chosenVariant?.price ? `$${chosenVariant.price.toFixed(2)}` : 'No price'}`,
+      title: "Added to Batch",
+      description: `${item.card.name} (${item.quantity}x) - SKU: ${item.sku}`,
     });
   };
 
@@ -69,6 +71,7 @@ const BulkImport = () => {
                 defaultPrinting="Normal"
                 defaultConditions="NM,LP"
                 onPick={handleCardPick}
+                onBatchAdd={handleBatchAdd}
               />
             </CardContent>
           </Card>
