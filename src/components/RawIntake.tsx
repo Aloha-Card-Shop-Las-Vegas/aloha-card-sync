@@ -319,7 +319,7 @@ export default function RawIntake() {
         </div>
         <div>
           <Label htmlFor="card_number">Card #</Label>
-          <Input id="card_number" value={form.card_number} onChange={(e) => setForm({ ...form, card_number: e.target.value })} placeholder="e.g., 4/102" />
+          <Input id="card_number" value={form.card_number} onChange={(e) => setForm({ ...form, card_number: e.target.value })} placeholder="e.g., 201/197 or 201" />
         </div>
         <div>
           <Label htmlFor="product_id">Product ID</Label>
