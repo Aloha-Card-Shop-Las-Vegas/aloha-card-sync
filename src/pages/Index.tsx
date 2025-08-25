@@ -9,7 +9,7 @@ import { toast } from "sonner";
 
 import { supabase } from "@/integrations/supabase/client";
 
-import RawIntake from "@/components/RawIntake";
+import { RawCardIntake } from "@/components/RawCardIntake";
 import { Link } from "react-router-dom";
 import { Navigation } from "@/components/Navigation";
 import { cleanupAuthState } from "@/lib/auth";
@@ -901,7 +901,12 @@ const Index = () => {
               <CardTitle>Raw Cards Intake</CardTitle>
             </CardHeader>
             <CardContent>
-              <RawIntake />
+              <RawCardIntake 
+                defaultGame="pokemon" 
+                defaultPrinting="Normal" 
+                defaultConditions="NM,LP" 
+                onBatchAdd={() => {}} 
+              />
             </CardContent>
           </Card>
 
