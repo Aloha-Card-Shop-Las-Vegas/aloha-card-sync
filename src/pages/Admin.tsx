@@ -155,6 +155,7 @@ export default function Admin() {
           </div>
           <div className="flex gap-2">
             <Link to="/"><Button variant="secondary">Back</Button></Link>
+            <Link to="/shopify-mapping"><Button variant="outline">Shopify Mapping</Button></Link>
             <Button variant="outline" onClick={() => { loadStatus(); loadRecent(); loadMappings(); }}>Refresh</Button>
           </div>
         </div>
