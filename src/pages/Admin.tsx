@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -35,7 +36,7 @@ function useSEO(opts: { title: string; description?: string; canonical?: string 
 }
 
 export default function Admin() {
-  useSEO({ title: "Admin Diagnostics | Aloha", description: "Test Shopify config, imports, and webhook updates." });
+  useSEO({ title: "Admin Dashboard | Aloha", description: "Manage Shopify configurations, user roles, and system diagnostics." });
 
   const [selectedStore, setSelectedStore] = useState<string | null>(null);
   const [status, setStatus] = useState<any>(null);
@@ -47,6 +48,16 @@ export default function Admin() {
   const [mappings, setMappings] = useState<any[]>([]);
   const [loadingMappings, setLoadingMappings] = useState(false);
   const [syncStatus, setSyncStatus] = useState<any[]>([]);
+  
+  // User management state
+  const [users, setUsers] = useState<Array<{ id: string; email: string | null; roles: string[] }>>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [email, setEmail] = useState("");
+  
+  // Secrets management state
+  const [secrets, setSecrets] = useState<{[key: string]: boolean}>({});
+  const [loadingSecrets, setLoadingSecrets] = useState(false);
 
   const loadStatus = async () => {
     if (!selectedStore) return;
@@ -116,12 +127,71 @@ export default function Admin() {
     }
   };
 
+  // User management functions
+  const loadUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("roles-admin", { body: { action: "list" } });
+      if (error) throw error;
+      const d: any = data;
+      if (!d?.ok) throw new Error(d?.error || "Failed to load users");
+      setUsers(d.users || []);
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to load users");
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const toggleRole = async (u: { email: string | null }, role: "admin" | "staff", grant: boolean) => {
+    if (!u.email) {
+      toast.error("User has no email");
+      return;
+    }
+    try {
+      const action = grant ? "grant" : "revoke";
+      const { data, error } = await supabase.functions.invoke("roles-admin", { body: { action, email: u.email, role } });
+      if (error) throw error;
+      const d: any = data;
+      if (!d?.ok) throw new Error(d?.error || "Failed");
+      toast.success(grant ? `Granted ${role}` : `Revoked ${role}`);
+      loadUsers();
+    } catch (e) {
+      console.error(e);
+      toast.error("Operation failed");
+    }
+  };
+
+  // Check admin status
+  useEffect(() => {
+    const sub = supabase.auth.onAuthStateChange((_e, session) => {
+      if (!session?.user) return;
+      setTimeout(async () => {
+        const uid = session.user.id;
+        const admin = await supabase.rpc("has_role", { _user_id: uid, _role: "admin" as any });
+        setIsAdmin(Boolean(admin.data));
+      }, 0);
+    }).data.subscription;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setTimeout(async () => {
+          const uid = session.user!.id;
+          const admin = await supabase.rpc("has_role", { _user_id: uid, _role: "admin" as any });
+          setIsAdmin(Boolean(admin.data));
+        }, 0);
+      }
+    });
+    return () => sub.unsubscribe();
+  }, []);
+
   useEffect(() => {
     if (selectedStore) {
       loadStatus();
       loadRecent();
       loadMappings();
     }
+    loadUsers();
   }, [selectedStore]);
 
   const handlePush = async (id: string) => {
@@ -175,8 +245,8 @@ export default function Admin() {
       <header className="border-b">
         <div className="container mx-auto px-6 py-8 flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground">Admin Diagnostics</h1>
-            <p className="text-muted-foreground mt-2">Verify Shopify setup, push tests, and manage user assignments.</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground">Admin Dashboard</h1>
+            <p className="text-muted-foreground mt-2">Manage Shopify configurations, user roles, and system diagnostics.</p>
           </div>
           <div className="flex gap-2 items-center">
             <StoreSelector 
@@ -193,7 +263,9 @@ export default function Admin() {
       <main className="container mx-auto px-6 py-8">
         <Tabs defaultValue="diagnostics" className="space-y-6">
           <TabsList>
-            <TabsTrigger value="diagnostics">Diagnostics</TabsTrigger>
+            <TabsTrigger value="diagnostics">Shopify Diagnostics</TabsTrigger>
+            <TabsTrigger value="secrets">Shopify Configuration</TabsTrigger>
+            <TabsTrigger value="users">User Management</TabsTrigger>
             <TabsTrigger value="assignments">User Assignments</TabsTrigger>
           </TabsList>
           
@@ -389,6 +461,230 @@ export default function Admin() {
                   </CardContent>
                 </Card>
               </div>
+            )}
+          </TabsContent>
+          
+          <TabsContent value="secrets" className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card className="shadow-aloha">
+                <CardHeader>
+                  <CardTitle>Las Vegas Store Configuration</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Store Domain</Label>
+                    <Input placeholder="lasvegas-store.myshopify.com" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_STORE_DOMAIN_LASVEGAS</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Admin Access Token</Label>
+                    <Input placeholder="shpca_..." type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_ADMIN_ACCESS_TOKEN_LASVEGAS</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Key</Label>
+                    <Input placeholder="API Key" type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_KEY_LASVEGAS</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Secret</Label>
+                    <Input placeholder="API Secret" type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_SECRET_LASVEGAS</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Webhook Secret</Label>
+                    <Input placeholder="Webhook Secret" type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_WEBHOOK_SECRET_LASVEGAS</p>
+                  </div>
+                  <Button variant="outline" disabled>
+                    Configure in Supabase Dashboard
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-aloha">
+                <CardHeader>
+                  <CardTitle>Hawaii Store Configuration</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Store Domain</Label>
+                    <Input placeholder="hawaii-store.myshopify.com" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_STORE_DOMAIN_HAWAII</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Admin Access Token</Label>
+                    <Input placeholder="shpca_..." type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_ADMIN_ACCESS_TOKEN_HAWAII</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Key</Label>
+                    <Input placeholder="API Key" type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_KEY_HAWAII</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>API Secret</Label>
+                    <Input placeholder="API Secret" type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_SECRET_HAWAII</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Webhook Secret</Label>
+                    <Input placeholder="Webhook Secret" type="password" disabled />
+                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_WEBHOOK_SECRET_HAWAII</p>
+                  </div>
+                  <Button variant="outline" disabled>
+                    Configure in Supabase Dashboard
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+            
+            <Card className="shadow-aloha">
+              <CardContent className="p-6">
+                <div className="text-center space-y-4">
+                  <h3 className="text-lg font-medium">Configuration Instructions</h3>
+                  <div className="text-sm text-muted-foreground space-y-2">
+                    <p>1. Go to your Supabase dashboard → Settings → Edge Functions</p>
+                    <p>2. Add the required secrets for each store using the exact names shown above</p>
+                    <p>3. Each store needs its own set of credentials with store-specific suffixes</p>
+                    <p>4. After adding secrets, return here to test the configuration</p>
+                  </div>
+                  <Button variant="outline" asChild>
+                    <a href="https://supabase.com/dashboard/project/dmpoandoydaqxhzdjnmk/settings/functions" target="_blank" rel="noopener noreferrer">
+                      Open Supabase Secrets
+                    </a>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="users" className="space-y-6">
+            {!isAdmin ? (
+              <Card className="shadow-aloha">
+                <CardContent className="p-6">
+                  <p className="text-muted-foreground text-center">You must be an admin to view user management.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                <Card className="shadow-aloha">
+                  <CardHeader>
+                    <CardTitle>Grant Role by Email</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex gap-2 items-center">
+                      <Input 
+                        placeholder="user@example.com" 
+                        value={email} 
+                        onChange={(e) => setEmail(e.target.value)} 
+                      />
+                      <Button 
+                        onClick={() => toggleRole({ email }, "staff", true)} 
+                        disabled={!email}
+                      >
+                        Grant Staff
+                      </Button>
+                      <Button 
+                        variant="secondary" 
+                        onClick={() => toggleRole({ email }, "admin", true)} 
+                        disabled={!email}
+                      >
+                        Grant Admin
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      User must exist (sign up first). Use revoke buttons in the table to remove roles.
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-aloha">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle>Users</CardTitle>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={loadUsers} 
+                      disabled={loadingUsers}
+                    >
+                      {loadingUsers ? "Loading…" : "Refresh"}
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Roles</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {users.map((u) => (
+                            <TableRow key={u.id}>
+                              <TableCell className="font-medium">
+                                {u.email || <span className="text-muted-foreground">(no email)</span>}
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex gap-2 flex-wrap">
+                                  {(u.roles || []).map((r) => (
+                                    <Badge key={r} variant="secondary">{r}</Badge>
+                                  ))}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex gap-1 justify-end flex-wrap">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => toggleRole(u, "staff", true)} 
+                                    disabled={!u.email || (u.roles || []).includes("staff")}
+                                  >
+                                    Grant Staff
+                                  </Button>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={() => toggleRole(u, "admin", true)} 
+                                    disabled={!u.email || (u.roles || []).includes("admin")}
+                                  >
+                                    Grant Admin
+                                  </Button>
+                                  <Button 
+                                    variant="destructive" 
+                                    size="sm" 
+                                    onClick={() => toggleRole(u, "staff", false)} 
+                                    disabled={!u.email || !(u.roles || []).includes("staff")}
+                                  >
+                                    Revoke Staff
+                                  </Button>
+                                  <Button 
+                                    variant="destructive" 
+                                    size="sm" 
+                                    onClick={() => toggleRole(u, "admin", false)} 
+                                    disabled={!u.email || !(u.roles || []).includes("admin")}
+                                  >
+                                    Revoke Admin
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                          {users.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={3} className="text-center text-muted-foreground">
+                                {loadingUsers ? "Loading users..." : "No users found"}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
             )}
           </TabsContent>
           
