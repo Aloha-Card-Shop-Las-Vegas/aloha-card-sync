@@ -13,31 +13,35 @@ Deno.serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
-    // Get Shopify settings from system_settings table
-    const { data: domainSetting } = await supabase.functions.invoke('get-system-setting', {
-      body: { 
-        keyName: 'SHOPIFY_STORE_DOMAIN',
-        fallbackSecretName: 'SHOPIFY_STORE_DOMAIN'
-      }
-    });
+    // Read storeKey from request (optional)
+    let storeKey: string | null = null;
+    try {
+      const body = await req.json();
+      storeKey = (body?.storeKey ?? null) as string | null;
+    } catch (_) {
+      // no body provided
+    }
 
-    const { data: tokenSetting } = await supabase.functions.invoke('get-system-setting', {
-      body: { 
-        keyName: 'SHOPIFY_ADMIN_ACCESS_TOKEN',
-        fallbackSecretName: 'SHOPIFY_ADMIN_ACCESS_TOKEN'
-      }
-    });
+    const upper = storeKey ? storeKey.toUpperCase() : null;
 
-    const { data: webhookSetting } = await supabase.functions.invoke('get-system-setting', {
-      body: { 
-        keyName: 'SHOPIFY_WEBHOOK_SECRET',
-        fallbackSecretName: 'SHOPIFY_WEBHOOK_SECRET'
-      }
-    });
+    // Decide which key names to look up
+    const DOMAIN_KEY = upper ? `SHOPIFY_${upper}_STORE_DOMAIN` : 'SHOPIFY_STORE_DOMAIN';
+    const TOKEN_KEY = upper ? `SHOPIFY_${upper}_ACCESS_TOKEN` : 'SHOPIFY_ADMIN_ACCESS_TOKEN';
+    const WEBHOOK_KEY = upper ? `SHOPIFY_${upper}_WEBHOOK_SECRET` : 'SHOPIFY_WEBHOOK_SECRET';
 
-    const SHOPIFY_STORE_DOMAIN = domainSetting?.value;
-    const SHOPIFY_ADMIN_ACCESS_TOKEN = tokenSetting?.value;
-    const SHOPIFY_WEBHOOK_SECRET = webhookSetting?.value;
+    // Load from system_settings
+    const { data: settings, error: settingsError } = await supabase
+      .from('system_settings')
+      .select('key_name,key_value')
+      .in('key_name', [DOMAIN_KEY, TOKEN_KEY, WEBHOOK_KEY]);
+
+    if (settingsError) throw settingsError;
+
+    const getVal = (k: string) => settings?.find(s => s.key_name === k)?.key_value || null;
+
+    const SHOPIFY_STORE_DOMAIN = getVal(DOMAIN_KEY);
+    const SHOPIFY_ADMIN_ACCESS_TOKEN = getVal(TOKEN_KEY);
+    const SHOPIFY_WEBHOOK_SECRET = getVal(WEBHOOK_KEY);
 
     const hasDomain = Boolean(SHOPIFY_STORE_DOMAIN);
     const hasAdminToken = Boolean(SHOPIFY_ADMIN_ACCESS_TOKEN);
