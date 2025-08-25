@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Printer, Eye, RotateCcw, Filter } from "lucide-react";
+import { Printer, Eye, RotateCcw, Filter, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Navigation } from "@/components/Navigation";
@@ -157,6 +157,48 @@ export default function PrintLogs() {
     }
   };
 
+  const deleteJob = async (jobId: string) => {
+    if (!confirm('Are you sure you want to delete this print job?')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('print_jobs')
+        .delete()
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      toast.success('Print job deleted successfully');
+      loadPrintJobs(); // Refresh the list
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error('Failed to delete print job');
+    }
+  };
+
+  const clearAllJobs = async () => {
+    if (!confirm('Are you sure you want to delete ALL print jobs? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('print_jobs')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all
+
+      if (error) throw error;
+
+      toast.success('All print jobs cleared');
+      loadPrintJobs(); // Refresh the list
+    } catch (error) {
+      console.error('Clear all error:', error);
+      toast.error('Failed to clear print jobs');
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const variants = {
       queued: 'secondary',
@@ -234,6 +276,15 @@ export default function PrintLogs() {
             <Button variant="outline" onClick={loadPrintJobs} disabled={loading}>
               Refresh
             </Button>
+            
+            <Button 
+              variant="destructive" 
+              onClick={clearAllJobs} 
+              disabled={loading || jobs.length === 0}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Clear All
+            </Button>
           </div>
 
           {/* Results Summary */}
@@ -289,6 +340,14 @@ export default function PrintLogs() {
                           onClick={() => reprintJob(job)}
                         >
                           <RotateCcw className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteJob(job.id)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
                     </TableCell>
