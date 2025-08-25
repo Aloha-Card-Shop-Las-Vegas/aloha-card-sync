@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -71,6 +72,18 @@ export default function Admin() {
   const [loadingApiKeys, setLoadingApiKeys] = useState(false);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [keyValues, setKeyValues] = useState<{[key: string]: string}>({});
+  
+  // Dialog state for save confirmation
+  const [saveDialog, setSaveDialog] = useState<{
+    open: boolean;
+    success: boolean;
+    message: string;
+    keyName?: string;
+  }>({
+    open: false,
+    success: false,
+    message: '',
+  });
 
   const loadStatus = async () => {
     if (!selectedStore) return;
@@ -218,7 +231,7 @@ export default function Admin() {
         // Update existing key
         const { error } = await supabase
           .from('system_settings')
-          .update({ key_value: newValue })
+          .update({ key_value: newValue, updated_at: new Date().toISOString() })
           .eq('key_name', keyName);
         
         if (error) throw error;
@@ -237,13 +250,32 @@ export default function Admin() {
         if (error) throw error;
       }
       
-      toast.success(`${keyName} updated successfully`);
+      // Show success dialog
+      setSaveDialog({
+        open: true,
+        success: true,
+        message: `${getStoreFromKeyName(keyName)} settings saved successfully!`,
+        keyName
+      });
+      
       setEditingKey(null);
       loadApiKeys();
     } catch (e) {
       console.error(e);
-      toast.error('Failed to update API key');
+      // Show error dialog
+      setSaveDialog({
+        open: true,
+        success: false,
+        message: `Failed to save ${getStoreFromKeyName(keyName)} settings. Please try again.`,
+        keyName
+      });
     }
+  };
+
+  const getStoreFromKeyName = (keyName: string): string => {
+    if (keyName.includes('LAS_VEGAS')) return 'Las Vegas Store';
+    if (keyName.includes('HAWAII')) return 'Hawaii Store';
+    return 'Store';
   };
 
   const getKeyDescription = (keyName: string): string => {
@@ -1219,6 +1251,25 @@ export default function Admin() {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Save confirmation dialog */}
+      <AlertDialog open={saveDialog.open} onOpenChange={(open) => setSaveDialog(prev => ({ ...prev, open }))}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className={saveDialog.success ? "text-green-600" : "text-red-600"}>
+              {saveDialog.success ? "✅ Settings Saved!" : "❌ Save Failed"}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              {saveDialog.message}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setSaveDialog(prev => ({ ...prev, open: false }))}>
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
