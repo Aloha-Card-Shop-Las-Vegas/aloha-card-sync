@@ -898,6 +898,15 @@ const Index = () => {
         <section className="grid md:grid-cols-2 gap-6 mt-8">
           <Card className="shadow-aloha">
             <CardHeader>
+              <CardTitle>Raw Cards Intake</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <RawIntake />
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-aloha">
+            <CardHeader>
               <CardTitle>Graded Cards Intake</CardTitle>
             </CardHeader>
             <CardContent>
@@ -963,15 +972,6 @@ const Index = () => {
                 <Button onClick={addToBatch}>Add to Batch</Button>
                 <Button variant="secondary" onClick={clearForm}>Clear</Button>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="shadow-aloha">
-            <CardHeader>
-              <CardTitle>Raw Cards Intake</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RawIntake />
             </CardContent>
           </Card>
         </section>
