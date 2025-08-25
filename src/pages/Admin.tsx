@@ -125,6 +125,8 @@ const Admin = () => {
   const [saveResultsStore, setSaveResultsStore] = useState('');
   const [justTcgApiKey, setJustTcgApiKey] = useState('');
   const [isSavingJustTcg, setIsSavingJustTcg] = useState(false);
+  const [firecrawlApiKey, setFirecrawlApiKey] = useState('');
+  const [isSavingFirecrawl, setIsSavingFirecrawl] = useState(false);
 
   const loadConfiguration = async () => {
     setIsLoading(true);
@@ -193,6 +195,20 @@ const Admin = () => {
         console.error('Error fetching JustTCG config:', justTcgError);
       } else {
         setJustTcgApiKey(justTcgData?.key_value || '');
+      }
+
+      // Load Firecrawl API Key
+      const { data: firecrawlData, error: firecrawlError } = await supabase
+        .from('system_settings')
+        .select('key_value')
+        .eq('key_name', 'FIRECRAWL_API_KEY')
+        .limit(1)
+        .maybeSingle();
+
+      if (firecrawlError) {
+        console.error('Error fetching Firecrawl config:', firecrawlError);
+      } else {
+        setFirecrawlApiKey(firecrawlData?.key_value || '');
       }
     } finally {
       setIsLoading(false);
@@ -478,6 +494,95 @@ const Admin = () => {
     }
   };
 
+  const saveFirecrawlKey = async () => {
+    if (!isAdmin) {
+      toast.error('Access denied', { description: 'Only administrators can save configuration' });
+      return;
+    }
+
+    setIsSavingFirecrawl(true);
+    setError('');
+
+    try {
+      // Check if record exists
+      const { data: existing, error: selectError } = await supabase
+        .from('system_settings')
+        .select('id')
+        .eq('key_name', 'FIRECRAWL_API_KEY')
+        .limit(1)
+        .maybeSingle();
+
+      if (selectError) {
+        throw selectError;
+      }
+
+      if (existing) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('system_settings')
+          .update({ 
+            key_value: firecrawlApiKey,
+            updated_at: new Date().toISOString()
+          })
+          .eq('key_name', 'FIRECRAWL_API_KEY');
+        
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('system_settings')
+          .insert({
+            key_name: 'FIRECRAWL_API_KEY',
+            key_value: firecrawlApiKey,
+            description: 'Firecrawl API Key for web scraping',
+            is_encrypted: true,
+            category: 'integrations'
+          });
+        
+        if (insertError) throw insertError;
+      }
+
+      toast.success('Firecrawl API key saved successfully!');
+      loadConfiguration(); // Reload to reflect changes
+    } catch (error: any) {
+      console.error('Error saving Firecrawl API key:', error);
+      toast.error('Failed to save Firecrawl API key', {
+        description: error.message
+      });
+    } finally {
+      setIsSavingFirecrawl(false);
+    }
+  };
+
+  const clearFirecrawlKey = async () => {
+    if (!isAdmin) {
+      toast.error('Access denied', { description: 'Only administrators can save configuration' });
+      return;
+    }
+
+    setIsSavingFirecrawl(true);
+    setError('');
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('system_settings')
+        .delete()
+        .eq('key_name', 'FIRECRAWL_API_KEY');
+
+      if (deleteError) throw deleteError;
+
+      setFirecrawlApiKey('');
+      toast.success('Firecrawl API key cleared successfully!');
+    } catch (error: any) {
+      console.error('Error clearing Firecrawl API key:', error);
+      toast.error('Failed to clear Firecrawl API key', {
+        description: error.message
+      });
+    } finally {
+      setIsSavingFirecrawl(false);
+    }
+  };
+
   // Check if user is admin on mount
   useEffect(() => {
     const checkAdminRole = async () => {
@@ -582,6 +687,62 @@ const Admin = () => {
               className="flex-1"
             >
               {isSavingJustTcg ? 'Clearing...' : 'Clear Key'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Firecrawl Integration Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-5 w-5" />
+            Firecrawl Integration
+          </CardTitle>
+          <CardDescription>
+            Store your Firecrawl API key securely for web scraping functionality
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isAdmin === false && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Only administrators can save configuration settings.
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="space-y-2">
+            <Label htmlFor="firecrawl-api-key" className="flex items-center gap-2">
+              <Globe className="h-4 w-4" />
+              API Key
+            </Label>
+            <Input
+              id="firecrawl-api-key"
+              type="password"
+              value={firecrawlApiKey}
+              onChange={(e) => setFirecrawlApiKey(e.target.value)}
+              placeholder="Enter your Firecrawl API key"
+              disabled={isLoading}
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            <Button 
+              onClick={saveFirecrawlKey}
+              disabled={!isAdmin || isSavingFirecrawl}
+              className="flex-1"
+            >
+              {isSavingFirecrawl ? 'Saving...' : 'Save Key'}
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={clearFirecrawlKey}
+              disabled={!isAdmin || isSavingFirecrawl}
+              className="flex-1"
+            >
+              {isSavingFirecrawl ? 'Clearing...' : 'Clear Key'}
             </Button>
           </div>
         </CardContent>
