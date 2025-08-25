@@ -33,10 +33,33 @@ export default function PrintLogs() {
     workstation: 'all',
     dateRange: '7' // days
   });
+  const [canDelete, setCanDelete] = useState(false);
 
   // Load print jobs
   useEffect(() => {
     loadPrintJobs();
+  }, []);
+
+  // Determine if user can delete (admin or staff)
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id);
+        if (error) {
+          console.error('Role fetch error:', error);
+          return;
+        }
+        const roles = (data || []).map((r: any) => r.role);
+        setCanDelete(roles.includes('admin') || roles.includes('staff'));
+      } catch (err) {
+        console.error('Role check failed:', err);
+      }
+    })();
   }, []);
 
   // Apply filters when jobs or filters change
@@ -54,8 +77,10 @@ export default function PrintLogs() {
 
       if (error) throw error;
       setJobs(data || []);
-    } catch (error) {
-      toast.error('Failed to load print jobs');
+    } catch (err) {
+      console.error('Failed to load print jobs:', err);
+      const msg = (err as any)?.message || (err as any)?.error_description || 'Failed to load print jobs';
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -172,9 +197,10 @@ export default function PrintLogs() {
 
       toast.success('Print job deleted successfully');
       loadPrintJobs(); // Refresh the list
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error('Failed to delete print job');
+    } catch (err) {
+      console.error('Delete error:', err);
+      const msg = (err as any)?.message || (err as any)?.error_description || 'Failed to delete print job';
+      toast.error(msg);
     }
   };
 
@@ -193,9 +219,10 @@ export default function PrintLogs() {
 
       toast.success('All print jobs cleared');
       loadPrintJobs(); // Refresh the list
-    } catch (error) {
-      console.error('Clear all error:', error);
-      toast.error('Failed to clear print jobs');
+    } catch (err) {
+      console.error('Clear all error:', err);
+      const msg = (err as any)?.message || (err as any)?.error_description || 'Failed to clear print jobs';
+      toast.error(msg);
     }
   };
 
@@ -277,14 +304,16 @@ export default function PrintLogs() {
               Refresh
             </Button>
             
-            <Button 
-              variant="destructive" 
-              onClick={clearAllJobs} 
-              disabled={loading || jobs.length === 0}
-            >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Clear All
-            </Button>
+            {canDelete && (
+              <Button 
+                variant="destructive" 
+                onClick={clearAllJobs} 
+                disabled={loading || jobs.length === 0}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear All
+              </Button>
+            )}
           </div>
 
           {/* Results Summary */}
@@ -341,14 +370,16 @@ export default function PrintLogs() {
                         >
                           <RotateCcw className="h-3 w-3" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteJob(job.id)}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteJob(job.id)}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
