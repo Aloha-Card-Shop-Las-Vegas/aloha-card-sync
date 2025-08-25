@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -245,12 +246,10 @@ export function UserAssignmentManager({ selectedStore }: UserAssignmentManagerPr
           </div>
 
           <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
+            <Checkbox
               id="is-default"
               checked={isDefault}
-              onChange={(e) => setIsDefault(e.target.checked)}
-              className="rounded"
+              onCheckedChange={(checked) => setIsDefault(checked === true)}
             />
             <Label htmlFor="is-default">Set as default location for this user</Label>
           </div>
