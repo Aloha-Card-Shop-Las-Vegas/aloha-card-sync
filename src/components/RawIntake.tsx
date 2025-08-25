@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { GAME_OPTIONS } from "@/lib/types";
 
 interface RawTradeInForm {
   game: string;
@@ -295,11 +296,11 @@ export default function RawIntake() {
               <SelectValue placeholder="Select game" />
             </SelectTrigger>
             <SelectContent className="z-50">
-              <SelectItem value="Pokémon">Pokémon</SelectItem>
-              <SelectItem value="Magic: The Gathering">Magic: The Gathering</SelectItem>
-              <SelectItem value="Yu-Gi-Oh!">Yu-Gi-Oh!</SelectItem>
-              <SelectItem value="Sports">Sports</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
+              {GAME_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.label}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
