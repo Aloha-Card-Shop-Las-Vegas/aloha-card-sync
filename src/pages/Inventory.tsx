@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
+import { Navigation } from "@/components/Navigation";
 import { toast } from "sonner";
 
 // Simple SEO helpers without extra deps
@@ -193,22 +194,16 @@ export default function Inventory() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="container mx-auto px-6 py-8">
-          <div className="flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-foreground">Card Inventory</h1>
-              <p className="text-muted-foreground mt-2">Search and manage all items that have been added to your queue.</p>
-            </div>
-            <div className="flex gap-2">
-              <Link to="/">
-                <Button variant="secondary">Back to Dashboard</Button>
-              </Link>
-            </div>
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Card Inventory</h1>
+            <p className="text-muted-foreground mt-1">Search and manage all items that have been added to your queue.</p>
           </div>
+          <Navigation />
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-6">
         <Card className="shadow-aloha">
           <CardHeader>
             <CardTitle>Inventory List</CardTitle>

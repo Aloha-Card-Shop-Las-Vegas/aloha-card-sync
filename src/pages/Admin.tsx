@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { StoreSelector } from "@/components/StoreSelector";
 import { UserAssignmentManager } from "@/components/UserAssignmentManager";
+import { Navigation } from "@/components/Navigation";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -243,24 +244,22 @@ export default function Admin() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="container mx-auto px-6 py-8 flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold text-foreground">Admin Dashboard</h1>
-            <p className="text-muted-foreground mt-2">Manage Shopify configurations, user roles, and system diagnostics.</p>
+            <h1 className="text-2xl font-bold text-foreground">Admin Dashboard</h1>
+            <p className="text-muted-foreground mt-1">Manage Shopify configurations, user roles, and system diagnostics.</p>
           </div>
-          <div className="flex gap-2 items-center">
+          <div className="flex items-center gap-4">
             <StoreSelector 
               selectedStore={selectedStore} 
               onStoreChange={setSelectedStore} 
             />
-            <Link to="/"><Button variant="secondary">Back</Button></Link>
-            <Link to="/shopify-mapping"><Button variant="outline">Shopify Mapping</Button></Link>
-            <Button variant="outline" onClick={() => { loadStatus(); loadRecent(); loadMappings(); }}>Refresh</Button>
+            <Navigation />
           </div>
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-6">
         <Tabs defaultValue="diagnostics" className="space-y-6">
           <TabsList>
             <TabsTrigger value="diagnostics">Shopify Diagnostics</TabsTrigger>

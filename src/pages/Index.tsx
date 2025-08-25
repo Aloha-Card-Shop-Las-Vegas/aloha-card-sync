@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import RawIntake from "@/components/RawIntake";
 import { Link } from "react-router-dom";
+import { Navigation } from "@/components/Navigation";
 import { cleanupAuthState } from "@/lib/auth";
 import { printNodeService } from "@/lib/printNodeService";
 import jsPDF from 'jspdf';
@@ -876,27 +877,26 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-aloha-gradient" aria-hidden="true" />
-        <div className="container relative mx-auto px-6 py-12">
-          <div className="max-w-3xl">
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">Aloha Card Inventory Manager</h1>
-            <p className="mt-4 text-lg text-muted-foreground">Centralize PSA-graded cards, batch intake with lot tracking, print barcodes, and sync to Shopify.</p>
-              <div className="mt-6 flex gap-3">
-                <Button onClick={handleSignOut}>Sign out</Button>
-                <Button variant="secondary" onClick={() => window.scrollTo({ top: 9999, behavior: 'smooth' })}>View Batch</Button>
-                <Link to="/inventory"><Button variant="outline">View Inventory</Button></Link>
-                <Link to="/labels"><Button variant="outline">Label Designer</Button></Link>
-                <Link to="/shopify-mapping"><Button variant="outline">Shopify Mapping</Button></Link>
-                <Link to="/admin"><Button variant="outline">Admin</Button></Link>
-                <Link to="/users"><Button variant="outline">Users</Button></Link>
-              </div>
+      <header className="border-b">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Aloha Card Inventory</h1>
           </div>
+          <Navigation />
         </div>
       </header>
 
+      <div className="relative overflow-hidden bg-aloha-gradient">
+        <div className="container mx-auto px-6 py-12">
+          <div className="max-w-3xl">
+            <h2 className="text-4xl md:text-5xl font-bold tracking-tight text-foreground">Dashboard</h2>
+            <p className="mt-4 text-lg text-muted-foreground">Centralize PSA-graded cards, batch intake with lot tracking, print barcodes, and sync to Shopify.</p>
+          </div>
+        </div>
+      </div>
+
       <main className="container mx-auto px-6 pb-24">
-        <section className="grid md:grid-cols-2 gap-6 -mt-8">
+        <section className="grid md:grid-cols-2 gap-6 mt-8">
           <Card className="shadow-aloha">
             <CardHeader>
               <div className="flex items-center justify-between gap-3">

@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import { Navigation } from "@/components/Navigation";
 import { buildTitleFromParts } from "@/lib/labelData";
 import { AlertTriangle, CheckCircle, Clock, ExternalLink, RefreshCw } from "lucide-react";
 
@@ -267,29 +268,16 @@ export default function ShopifyMapping() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="container mx-auto px-6 py-8">
-          <div className="flex items-start md:items-center justify-between gap-4 flex-col md:flex-row">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-foreground">Shopify Product Mapping</h1>
-              <p className="text-muted-foreground mt-2">Manage how inventory items map to Shopify products and handle consolidation.</p>
-            </div>
-            <div className="flex gap-2">
-              <Link to="/admin">
-                <Button variant="secondary">Admin</Button>
-              </Link>
-              <Link to="/">
-                <Button variant="secondary">Dashboard</Button>
-              </Link>
-              <Button variant="outline" onClick={loadMappingData} disabled={loading}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
-              </Button>
-            </div>
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Shopify Product Mapping</h1>
+            <p className="text-muted-foreground mt-1">Map intake items to Shopify products and manage inventory sync.</p>
           </div>
+          <Navigation />
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="container mx-auto px-6 py-6">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <Card>

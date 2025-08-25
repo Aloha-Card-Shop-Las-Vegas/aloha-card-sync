@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Link, useLocation } from "react-router-dom";
+import { Navigation } from "@/components/Navigation";
 import { PrinterPanel } from "@/components/PrinterPanel";
 import { usePrintNode } from "@/hooks/usePrintNode";
 import { useLocalStorageString } from "@/hooks/useLocalStorage";
@@ -293,20 +294,13 @@ export default function LabelDesigner() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-semibold">Label Designer</h1>
-              <Badge variant="secondary" className="text-xs">2×1 inch</Badge>
-            </div>
-            <Link to="/">
-              <Button variant="ghost" size="sm" className="gap-2">
-                <Home className="h-4 w-4" />
-                Dashboard
-              </Button>
-            </Link>
+      <header className="border-b">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Label Designer</h1>
+            <p className="text-muted-foreground mt-1">Design and print 2x1 inch labels with barcode, lot, SKU, price, and more.</p>
           </div>
+          <Navigation />
         </div>
       </header>
 

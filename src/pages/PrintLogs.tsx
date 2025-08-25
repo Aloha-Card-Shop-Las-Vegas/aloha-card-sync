@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Printer, Eye, RotateCcw, Filter } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { Navigation } from "@/components/Navigation";
 import { printNodeService } from "@/lib/printNodeService";
 
 interface PrintJob {
@@ -174,15 +175,18 @@ export default function PrintLogs() {
   const uniqueWorkstations = [...new Set(jobs.map(job => job.workstation_id))];
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Printer className="h-5 w-5" />
-            Print Job Logs
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+    <div className="min-h-screen bg-background">
+      <header className="border-b">
+        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Print Logs</h1>
+            <p className="text-muted-foreground mt-1">View and manage print job history and status.</p>
+          </div>
+          <Navigation />
+        </div>
+      </header>
+
+      <main className="container mx-auto px-6 py-6">
           {/* Filters */}
           <div className="flex gap-4 mb-6 flex-wrap">
             <div className="flex items-center gap-2">
@@ -299,66 +303,65 @@ export default function PrintLogs() {
               No print jobs found matching the current filters.
             </div>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Job Details Dialog */}
-      <Dialog open={!!selectedJob} onOpenChange={() => setSelectedJob(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Print Job Details</DialogTitle>
-          </DialogHeader>
-          
-          {selectedJob && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <strong>Job ID:</strong> {selectedJob.id}
+        {/* Job Details Dialog */}
+        <Dialog open={!!selectedJob} onOpenChange={() => setSelectedJob(null)}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Print Job Details</DialogTitle>
+            </DialogHeader>
+            
+            {selectedJob && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <strong>Job ID:</strong> {selectedJob.id}
+                  </div>
+                  <div>
+                    <strong>Status:</strong> {getStatusBadge(selectedJob.status)}
+                  </div>
+                  <div>
+                    <strong>Workstation:</strong> {selectedJob.workstation_id}
+                  </div>
+                  <div>
+                    <strong>Copies:</strong> {selectedJob.copies}
+                  </div>
+                  <div>
+                    <strong>Language:</strong> {selectedJob.language}
+                  </div>
+                  <div>
+                    <strong>Created:</strong> {new Date(selectedJob.created_at).toLocaleString()}
+                  </div>
                 </div>
+
+                {selectedJob.error && (
+                  <div>
+                    <strong className="text-destructive">Error:</strong>
+                    <p className="text-sm text-destructive mt-1">{selectedJob.error}</p>
+                  </div>
+                )}
+
                 <div>
-                  <strong>Status:</strong> {getStatusBadge(selectedJob.status)}
+                  <strong>TSPL Payload:</strong>
+                  <pre className="mt-2 p-3 bg-muted rounded-lg text-xs font-mono overflow-auto max-h-64">
+                    {selectedJob.payload}
+                  </pre>
                 </div>
-                <div>
-                  <strong>Workstation:</strong> {selectedJob.workstation_id}
-                </div>
-                <div>
-                  <strong>Copies:</strong> {selectedJob.copies}
-                </div>
-                <div>
-                  <strong>Language:</strong> {selectedJob.language}
-                </div>
-                <div>
-                  <strong>Created:</strong> {new Date(selectedJob.created_at).toLocaleString()}
+
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setSelectedJob(null)}>
+                    Close
+                  </Button>
+                  <Button onClick={() => reprintJob(selectedJob)}>
+                    <RotateCcw className="h-4 w-4 mr-2" />
+                    Reprint
+                  </Button>
                 </div>
               </div>
-
-              {selectedJob.error && (
-                <div>
-                  <strong className="text-destructive">Error:</strong>
-                  <p className="text-sm text-destructive mt-1">{selectedJob.error}</p>
-                </div>
-              )}
-
-              <div>
-                <strong>TSPL Payload:</strong>
-                <pre className="mt-2 p-3 bg-muted rounded-lg text-xs font-mono overflow-auto max-h-64">
-                  {selectedJob.payload}
-                </pre>
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setSelectedJob(null)}>
-                  Close
-                </Button>
-                <Button onClick={() => reprintJob(selectedJob)}>
-                  <RotateCcw className="h-4 w-4 mr-2" />
-                  Reprint
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+            )}
+          </DialogContent>
+        </Dialog>
+      </main>
     </div>
   );
 }
