@@ -203,6 +203,12 @@ export default function Admin() {
     }
   };
 
+  // Get store-specific settings
+  const getStoreSettings = (storeKey: string) => {
+    const prefix = `SHOPIFY_${storeKey.toUpperCase()}_`;
+    return apiKeys.filter(setting => setting.key_name.startsWith(prefix));
+  };
+
   const updateApiKey = async (keyName: string, newValue: string) => {
     try {
       // Check if the key already exists
@@ -581,11 +587,11 @@ export default function Admin() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {[
-                      { key: 'SHOPIFY_STORE_DOMAIN_LASVEGAS', label: 'Store Domain', placeholder: 'lasvegas-store.myshopify.com', description: 'Your Las Vegas Shopify store domain' },
-                      { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_LASVEGAS', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Las Vegas store', isPassword: true },
-                      { key: 'SHOPIFY_API_KEY_LASVEGAS', label: 'API Key', placeholder: 'API Key', description: 'Public app API key for Las Vegas store', isPassword: true },
-                      { key: 'SHOPIFY_API_SECRET_LASVEGAS', label: 'API Secret', placeholder: 'API Secret', description: 'Private app API secret for Las Vegas store', isPassword: true },
-                      { key: 'SHOPIFY_WEBHOOK_SECRET_LASVEGAS', label: 'Webhook Secret', placeholder: 'Webhook Secret', description: 'Webhook signing secret for Las Vegas store', isPassword: true }
+                      { key: 'SHOPIFY_LAS_VEGAS_STORE_DOMAIN', label: 'Store Domain', placeholder: 'lasvegas-store.myshopify.com', description: 'Your Las Vegas Shopify store domain' },
+                      { key: 'SHOPIFY_LAS_VEGAS_ACCESS_TOKEN', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Las Vegas store', isPassword: true },
+                      { key: 'SHOPIFY_LAS_VEGAS_API_KEY', label: 'API Key', placeholder: 'API Key', description: 'Public app API key for Las Vegas store', isPassword: true },
+                      { key: 'SHOPIFY_LAS_VEGAS_API_SECRET', label: 'API Secret', placeholder: 'API Secret', description: 'Private app API secret for Las Vegas store', isPassword: true },
+                      { key: 'SHOPIFY_LAS_VEGAS_WEBHOOK_SECRET', label: 'Webhook Secret', placeholder: 'Webhook Secret', description: 'Webhook signing secret for Las Vegas store', isPassword: true }
                     ].map((field) => {
                       const existingKey = apiKeys.find(k => k.key_name === field.key);
                       const isEditing = editingKey === field.key;
@@ -654,11 +660,11 @@ export default function Admin() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {[
-                      { key: 'SHOPIFY_STORE_DOMAIN_HAWAII', label: 'Store Domain', placeholder: 'hawaii-store.myshopify.com', description: 'Your Hawaii Shopify store domain' },
-                      { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_HAWAII', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Hawaii store', isPassword: true },
-                      { key: 'SHOPIFY_API_KEY_HAWAII', label: 'API Key', placeholder: 'API Key', description: 'Public app API key for Hawaii store', isPassword: true },
-                      { key: 'SHOPIFY_API_SECRET_HAWAII', label: 'API Secret', placeholder: 'API Secret', description: 'Private app API secret for Hawaii store', isPassword: true },
-                      { key: 'SHOPIFY_WEBHOOK_SECRET_HAWAII', label: 'Webhook Secret', placeholder: 'Webhook Secret', description: 'Webhook signing secret for Hawaii store', isPassword: true }
+                      { key: 'SHOPIFY_HAWAII_STORE_DOMAIN', label: 'Store Domain', placeholder: 'hawaii-store.myshopify.com', description: 'Your Hawaii Shopify store domain' },
+                      { key: 'SHOPIFY_HAWAII_ACCESS_TOKEN', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Hawaii store', isPassword: true },
+                      { key: 'SHOPIFY_HAWAII_API_KEY', label: 'API Key', placeholder: 'API Key', description: 'Public app API key for Hawaii store', isPassword: true },
+                      { key: 'SHOPIFY_HAWAII_API_SECRET', label: 'API Secret', placeholder: 'API Secret', description: 'Private app API secret for Hawaii store', isPassword: true },
+                      { key: 'SHOPIFY_HAWAII_WEBHOOK_SECRET', label: 'Webhook Secret', placeholder: 'Webhook Secret', description: 'Webhook signing secret for Hawaii store', isPassword: true }
                     ].map((field) => {
                       const existingKey = apiKeys.find(k => k.key_name === field.key);
                       const isEditing = editingKey === field.key;
