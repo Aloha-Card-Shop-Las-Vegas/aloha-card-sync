@@ -5,10 +5,11 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertCircle, CheckCircle, Settings, Store, Webhook, Key, Globe } from 'lucide-react';
+import { AlertCircle, CheckCircle, Settings, Store, Webhook, Key, Globe, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface ShopifyConfig {
   storeDomain: string;
@@ -25,6 +26,77 @@ interface DiagnosticsResult {
   shop: any;
   locations: any[];
 }
+
+interface SaveResult {
+  key: string;
+  action: 'created' | 'updated' | 'skipped';
+  success: boolean;
+  error?: string;
+}
+
+interface SaveResultsDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  results: SaveResult[];
+  storeName: string;
+}
+
+
+// Save Results Dialog Component
+const SaveResultsDialog: React.FC<SaveResultsDialogProps> = ({ isOpen, onClose, results, storeName }) => {
+  const successCount = results.filter(r => r.success).length;
+  const errorCount = results.filter(r => !r.success).length;
+  const errors = results.filter(r => !r.success);
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            {errorCount === 0 ? (
+              <CheckCircle className="h-5 w-5 text-green-500" />
+            ) : (
+              <AlertCircle className="h-5 w-5 text-red-500" />
+            )}
+            Save Results - {storeName}
+          </DialogTitle>
+          <DialogDescription>
+            {errorCount === 0 
+              ? `Successfully saved ${successCount} configuration keys.`
+              : `${successCount} successful, ${errorCount} failed.`
+            }
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-3">
+          {results.map((result, index) => (
+            <div key={index} className="flex items-center gap-2 text-sm">
+              {result.success ? (
+                <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
+              ) : (
+                <X className="h-4 w-4 text-red-500 flex-shrink-0" />
+              )}
+              <span className="flex-1">
+                {result.key.split('_').slice(-1)[0]}: {result.action}
+                {result.error && <span className="text-red-500 ml-1">({result.error})</span>}
+              </span>
+            </div>
+          ))}
+          
+          {errors.length > 0 && (
+            <div className="mt-3 p-2 bg-red-50 rounded text-xs text-red-700">
+              Check console logs for detailed error information.
+            </div>
+          )}
+        </div>
+        
+        <Button onClick={onClose} className="w-full mt-4">
+          Close
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const Admin = () => {
   const [selectedStore, setSelectedStore] = useState<string>('');
@@ -46,6 +118,10 @@ const Admin = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [saveResults, setSaveResults] = useState<SaveResult[]>([]);
+  const [showSaveResults, setShowSaveResults] = useState(false);
+  const [saveResultsStore, setSaveResultsStore] = useState('');
 
   const loadConfiguration = async () => {
     setIsLoading(true);
@@ -107,12 +183,19 @@ const Admin = () => {
   };
 
   const saveConfiguration = async (store: 'hawaii' | 'lasvegas') => {
+    if (!isAdmin) {
+      toast.error('Access denied', { description: 'Only administrators can save configuration' });
+      return;
+    }
+
     setIsSaving(true);
     setError('');
+    const results: SaveResult[] = [];
     
     try {
       const config = store === 'hawaii' ? hawaiiConfig : lasVegasConfig;
       const storeKey = store === 'hawaii' ? 'HAWAII' : 'LAS_VEGAS';
+      const storeName = store === 'hawaii' ? 'Hawaii' : 'Las Vegas';
       
       console.log(`Saving configuration for ${store}:`, config);
       
@@ -123,20 +206,32 @@ const Admin = () => {
         { key: `SHOPIFY_${storeKey}_API_SECRET`, value: config.apiSecret },
         { key: `SHOPIFY_${storeKey}_WEBHOOK_SECRET`, value: config.webhookSecret }
       ];
-
-      const results = [];
       
       for (const update of updates) {
         try {
-          console.log(`Updating ${update.key} with value:`, update.value ? '[REDACTED]' : 'empty');
+          console.log(`Processing ${update.key} with value:`, update.value ? '[REDACTED]' : 'empty');
           
-          const { data: existing } = await supabase
+          // Check if record exists
+          const { data: existing, error: selectError } = await supabase
             .from('system_settings')
             .select('id')
             .eq('key_name', update.key)
-            .single();
+            .limit(1)
+            .maybeSingle();
+          
+          if (selectError) {
+            console.error(`Error checking ${update.key}:`, selectError);
+            results.push({
+              key: update.key,
+              action: 'skipped',
+              success: false,
+              error: selectError.message
+            });
+            continue;
+          }
 
           if (existing) {
+            // Update existing record
             const { error: updateError } = await supabase
               .from('system_settings')
               .update({ 
@@ -147,36 +242,79 @@ const Admin = () => {
             
             if (updateError) {
               console.error(`Error updating ${update.key}:`, updateError);
-              throw new Error(`Failed to update ${update.key}: ${updateError.message}`);
+              results.push({
+                key: update.key,
+                action: 'updated',
+                success: false,
+                error: updateError.message
+              });
+            } else {
+              results.push({
+                key: update.key,
+                action: 'updated',
+                success: true
+              });
             }
-            results.push(`Updated ${update.key}`);
           } else {
+            // Create new record
             const { error: insertError } = await supabase
               .from('system_settings')
               .insert({
                 key_name: update.key,
                 key_value: update.value,
-                description: `Shopify ${update.key.split('_').slice(-1)[0]} for ${store === 'hawaii' ? 'Hawaii' : 'Las Vegas'} Store`,
+                description: `Shopify ${update.key.split('_').slice(-1)[0]} for ${storeName} Store`,
                 is_encrypted: true,
                 category: 'shopify'
               });
             
             if (insertError) {
               console.error(`Error inserting ${update.key}:`, insertError);
-              throw new Error(`Failed to insert ${update.key}: ${insertError.message}`);
+              results.push({
+                key: update.key,
+                action: 'created',
+                success: false,
+                error: insertError.message
+              });
+            } else {
+              results.push({
+                key: update.key,
+                action: 'created',
+                success: true
+              });
             }
-            results.push(`Created ${update.key}`);
           }
-        } catch (fieldError) {
+        } catch (fieldError: any) {
           console.error(`Error processing ${update.key}:`, fieldError);
-          throw fieldError;
+          results.push({
+            key: update.key,
+            action: 'skipped',
+            success: false,
+            error: fieldError.message || 'Timeout or unknown error'
+          });
         }
       }
       
-      console.log('All updates completed successfully:', results);
-      toast.success(`${store === 'hawaii' ? 'Hawaii' : 'Las Vegas'} Shopify settings saved successfully!`, {
-        description: `Updated ${results.length} configuration keys`
-      });
+      const successCount = results.filter(r => r.success).length;
+      const errorCount = results.filter(r => !r.success).length;
+      
+      console.log('Save operation completed:', { successCount, errorCount, results });
+      
+      // Show results dialog
+      setSaveResults(results);
+      setSaveResultsStore(storeName);
+      setShowSaveResults(true);
+      
+      if (errorCount === 0) {
+        toast.success(`${storeName} settings saved successfully!`, {
+          description: `All ${successCount} configuration keys saved`
+        });
+        // Reload configuration after successful save
+        loadConfiguration();
+      } else {
+        toast.warning(`${storeName} settings partially saved`, {
+          description: `${successCount} successful, ${errorCount} failed`
+        });
+      }
       
     } catch (error: any) {
       console.error(`Error saving ${store} configuration:`, error);
@@ -234,7 +372,27 @@ const Admin = () => {
     }
   };
 
+  // Check if user is admin on mount
   useEffect(() => {
+    const checkAdminRole = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: adminCheck } = await supabase.rpc("has_role", { 
+            _user_id: user.id, 
+            _role: "admin" as any 
+          });
+          setIsAdmin((adminCheck as boolean) === true);
+        } else {
+          setIsAdmin(false);
+        }
+      } catch (error) {
+        console.error('Error checking admin role:', error);
+        setIsAdmin(false);
+      }
+    };
+
+    checkAdminRole();
     loadConfiguration();
   }, []);
 
@@ -251,6 +409,14 @@ const Admin = () => {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {/* Save Results Dialog */}
+      <SaveResultsDialog
+        isOpen={showSaveResults}
+        onClose={() => setShowSaveResults(false)}
+        results={saveResults}
+        storeName={saveResultsStore}
+      />
 
       {/* Shopify Diagnostics Section */}
       <Card>
@@ -418,9 +584,18 @@ const Admin = () => {
             </div>
           </div>
           
+          {isAdmin === false && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Only administrators can save configuration settings.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           <Button 
             onClick={() => saveConfiguration('hawaii')} 
-            disabled={isSaving}
+            disabled={isSaving || isAdmin === false}
             className="w-full"
           >
             {isSaving ? 'Saving Hawaii Configuration...' : 'Save Hawaii Configuration'}
@@ -502,9 +677,18 @@ const Admin = () => {
             </div>
           </div>
           
+          {isAdmin === false && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Only administrators can save configuration settings.
+              </AlertDescription>
+            </Alert>
+          )}
+          
           <Button 
             onClick={() => saveConfiguration('lasvegas')} 
-            disabled={isSaving}
+            disabled={isSaving || isAdmin === false}
             className="w-full"
           >
             {isSaving ? 'Saving Las Vegas Configuration...' : 'Save Las Vegas Configuration'}
