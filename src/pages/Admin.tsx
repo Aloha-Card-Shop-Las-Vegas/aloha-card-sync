@@ -205,12 +205,31 @@ export default function Admin() {
 
   const updateApiKey = async (keyName: string, newValue: string) => {
     try {
-      const { error } = await supabase
-        .from('system_settings')
-        .update({ key_value: newValue })
-        .eq('key_name', keyName);
+      // Check if the key already exists
+      const existingKey = apiKeys.find(k => k.key_name === keyName);
       
-      if (error) throw error;
+      if (existingKey) {
+        // Update existing key
+        const { error } = await supabase
+          .from('system_settings')
+          .update({ key_value: newValue })
+          .eq('key_name', keyName);
+        
+        if (error) throw error;
+      } else {
+        // Insert new key
+        const { error } = await supabase
+          .from('system_settings')
+          .insert({
+            key_name: keyName,
+            key_value: newValue,
+            category: keyName.startsWith('SHOPIFY_') ? 'shopify' : 'general',
+            description: getKeyDescription(keyName),
+            is_encrypted: true
+          });
+        
+        if (error) throw error;
+      }
       
       toast.success(`${keyName} updated successfully`);
       setEditingKey(null);
@@ -219,6 +238,15 @@ export default function Admin() {
       console.error(e);
       toast.error('Failed to update API key');
     }
+  };
+
+  const getKeyDescription = (keyName: string): string => {
+    if (keyName.includes('DOMAIN')) return 'Shopify store domain';
+    if (keyName.includes('ACCESS_TOKEN')) return 'Shopify admin access token';
+    if (keyName.includes('API_KEY')) return 'Shopify API key';
+    if (keyName.includes('API_SECRET')) return 'Shopify API secret';
+    if (keyName.includes('WEBHOOK_SECRET')) return 'Shopify webhook secret';
+    return 'API configuration value';
   };
 
   const handleKeyEdit = (keyName: string) => {
@@ -538,95 +566,171 @@ export default function Admin() {
           </TabsContent>
           
           <TabsContent value="secrets" className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-2">
+            {!isAdmin ? (
               <Card className="shadow-aloha">
-                <CardHeader>
-                  <CardTitle>Las Vegas Store Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Store Domain</Label>
-                    <Input placeholder="lasvegas-store.myshopify.com" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_STORE_DOMAIN_LASVEGAS</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Admin Access Token</Label>
-                    <Input placeholder="shpca_..." type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_ADMIN_ACCESS_TOKEN_LASVEGAS</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>API Key</Label>
-                    <Input placeholder="API Key" type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_KEY_LASVEGAS</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>API Secret</Label>
-                    <Input placeholder="API Secret" type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_SECRET_LASVEGAS</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Webhook Secret</Label>
-                    <Input placeholder="Webhook Secret" type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_WEBHOOK_SECRET_LASVEGAS</p>
-                  </div>
-                  <Button variant="outline" disabled>
-                    Configure in Supabase Dashboard
-                  </Button>
+                <CardContent className="p-6">
+                  <p className="text-muted-foreground text-center">You must be an admin to manage Shopify configurations.</p>
                 </CardContent>
               </Card>
+            ) : (
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Card className="shadow-aloha">
+                  <CardHeader>
+                    <CardTitle>Las Vegas Store Configuration</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Las Vegas store configuration fields */}
+                    {[
+                      { key: 'SHOPIFY_STORE_DOMAIN_LASVEGAS', label: 'Store Domain', placeholder: 'lasvegas-store.myshopify.com', description: 'Your Las Vegas Shopify store domain' },
+                      { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_LASVEGAS', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Las Vegas store', isPassword: true },
+                      { key: 'SHOPIFY_API_KEY_LASVEGAS', label: 'API Key', placeholder: 'API Key', description: 'Public app API key for Las Vegas store', isPassword: true },
+                      { key: 'SHOPIFY_API_SECRET_LASVEGAS', label: 'API Secret', placeholder: 'API Secret', description: 'Private app API secret for Las Vegas store', isPassword: true },
+                      { key: 'SHOPIFY_WEBHOOK_SECRET_LASVEGAS', label: 'Webhook Secret', placeholder: 'Webhook Secret', description: 'Webhook signing secret for Las Vegas store', isPassword: true }
+                    ].map((field) => {
+                      const existingKey = apiKeys.find(k => k.key_name === field.key);
+                      const isEditing = editingKey === field.key;
+                      
+                      return (
+                        <div key={field.key} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label>{field.label}</Label>
+                            <div className="flex gap-2">
+                              {isEditing ? (
+                                <>
+                                  <Button 
+                                    size="sm" 
+                                    onClick={() => handleKeySave(field.key)}
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={handleKeyCancel}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  onClick={() => handleKeyEdit(field.key)}
+                                >
+                                  {existingKey ? 'Edit' : 'Add'}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          {isEditing ? (
+                            <Input
+                              type={field.isPassword ? "password" : "text"}
+                              value={keyValues[field.key] || ''}
+                              onChange={(e) => setKeyValues(prev => ({
+                                ...prev,
+                                [field.key]: e.target.value
+                              }))}
+                              placeholder={field.placeholder}
+                            />
+                          ) : (
+                            <Input 
+                              type={field.isPassword ? "password" : "text"}
+                              value={existingKey?.key_value ? '••••••••••••••••' : ''}
+                              placeholder={existingKey?.key_value ? `${field.label} is configured` : `${field.label} not set`}
+                              disabled 
+                            />
+                          )}
+                          <p className="text-xs text-muted-foreground">{field.description}</p>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
 
-              <Card className="shadow-aloha">
-                <CardHeader>
-                  <CardTitle>Hawaii Store Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Store Domain</Label>
-                    <Input placeholder="hawaii-store.myshopify.com" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_STORE_DOMAIN_HAWAII</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Admin Access Token</Label>
-                    <Input placeholder="shpca_..." type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_ADMIN_ACCESS_TOKEN_HAWAII</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>API Key</Label>
-                    <Input placeholder="API Key" type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_KEY_HAWAII</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>API Secret</Label>
-                    <Input placeholder="API Secret" type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_API_SECRET_HAWAII</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Webhook Secret</Label>
-                    <Input placeholder="Webhook Secret" type="password" disabled />
-                    <p className="text-xs text-muted-foreground">Set via Supabase secrets: SHOPIFY_WEBHOOK_SECRET_HAWAII</p>
-                  </div>
-                  <Button variant="outline" disabled>
-                    Configure in Supabase Dashboard
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
+                <Card className="shadow-aloha">
+                  <CardHeader>
+                    <CardTitle>Hawaii Store Configuration</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* Hawaii store configuration fields */}
+                    {[
+                      { key: 'SHOPIFY_STORE_DOMAIN_HAWAII', label: 'Store Domain', placeholder: 'hawaii-store.myshopify.com', description: 'Your Hawaii Shopify store domain' },
+                      { key: 'SHOPIFY_ADMIN_ACCESS_TOKEN_HAWAII', label: 'Admin Access Token', placeholder: 'shpat_...', description: 'Private app access token for Hawaii store', isPassword: true },
+                      { key: 'SHOPIFY_API_KEY_HAWAII', label: 'API Key', placeholder: 'API Key', description: 'Public app API key for Hawaii store', isPassword: true },
+                      { key: 'SHOPIFY_API_SECRET_HAWAII', label: 'API Secret', placeholder: 'API Secret', description: 'Private app API secret for Hawaii store', isPassword: true },
+                      { key: 'SHOPIFY_WEBHOOK_SECRET_HAWAII', label: 'Webhook Secret', placeholder: 'Webhook Secret', description: 'Webhook signing secret for Hawaii store', isPassword: true }
+                    ].map((field) => {
+                      const existingKey = apiKeys.find(k => k.key_name === field.key);
+                      const isEditing = editingKey === field.key;
+                      
+                      return (
+                        <div key={field.key} className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label>{field.label}</Label>
+                            <div className="flex gap-2">
+                              {isEditing ? (
+                                <>
+                                  <Button 
+                                    size="sm" 
+                                    onClick={() => handleKeySave(field.key)}
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={handleKeyCancel}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  onClick={() => handleKeyEdit(field.key)}
+                                >
+                                  {existingKey ? 'Edit' : 'Add'}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          {isEditing ? (
+                            <Input
+                              type={field.isPassword ? "password" : "text"}
+                              value={keyValues[field.key] || ''}
+                              onChange={(e) => setKeyValues(prev => ({
+                                ...prev,
+                                [field.key]: e.target.value
+                              }))}
+                              placeholder={field.placeholder}
+                            />
+                          ) : (
+                            <Input 
+                              type={field.isPassword ? "password" : "text"}
+                              value={existingKey?.key_value ? '••••••••••••••••' : ''}
+                              placeholder={existingKey?.key_value ? `${field.label} is configured` : `${field.label} not set`}
+                              disabled 
+                            />
+                          )}
+                          <p className="text-xs text-muted-foreground">{field.description}</p>
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
             
             <Card className="shadow-aloha">
               <CardContent className="p-6">
                 <div className="text-center space-y-4">
-                  <h3 className="text-lg font-medium">Configuration Instructions</h3>
+                  <h3 className="text-lg font-medium">Multi-Store Configuration</h3>
                   <div className="text-sm text-muted-foreground space-y-2">
-                    <p>1. Go to your Supabase dashboard → Settings → Edge Functions</p>
-                    <p>2. Add the required secrets for each store using the exact names shown above</p>
-                    <p>3. Each store needs its own set of credentials with store-specific suffixes</p>
-                    <p>4. After adding secrets, return here to test the configuration</p>
+                    <p>Configure separate Shopify credentials for your Las Vegas and Hawaii stores.</p>
+                    <p>Each store requires its own set of API credentials from your Shopify admin panel.</p>
+                    <p>After configuration, use the store selector to switch between stores for operations.</p>
                   </div>
-                  <Button variant="outline" asChild>
-                    <a href="https://supabase.com/dashboard/project/dmpoandoydaqxhzdjnmk/settings/functions" target="_blank" rel="noopener noreferrer">
-                      Open Supabase Secrets
-                    </a>
-                  </Button>
                 </div>
               </CardContent>
             </Card>
