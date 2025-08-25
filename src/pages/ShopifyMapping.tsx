@@ -7,12 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { Navigation } from "@/components/Navigation";
+import { StoreSelector } from "@/components/StoreSelector";
 import { buildTitleFromParts } from "@/lib/labelData";
-import { AlertTriangle, CheckCircle, Clock, ExternalLink, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, ExternalLink, RefreshCw, Edit3, MapPin, Settings } from "lucide-react";
 
 function useSEO(opts: { title: string; description?: string; canonical?: string }) {
   useEffect(() => {
@@ -79,6 +81,10 @@ export default function ShopifyMapping() {
   const [filter, setFilter] = useState<"all" | "mapped" | "unmapped" | "conflicts">("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
+  const [selectedStore, setSelectedStore] = useState<string | null>(null);
+  const [editingProductId, setEditingProductId] = useState<{ groupHandle: string; currentId: string | null } | null>(null);
+  const [newProductId, setNewProductId] = useState("");
+  const [shopifyLocations, setShopifyLocations] = useState<Array<{ id: string; name: string }>>([]);
 
   const loadMappingData = async () => {
     setLoading(true);
@@ -239,9 +245,69 @@ export default function ShopifyMapping() {
     }
   };
 
+  const setManualProductId = async (groupHandle: string, productId: string) => {
+    try {
+      const group = productGroups.find(g => g.handle === groupHandle);
+      if (!group) return;
+
+      const { error } = await supabase
+        .from("intake_items")
+        .update({ shopify_product_id: productId || null })
+        .in("id", group.items.map(item => item.id));
+
+      if (error) throw error;
+      toast.success("Product ID updated");
+      loadMappingData();
+      setEditingProductId(null);
+      setNewProductId("");
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to update product ID");
+    }
+  };
+
+  const resolveConflict = async (groupHandle: string, keepProductId: string) => {
+    try {
+      const group = productGroups.find(g => g.handle === groupHandle);
+      if (!group) return;
+
+      const { error } = await supabase
+        .from("intake_items")
+        .update({ shopify_product_id: keepProductId })
+        .in("id", group.items.map(item => item.id));
+
+      if (error) throw error;
+      toast.success("Conflict resolved");
+      loadMappingData();
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to resolve conflict");
+    }
+  };
+
+  const loadShopifyLocations = async () => {
+    if (!selectedStore) return;
+    
+    try {
+      const { data, error } = await supabase.functions.invoke("shopify-locations", {
+        body: { storeKey: selectedStore }
+      });
+      
+      if (error) throw error;
+      setShopifyLocations(data?.locations || []);
+    } catch (e) {
+      console.error(e);
+      setShopifyLocations([]);
+    }
+  };
+
   useEffect(() => {
     loadMappingData();
   }, []);
+
+  useEffect(() => {
+    loadShopifyLocations();
+  }, [selectedStore]);
 
   const filteredGroups = productGroups.filter(group => {
     // Apply filter
@@ -268,12 +334,32 @@ export default function ShopifyMapping() {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Shopify Product Mapping</h1>
-            <p className="text-muted-foreground mt-1">Map intake items to Shopify products and manage inventory sync.</p>
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Shopify Product Mapping</h1>
+              <p className="text-muted-foreground mt-1">Map intake items to Shopify products and manage inventory sync.</p>
+            </div>
+            <Navigation />
           </div>
-          <Navigation />
+          
+          {/* Store Selector */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              <Label htmlFor="store-select">Target Store:</Label>
+            </div>
+            <StoreSelector 
+              selectedStore={selectedStore} 
+              onStoreChange={setSelectedStore} 
+            />
+            {shopifyLocations.length > 0 && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <MapPin className="h-4 w-4" />
+                <span>{shopifyLocations.length} location{shopifyLocations.length !== 1 ? 's' : ''} available</span>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -379,11 +465,76 @@ export default function ShopifyMapping() {
                           </div>
                         </div>
                         <div className="flex gap-2">
+                          {group.hasConflicts && (
+                            <div className="flex gap-1">
+                              {Array.from(new Set(group.items.map(i => i.shopify_product_id).filter(Boolean))).map(pid => (
+                                <Button
+                                  key={pid}
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => resolveConflict(group.handle, pid!)}
+                                  className="text-xs"
+                                >
+                                  Keep {pid?.slice(-8)}
+                                </Button>
+                              ))}
+                            </div>
+                          )}
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingProductId({ groupHandle: group.handle, currentId: group.productId });
+                                  setNewProductId(group.productId || "");
+                                }}
+                              >
+                                <Edit3 className="w-4 h-4 mr-1" />
+                                Set ID
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Set Shopify Product ID</DialogTitle>
+                                <DialogDescription>
+                                  Manually set the Shopify product ID for "{group.title}"
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <Label htmlFor="product-id">Product ID</Label>
+                                  <Input
+                                    id="product-id"
+                                    value={newProductId}
+                                    onChange={(e) => setNewProductId(e.target.value)}
+                                    placeholder="e.g., gid://shopify/Product/123456789"
+                                  />
+                                </div>
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                      setEditingProductId(null);
+                                      setNewProductId("");
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    onClick={() => setManualProductId(group.handle, newProductId)}
+                                  >
+                                    Update
+                                  </Button>
+                                </div>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
                           {group.productId && (
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => window.open(`https://admin.shopify.com/store/${process.env.SHOPIFY_STORE_DOMAIN?.split('.')[0]}/products/${group.productId}`, '_blank')}
+                              onClick={() => window.open(`https://admin.shopify.com/store/${selectedStore || 'your-store'}/products/${group.productId}`, '_blank')}
                             >
                               <ExternalLink className="w-4 h-4 mr-1" />
                               View in Shopify
@@ -392,7 +543,7 @@ export default function ShopifyMapping() {
                           <Button
                             size="sm"
                             onClick={() => handleGroupPush(group)}
-                            disabled={processingIds.has(group.items[0]?.id)}
+                            disabled={processingIds.has(group.items[0]?.id) || !selectedStore}
                           >
                             {processingIds.has(group.items[0]?.id) ? "Processing..." : "Push to Shopify"}
                           </Button>
@@ -424,11 +575,18 @@ export default function ShopifyMapping() {
                                 <TableCell>{item.price ? `$${Number(item.price).toLocaleString()}` : "—"}</TableCell>
                                 <TableCell>{item.quantity || 0}</TableCell>
                                 <TableCell>
-                                  {item.shopify_variant_id ? (
-                                    <Badge variant="default">Mapped</Badge>
-                                  ) : (
-                                    <Badge variant="outline">Unmapped</Badge>
-                                  )}
+                                  <div className="space-y-1">
+                                    {item.shopify_variant_id ? (
+                                      <Badge variant="default">Mapped</Badge>
+                                    ) : (
+                                      <Badge variant="outline">Unmapped</Badge>
+                                    )}
+                                    {item.pushed_at && (
+                                      <div className="text-xs text-muted-foreground">
+                                        Pushed {new Date(item.pushed_at).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex gap-1">
@@ -437,7 +595,8 @@ export default function ShopifyMapping() {
                                         size="sm"
                                         variant="outline"
                                         onClick={() => handleBulkPush([item.id])}
-                                        disabled={processingIds.has(item.id)}
+                                        disabled={processingIds.has(item.id) || !selectedStore}
+                                        title={!selectedStore ? "Select a store first" : "Push to Shopify"}
                                       >
                                         Push
                                       </Button>
