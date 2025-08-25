@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-shopify-topic, x-shopify-hmac-sha256",
@@ -14,7 +16,19 @@ Deno.serve(async (req) => {
     const { sku, quantity } = await req.json();
     if (!sku || !quantity) throw new Error("Missing sku or quantity");
 
-    const SHOPIFY_WEBHOOK_SECRET = Deno.env.get("SHOPIFY_WEBHOOK_SECRET");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Get webhook secret from system_settings table
+    const { data: webhookSetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'SHOPIFY_WEBHOOK_SECRET',
+        fallbackSecretName: 'SHOPIFY_WEBHOOK_SECRET'
+      }
+    });
+
+    const SHOPIFY_WEBHOOK_SECRET = webhookSetting?.value;
     if (!SHOPIFY_WEBHOOK_SECRET) throw new Error("Webhook secret not set");
 
     const body = JSON.stringify({ line_items: [{ sku, quantity: Number(quantity) }] });
@@ -25,7 +39,6 @@ Deno.serve(async (req) => {
     const signature = await crypto.subtle.sign("HMAC", key, enc.encode(body));
     const hmacHeader = toBase64(new Uint8Array(signature));
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const url = `${SUPABASE_URL}/functions/v1/shopify-webhook`;
 
     const res = await fetch(url, {

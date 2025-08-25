@@ -31,11 +31,18 @@ Deno.serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const SHOPIFY_WEBHOOK_SECRET = Deno.env.get("SHOPIFY_WEBHOOK_SECRET");
-
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
+    // Get webhook secret from system_settings table
+    const { data: webhookSetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'SHOPIFY_WEBHOOK_SECRET',
+        fallbackSecretName: 'SHOPIFY_WEBHOOK_SECRET'
+      }
+    });
+
+    const SHOPIFY_WEBHOOK_SECRET = webhookSetting?.value;
     const topic = req.headers.get("x-shopify-topic");
     const hmac = req.headers.get("x-shopify-hmac-sha256");
     const raw = await req.text();

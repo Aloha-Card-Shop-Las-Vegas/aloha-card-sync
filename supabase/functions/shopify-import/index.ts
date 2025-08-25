@@ -32,17 +32,34 @@ Deno.serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const SHOPIFY_STORE_DOMAIN = Deno.env.get("SHOPIFY_STORE_DOMAIN")!; // e.g. mystore.myshopify.com
-    const SHOPIFY_ADMIN_ACCESS_TOKEN = Deno.env.get("SHOPIFY_ADMIN_ACCESS_TOKEN")!;
 
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Supabase environment not configured");
     }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Get Shopify settings from system_settings table
+    const { data: domainSetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'SHOPIFY_STORE_DOMAIN',
+        fallbackSecretName: 'SHOPIFY_STORE_DOMAIN'
+      }
+    });
+
+    const { data: tokenSetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'SHOPIFY_ADMIN_ACCESS_TOKEN',
+        fallbackSecretName: 'SHOPIFY_ADMIN_ACCESS_TOKEN'
+      }
+    });
+
+    const SHOPIFY_STORE_DOMAIN = domainSetting?.value;
+    const SHOPIFY_ADMIN_ACCESS_TOKEN = tokenSetting?.value;
+
     if (!SHOPIFY_STORE_DOMAIN || !SHOPIFY_ADMIN_ACCESS_TOKEN) {
       throw new Error("Shopify environment not configured");
     }
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { itemId } = await req.json();
     if (!itemId) throw new Error("Missing itemId");

@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,13 +38,26 @@ serve(async (req) => {
     }
 
     const url = `https://www.psacard.com/cert/${encodeURIComponent(cert)}/psa`;
-    const apiKey = Deno.env.get("FIRECRAWL_API_KEY");
+    
+    // Get Firecrawl API key from system_settings table
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    const { data: apiKeySetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'FIRECRAWL_API_KEY',
+        fallbackSecretName: 'FIRECRAWL_API_KEY'
+      }
+    });
+
+    const apiKey = apiKeySetting?.value;
 
     if (!apiKey) {
       return new Response(
         JSON.stringify({
           ok: false,
-          error: "FIRECRAWL_API_KEY is not configured in Supabase Edge Function secrets",
+          error: "FIRECRAWL_API_KEY is not configured in system settings",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );

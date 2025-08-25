@@ -4,16 +4,41 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const SHOPIFY_STORE_DOMAIN = Deno.env.get("SHOPIFY_STORE_DOMAIN");
-  const SHOPIFY_ADMIN_ACCESS_TOKEN = Deno.env.get("SHOPIFY_ADMIN_ACCESS_TOKEN");
-  const SHOPIFY_WEBHOOK_SECRET = Deno.env.get("SHOPIFY_WEBHOOK_SECRET");
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
   try {
+    // Get Shopify settings from system_settings table
+    const { data: domainSetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'SHOPIFY_STORE_DOMAIN',
+        fallbackSecretName: 'SHOPIFY_STORE_DOMAIN'
+      }
+    });
+
+    const { data: tokenSetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'SHOPIFY_ADMIN_ACCESS_TOKEN',
+        fallbackSecretName: 'SHOPIFY_ADMIN_ACCESS_TOKEN'
+      }
+    });
+
+    const { data: webhookSetting } = await supabase.functions.invoke('get-system-setting', {
+      body: { 
+        keyName: 'SHOPIFY_WEBHOOK_SECRET',
+        fallbackSecretName: 'SHOPIFY_WEBHOOK_SECRET'
+      }
+    });
+
+    const SHOPIFY_STORE_DOMAIN = domainSetting?.value;
+    const SHOPIFY_ADMIN_ACCESS_TOKEN = tokenSetting?.value;
+    const SHOPIFY_WEBHOOK_SECRET = webhookSetting?.value;
+
     const hasDomain = Boolean(SHOPIFY_STORE_DOMAIN);
     const hasAdminToken = Boolean(SHOPIFY_ADMIN_ACCESS_TOKEN);
     const hasWebhookSecret = Boolean(SHOPIFY_WEBHOOK_SECRET);
