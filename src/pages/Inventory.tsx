@@ -91,6 +91,7 @@ export default function Inventory() {
   const [search, setSearch] = useState("");
   const [printed, setPrinted] = useState<"all" | "printed" | "unprinted">("all");
   const [pushed, setPushed] = useState<"all" | "pushed" | "unpushed">("all");
+  const [lotFilter, setLotFilter] = useState("");
   const [sortKey, setSortKey] = useState<keyof ItemRow>("created_at");
   const [sortAsc, setSortAsc] = useState(false);
 
@@ -123,6 +124,10 @@ export default function Inventory() {
           );
         }
 
+        if (lotFilter.trim()) {
+          query = query.ilike("lot_number", `%${lotFilter.trim()}%`);
+        }
+
         if (printed === "printed") query = query.not("printed_at", "is", null);
         if (printed === "unprinted") query = query.is("printed_at", null);
         if (pushed === "pushed") query = query.not("pushed_at", "is", null);
@@ -145,7 +150,7 @@ export default function Inventory() {
     };
 
     fetchData();
-  }, [page, search, printed, pushed, sortKey, sortAsc]);
+  }, [page, search, printed, pushed, lotFilter, sortKey, sortAsc]);
 
   const toggleSort = (key: keyof ItemRow) => {
     if (sortKey === key) setSortAsc((v) => !v);
@@ -209,7 +214,7 @@ export default function Inventory() {
             <CardTitle>Inventory List</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
               <div>
                 <Label htmlFor="search">Search</Label>
                 <Input
@@ -219,7 +224,19 @@ export default function Inventory() {
                     setPage(1);
                     setSearch(e.target.value);
                   }}
-                  placeholder="Search title, SKU, lot, cert, etc."
+                  placeholder="Search title, SKU, cert, etc."
+                />
+              </div>
+              <div>
+                <Label htmlFor="lot-filter">Filter by Lot</Label>
+                <Input
+                  id="lot-filter"
+                  value={lotFilter}
+                  onChange={(e) => {
+                    setPage(1);
+                    setLotFilter(e.target.value);
+                  }}
+                  placeholder="LOT-123456"
                 />
               </div>
               <div>
@@ -290,6 +307,7 @@ export default function Inventory() {
                 <Label>Sort</Label>
                 <div className="flex gap-2 mt-2 flex-wrap">
                   <Button variant="outline" onClick={() => toggleSort("created_at")}>Date {sortKey === "created_at" ? (sortAsc ? "↑" : "↓") : ""}</Button>
+                  <Button variant="outline" onClick={() => toggleSort("lot_number")}>Lot {sortKey === "lot_number" ? (sortAsc ? "↑" : "↓") : ""}</Button>
                   <Button variant="outline" onClick={() => toggleSort("price")}>Price {sortKey === "price" ? (sortAsc ? "↑" : "↓") : ""}</Button>
                   <Button variant="outline" onClick={() => toggleSort("cost")}>Cost {sortKey === "cost" ? (sortAsc ? "↑" : "↓") : ""}</Button>
                 </div>
@@ -318,7 +336,17 @@ export default function Inventory() {
                     const title = buildTitleFromParts(it.year, it.brand_title, it.card_number, it.subject, it.variant);
                     return (
                     <TableRow key={it.id}>
-                      <TableCell className="font-medium">{it.lot_number}</TableCell>
+                      <TableCell className="font-medium">
+                        <button
+                          onClick={() => {
+                            setPage(1);
+                            setLotFilter(it.lot_number);
+                          }}
+                          className="text-primary hover:underline cursor-pointer"
+                        >
+                          {it.lot_number}
+                        </button>
+                      </TableCell>
                       <TableCell className="text-xs text-muted-foreground">{it.id}</TableCell>
                       <TableCell>{title || "—"}</TableCell>
                       <TableCell>{it.sku || "—"}</TableCell>
