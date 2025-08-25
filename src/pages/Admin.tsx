@@ -123,6 +123,8 @@ const Admin = () => {
   const [saveResults, setSaveResults] = useState<SaveResult[]>([]);
   const [showSaveResults, setShowSaveResults] = useState(false);
   const [saveResultsStore, setSaveResultsStore] = useState('');
+  const [justTcgApiKey, setJustTcgApiKey] = useState('');
+  const [isSavingJustTcg, setIsSavingJustTcg] = useState(false);
 
   const loadConfiguration = async () => {
     setIsLoading(true);
@@ -177,6 +179,20 @@ const Admin = () => {
           apiSecret: lasVegasData.find(item => item.key_name === 'SHOPIFY_LAS_VEGAS_API_SECRET')?.key_value || '',
           webhookSecret: lasVegasData.find(item => item.key_name === 'SHOPIFY_LAS_VEGAS_WEBHOOK_SECRET')?.key_value || ''
         });
+      }
+
+      // Load JustTCG API Key
+      const { data: justTcgData, error: justTcgError } = await supabase
+        .from('system_settings')
+        .select('key_value')
+        .eq('key_name', 'JUSTTCG_API_KEY')
+        .limit(1)
+        .maybeSingle();
+
+      if (justTcgError) {
+        console.error('Error fetching JustTCG config:', justTcgError);
+      } else {
+        setJustTcgApiKey(justTcgData?.key_value || '');
       }
     } finally {
       setIsLoading(false);
@@ -373,6 +389,95 @@ const Admin = () => {
     }
   };
 
+  const saveJustTcgKey = async () => {
+    if (!isAdmin) {
+      toast.error('Access denied', { description: 'Only administrators can save configuration' });
+      return;
+    }
+
+    setIsSavingJustTcg(true);
+    setError('');
+
+    try {
+      // Check if record exists
+      const { data: existing, error: selectError } = await supabase
+        .from('system_settings')
+        .select('id')
+        .eq('key_name', 'JUSTTCG_API_KEY')
+        .limit(1)
+        .maybeSingle();
+
+      if (selectError) {
+        throw selectError;
+      }
+
+      if (existing) {
+        // Update existing record
+        const { error: updateError } = await supabase
+          .from('system_settings')
+          .update({ 
+            key_value: justTcgApiKey,
+            updated_at: new Date().toISOString()
+          })
+          .eq('key_name', 'JUSTTCG_API_KEY');
+        
+        if (updateError) throw updateError;
+      } else {
+        // Create new record
+        const { error: insertError } = await supabase
+          .from('system_settings')
+          .insert({
+            key_name: 'JUSTTCG_API_KEY',
+            key_value: justTcgApiKey,
+            description: 'JustTCG API Key for card lookups',
+            is_encrypted: true,
+            category: 'integrations'
+          });
+        
+        if (insertError) throw insertError;
+      }
+
+      toast.success('JustTCG API key saved successfully!');
+      loadConfiguration(); // Reload to reflect changes
+    } catch (error: any) {
+      console.error('Error saving JustTCG API key:', error);
+      toast.error('Failed to save JustTCG API key', {
+        description: error.message
+      });
+    } finally {
+      setIsSavingJustTcg(false);
+    }
+  };
+
+  const clearJustTcgKey = async () => {
+    if (!isAdmin) {
+      toast.error('Access denied', { description: 'Only administrators can save configuration' });
+      return;
+    }
+
+    setIsSavingJustTcg(true);
+    setError('');
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('system_settings')
+        .delete()
+        .eq('key_name', 'JUSTTCG_API_KEY');
+
+      if (deleteError) throw deleteError;
+
+      setJustTcgApiKey('');
+      toast.success('JustTCG API key cleared successfully!');
+    } catch (error: any) {
+      console.error('Error clearing JustTCG API key:', error);
+      toast.error('Failed to clear JustTCG API key', {
+        description: error.message
+      });
+    } finally {
+      setIsSavingJustTcg(false);
+    }
+  };
+
   // Check if user is admin on mount
   useEffect(() => {
     const checkAdminRole = async () => {
@@ -425,6 +530,62 @@ const Admin = () => {
         results={saveResults}
         storeName={saveResultsStore}
       />
+
+      {/* JustTCG Integration Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Key className="h-5 w-5" />
+            JustTCG Integration
+          </CardTitle>
+          <CardDescription>
+            Store your JustTCG API key securely for card lookups
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isAdmin === false && (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Only administrators can save configuration settings.
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="space-y-2">
+            <Label htmlFor="justtcg-api-key" className="flex items-center gap-2">
+              <Key className="h-4 w-4" />
+              API Key
+            </Label>
+            <Input
+              id="justtcg-api-key"
+              type="password"
+              value={justTcgApiKey}
+              onChange={(e) => setJustTcgApiKey(e.target.value)}
+              placeholder="Enter your JustTCG API key"
+              disabled={isLoading}
+            />
+          </div>
+          
+          <div className="flex gap-2">
+            <Button 
+              onClick={saveJustTcgKey}
+              disabled={!isAdmin || isSavingJustTcg}
+              className="flex-1"
+            >
+              {isSavingJustTcg ? 'Saving...' : 'Save Key'}
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={clearJustTcgKey}
+              disabled={!isAdmin || isSavingJustTcg}
+              className="flex-1"
+            >
+              {isSavingJustTcg ? 'Clearing...' : 'Clear Key'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Shopify Diagnostics Section */}
       <Card>
