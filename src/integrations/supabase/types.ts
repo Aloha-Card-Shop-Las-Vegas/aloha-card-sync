@@ -375,6 +375,36 @@ export type Database = {
           },
         ]
       }
+      shopify_stores: {
+        Row: {
+          api_version: string | null
+          created_at: string | null
+          domain: string | null
+          key: string
+          name: string
+          updated_at: string
+          vendor: string | null
+        }
+        Insert: {
+          api_version?: string | null
+          created_at?: string | null
+          domain?: string | null
+          key: string
+          name: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Update: {
+          api_version?: string | null
+          created_at?: string | null
+          domain?: string | null
+          key?: string
+          name?: string
+          updated_at?: string
+          vendor?: string | null
+        }
+        Relationships: []
+      }
       trade_ins: {
         Row: {
           card_number: string | null
@@ -455,6 +485,47 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_shopify_assignments: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_default: boolean | null
+          location_gid: string
+          location_name: string | null
+          store_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          location_gid: string
+          location_name?: string | null
+          store_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_default?: boolean | null
+          location_gid?: string
+          location_name?: string | null
+          store_key?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_shopify_assignments_store_key_fkey"
+            columns: ["store_key"]
+            isOneToOne: false
+            referencedRelation: "shopify_stores"
+            referencedColumns: ["key"]
+          },
+        ]
       }
     }
     Views: {
