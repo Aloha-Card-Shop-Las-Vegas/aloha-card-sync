@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { GAME_OPTIONS } from "@/lib/types";
+import { GAME_OPTIONS, GameKey, JObjectCard } from "@/lib/types";
+import { searchCards } from "@/integrations/justtcg";
 
 interface RawTradeInForm {
   game: string;
@@ -51,7 +52,7 @@ export default function RawIntake() {
     product_id: undefined,
   });
   
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<JObjectCard[]>([]);
   const [loading, setLoading] = useState(false);
 
   const autoSku = useMemo(() => {
@@ -95,92 +96,35 @@ export default function RawIntake() {
       const rawName = (form.name || "").trim();
       const inputCard = (form.card_number || "").trim();
 
-      if (rawName.length < 2) {
+      // Require both name (at least 2 chars) and card number (at least 1 char)
+      if (rawName.length < 2 || inputCard.length < 1) {
         if (active) setSuggestions([]);
         return;
       }
 
       setLoading(true);
 
-      // Parse trailing number token from name (e.g., "Charizard 4/102")
-      const trailingTokenMatch = rawName.match(/(?:^|\s)(\d{1,3}(?:\s*\/\s*\d{1,3})?)$/);
-      const trailingCard = trailingTokenMatch ? trailingTokenMatch[1].replace(/\s*/g, "") : "";
-      const baseName = trailingCard ? rawName.slice(0, rawName.length - trailingTokenMatch[0].length).trim() : rawName;
-      const cardToUse = inputCard || trailingCard;
+      // Map game label to GameKey for API
+      const gameKeyMap: Record<string, GameKey> = {
+        'Pokémon': 'pokemon',
+        'Pokémon Japan': 'pokemon_japan', 
+        'Magic: The Gathering': 'mtg'
+      };
+      
+      const gameKey = gameKeyMap[form.game] || 'pokemon';
 
       try {
-        const { data: products, error } = await (supabase as any)
-          .from("products")
-          .select("id,name,group_id,tcgcsv_data")
-          .ilike("name", `%${baseName || rawName}%`)
-          .limit(15);
-        if (error) throw error;
-
-        const groupIds = Array.from(new Set((products || []).map((p: any) => p.group_id).filter(Boolean)));
-        let groupsMap: Record<string, string> = {};
-        if (groupIds.length) {
-          const { data: groups, error: gerr } = await (supabase as any)
-            .from("groups")
-            .select("id,name")
-            .in("id", groupIds);
-          if (!gerr && groups) {
-            groupsMap = Object.fromEntries(groups.map((g: any) => [String(g.id), g.name]));
-          }
-        }
-
-        const norm = (v: string) => {
-          if (!v) return "";
-          const s = String(v).trim().toUpperCase().replace(/\s+/g, "");
-          const parts = s.split("/");
-          return parts.map((p) => p.replace(/^0+/, "") || "0").join(parts.length > 1 ? "/" : "");
-        };
-
-        const getExt = (tcg: any, key: string) => {
-          try {
-            if (tcg?.extendedData && Array.isArray(tcg.extendedData)) {
-              const found = tcg.extendedData.find((e: any) => String(e.name || "").toLowerCase() === key.toLowerCase());
-              if (found?.value != null) return String(found.value);
-            }
-            if (tcg && typeof tcg === "object") {
-              for (const k of Object.keys(tcg)) {
-                if (k.toLowerCase() === key.toLowerCase()) return String((tcg as any)[k]);
-              }
-            }
-          } catch {}
-          return "";
-        };
-
-        let built = (products || []).map((p: any) => {
-          const cn = getExt(p.tcgcsv_data, "Number");
-          const rarity = getExt(p.tcgcsv_data, "Rarity");
-          return {
-            source: "product",
-            product_id: p.id,
-            name: p.name,
-            set: groupsMap[String(p.group_id)] || "",
-            card_number: cn,
-            rarity,
-          };
+        const response = await searchCards({
+          name: rawName,
+          number: inputCard,
+          game: gameKey
         });
 
-        if (cardToUse) {
-          const target = norm(cardToUse);
-          const targetHasSlash = /\//.test(cardToUse);
-          built = built.filter((s: any) => {
-            const sNorm = norm(s.card_number);
-            if (!sNorm) return false;
-            if (targetHasSlash) return sNorm === target;
-            const sNum = sNorm.split("/")[0];
-            return sNorm === target || sNum === target || sNorm.startsWith(target + "/");
-          });
-        }
-
-        built = built.slice(0, 5);
-
-        if (active) setSuggestions(built);
+        if (active) setSuggestions(response.data || []);
       } catch (e) {
-        console.error(e);
+        console.error('JustTCG API search error:', e);
         if (active) setSuggestions([]);
+        toast.error('Failed to search cards. Please check your API connection.');
       } finally {
         if (active) setLoading(false);
       }
@@ -190,32 +134,23 @@ export default function RawIntake() {
       active = false;
       clearTimeout(t);
     };
-  }, [form.name, form.card_number]);
+  }, [form.name, form.card_number, form.game]);
 
-  // Auto-fill card number from trailing token in name if empty
-  useEffect(() => {
-    const rawName = (form.name || "").trim();
-    if (!rawName || form.card_number) return;
-    const m = rawName.match(/(?:^|\s)(\d{1,3}(?:\s*\/\s*\d{1,3})?)$/);
-    if (m) {
-      const value = m[1].replace(/\s*/g, "");
-      setForm((f) => ({ ...f, card_number: value }));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form.name]);
-
-  const applySuggestion = (s: any) => {
+  const applySuggestion = (s: JObjectCard) => {
     setForm((f) => ({
       ...f,
       name: s.name || f.name,
       set: s.set || f.set,
-      set_code: s.set_code || f.set_code,
-      card_number: s.card_number || f.card_number,
-      condition: s.condition || f.condition,
-      language: s.language || f.language,
-      price_each: s.price_each != null ? String(s.price_each) : f.price_each,
-      sku: s.sku || f.sku,
-      product_id: s.product_id ?? f.product_id,
+      card_number: String(s.number || f.card_number),
+      // Keep existing form values for fields not provided by API
+      condition: f.condition,
+      language: f.language,
+      printing: f.printing,
+      rarity: f.rarity,
+      price_each: f.price_each,
+      cost_each: f.cost_each,
+      sku: f.sku,
+      product_id: undefined, // Clear product_id since this is from API
     }));
   };
 
@@ -307,7 +242,7 @@ export default function RawIntake() {
 
         <div>
           <Label htmlFor="name">Name</Label>
-          <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Type to search products (e.g., Charizard or Charizard 4/102)" />
+          <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Card name (e.g., Charizard)" />
         </div>
         <div>
           <Label htmlFor="set">Set</Label>
@@ -385,19 +320,22 @@ export default function RawIntake() {
         ) : suggestions.length > 0 ? (
           <ul className="mt-2 space-y-2">
             {suggestions.map((s, i) => (
-              <li key={`${s.product_id || s.name}-${i}`} className="flex items-center justify-between gap-3 border rounded-md p-2">
-                <div className="text-sm">
+              <li key={`${s.cardId}-${i}`} className="flex items-center gap-3 border rounded-md p-2">
+                {s.images?.small && (
+                  <img src={s.images.small} alt={s.name} className="w-12 h-16 object-cover rounded" />
+                )}
+                <div className="flex-1 text-sm">
                   <div className="font-medium">{s.name}</div>
-                  <div className="text-muted-foreground">{[s.set, s.card_number, s.rarity].filter(Boolean).join(" • ")}</div>
+                  <div className="text-muted-foreground">{[s.set, s.number].filter(Boolean).join(" • ")}</div>
                 </div>
                 <Button size="sm" variant="secondary" onClick={() => applySuggestion(s)}>Use</Button>
               </li>
             ))}
           </ul>
-        ) : ((form.name || '').trim().length >= 2 ? (
-          <div className="text-sm text-muted-foreground mt-2">No matches. Try refining the name or add a card # (e.g., 4/102).</div>
+        ) : ((form.name || '').trim().length >= 2 && (form.card_number || '').trim().length >= 1 ? (
+          <div className="text-sm text-muted-foreground mt-2">No matches found. Try different search terms.</div>
         ) : (
-          <div className="text-sm text-muted-foreground mt-2">Type at least 2 characters in Name to search products</div>
+          <div className="text-sm text-muted-foreground mt-2">Enter both card name (2+ characters) and card number to search</div>
         ))}
       </div>
 
